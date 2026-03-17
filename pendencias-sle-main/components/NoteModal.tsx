@@ -182,6 +182,19 @@ const NoteModal: React.FC<Props> = ({ cte, onClose }) => {
   const [remoteNotes, setRemoteNotes] = useState<NoteData[] | null>(null);
   const [remoteProcess, setRemoteProcess] = useState<any[] | null>(null);
 
+  const normalizeNoteRow = (row: any): NoteData => ({
+    ID: row?.id?.toString?.() || row?.ID?.toString?.() || '',
+    CTE: row?.cte || row?.CTE || '',
+    SERIE: row?.serie || row?.SERIE || '',
+    CODIGO: row?.codigo || row?.CODIGO || '',
+    DATA: row?.data || row?.DATA || '',
+    USUARIO: row?.usuario || row?.USUARIO || '',
+    TEXTO: row?.texto || row?.TEXTO || '',
+    LINK_IMAGEM: row?.link_imagem || row?.LINK_IMAGEM || '',
+    STATUS_BUSCA: row?.status_busca || row?.STATUS_BUSCA || '',
+    pending: false,
+  });
+
   useEffect(() => {
     let cancelled = false;
     setRemoteNotes(null);
@@ -265,16 +278,51 @@ const NoteModal: React.FC<Props> = ({ cte, onClose }) => {
     if (isTad && !text.trim()) { alert("Motivo do TAD é obrigatório."); return; }
 
     setIsSending(true);
+    const tempId = `temp-${Date.now()}`;
+    const optimistic: NoteData = {
+      ID: tempId,
+      CTE: cte.CTE,
+      SERIE: cte.SERIE || '',
+      CODIGO: cte.CODIGO,
+      DATA: new Date().toISOString(),
+      USUARIO: user?.username || 'Sistema',
+      TEXTO: text || (pendingFiles.length > 0 ? "Anexo enviado" : ""),
+      LINK_IMAGEM: '',
+      STATUS_BUSCA: isSearch ? 'EM BUSCA' : (isTad ? 'TAD' : ''),
+      pending: true,
+    };
+    setRemoteNotes(prev => {
+      const base = Array.isArray(prev) ? prev : [];
+      return [optimistic, ...base];
+    });
     try {
-      await addNote({
+      const created = await addNote({
         CTE: cte.CTE, SERIE: cte.SERIE || '', CODIGO: cte.CODIGO, DATA: '', 
         USUARIO: user?.username || 'Sistema', TEXTO: text || (pendingFiles.length > 0 ? "Anexo enviado" : ""), 
         LINK_IMAGEM: '', 
         STATUS_BUSCA: isSearch ? 'EM BUSCA' : (isTad ? 'TAD' : ''), 
         attachments: pendingFiles
       });
+      if (created) {
+        const normalized = normalizeNoteRow(created);
+        setRemoteNotes(prev => {
+          const base = Array.isArray(prev) ? prev : [];
+          return [normalized, ...base.filter(n => n.ID !== tempId)];
+        });
+      } else {
+        setRemoteNotes(prev => {
+          const base = Array.isArray(prev) ? prev : [];
+          return base.filter(n => n.ID !== tempId);
+        });
+      }
       setText(''); setIsSearch(false); setIsTad(false); setPendingFiles([]);
-    } catch (error) { alert('Erro ao enviar.'); } finally { setIsSending(false); }
+    } catch (error) {
+      setRemoteNotes(prev => {
+        const base = Array.isArray(prev) ? prev : [];
+        return base.filter(n => n.ID !== tempId);
+      });
+      alert('Erro ao enviar.');
+    } finally { setIsSending(false); }
   };
 
   const getLinks = (linkStr: string): string[] => {

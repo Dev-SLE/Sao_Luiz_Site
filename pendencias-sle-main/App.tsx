@@ -26,6 +26,7 @@ const AppContent: React.FC = () => {
     setEmBuscaLimit,
     setTadPage,
     setTadLimit,
+    hasPermission,
   } = useData();
   const [currentPage, setCurrentPage] = useState<Page>(Page.DASHBOARD);
   const [selectedCte, setSelectedCte] = useState<CteData | null>(null);
@@ -106,6 +107,16 @@ const AppContent: React.FC = () => {
           />
         );
       case Page.CONFIGURACOES:
+        if (!hasPermission('MANAGE_SETTINGS')) {
+          return (
+            <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+              <h3 className="text-lg font-bold text-slate-900">Sem permissão</h3>
+              <p className="text-sm text-slate-600 mt-1">
+                Seu perfil não possui acesso a Configurações.
+              </p>
+            </div>
+          );
+        }
         return <Settings />;
       case Page.MUDAR_SENHA:
         return <ChangePassword />;

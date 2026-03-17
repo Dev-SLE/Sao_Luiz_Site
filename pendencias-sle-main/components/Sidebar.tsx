@@ -15,7 +15,7 @@ const Sidebar: React.FC<Props> = ({ currentPage, setPage, logout }) => {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const { user } = useAuth();
-  const { counts } = useData();
+  const { counts, hasPermission } = useData();
 
   const menuItems = [
     { id: Page.DASHBOARD, label: 'Visão Geral', icon: Home, count: 0 },
@@ -25,9 +25,9 @@ const Sidebar: React.FC<Props> = ({ currentPage, setPage, logout }) => {
     { id: Page.TAD, label: 'TAD', icon: Tag, count: counts.tad },
   ];
 
-  // Only show settings for admin (Case insensitive check)
-  if (user?.role && user.role.toLowerCase() === 'admin') {
-      menuItems.push({ id: Page.CONFIGURACOES, label: 'Configurações', icon: Settings, count: 0 });
+  // Configurações: por permissão do perfil (admin sempre vê)
+  if (hasPermission('MANAGE_SETTINGS')) {
+    menuItems.push({ id: Page.CONFIGURACOES, label: 'Configurações', icon: Settings, count: 0 });
   }
 
   const content = (

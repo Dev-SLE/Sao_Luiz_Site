@@ -32,7 +32,7 @@ interface DataContextType {
   setFilterDirection: (d: 'all' | 'inbound' | 'outbound') => void;
   searchTerm: string;
   setSearchTerm: (s: string) => void;
-  addNote: (note: Omit<NoteData, 'ID'> & { attachments?: Attachment[] }) => Promise<void>;
+  addNote: (note: Omit<NoteData, 'ID'> & { attachments?: Attachment[] }) => Promise<any>;
   deleteNote: (id: string) => Promise<void>;
   resolveIssue: (cte: string, serie?: string, customText?: string) => Promise<void>;
   addUser: (user: UserData) => Promise<void>;
@@ -76,6 +76,9 @@ interface DataContextType {
   setEmBuscaLimit: (limit: number) => void;
   setTadPage: (page: number) => void;
   setTadLimit: (limit: number) => void;
+
+  // Permissões do perfil (role -> profiles.permissions)
+  hasPermission: (perm: string) => boolean;
 }
 
 const isValid = (d: any): boolean => d instanceof Date && !isNaN(d.getTime());
@@ -162,6 +165,19 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const setEmBuscaLimit = (limit: number) => setEmBuscaState(s => ({ ...s, limit, page: 1 }));
   const setTadPage = (page: number) => setTadState(s => ({ ...s, page }));
   const setTadLimit = (limit: number) => setTadState(s => ({ ...s, limit, page: 1 }));
+
+  const currentProfile = useMemo(() => {
+    const roleName = (user?.role || '').trim();
+    if (!roleName) return null;
+    return profiles.find(p => (p.name || '').toLowerCase() === roleName.toLowerCase()) || null;
+  }, [profiles, user?.role]);
+
+  const hasPermission = (perm: string) => {
+    const roleName = (user?.role || '').trim().toLowerCase();
+    if (roleName === 'admin') return true;
+    if (!perm) return true;
+    return !!currentProfile?.permissions?.includes(perm);
+  };
 
   const normalizeCtes = (rows: any[]): CteData[] =>
     (rows || []).map((row: any) => ({
@@ -327,8 +343,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         status_busca: notePayload.STATUS_BUSCA || '',
         data: formattedDate
       };
-      await authClient.addNote(noteData);
+      const created = await authClient.addNote(noteData);
       await refreshData();
+      return created;
     } catch (error) {
       console.error('Erro ao adicionar nota:', error);
       throw error;
@@ -434,6 +451,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setEmBuscaLimit,
       setTadPage,
       setTadLimit
+      ,
+      hasPermission
     }}>
       {children}
     </DataContext.Provider>
