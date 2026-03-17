@@ -1,0 +1,99 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* CRITICAL: Forces full height so charts don't crash */
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+  background-color: #f9fafb; /* Light gray background */
+}
+
+/* Fix for Recharts ResponsiveContainer crash */
+.recharts-responsive-container {
+  min-height: 300px;
+  width: 100% !important;
+}
+
+/* --- Media Containers for Chat Notes --- */
+.media-container {
+    width: 100%;
+    border-radius: 8px;
+    overflow: hidden;
+    margin-top: 8px;
+    background-color: #f1f3f4;
+    border: 1px solid #e0e0e0;
+}
+
+/* IMAGEM */
+.media-container.image-container img {
+    width: 100%;
+    height: auto;
+    display: block;
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+.media-container.image-container img:hover {
+    opacity: 0.9;
+}
+
+/* IFRAME GERAL */
+.media-container iframe {
+    width: 100%;
+    border: none;
+    display: block;
+}
+
+/* VÍDEO (16:9) */
+.video-container iframe {
+    height: 200px;
+    aspect-ratio: 16/9;
+}
+
+/* PDF */
+.pdf-container iframe {
+    height: 300px;
+}
+.pdf-link-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    background: #fff;
+    padding: 8px;
+    font-size: 12px;
+    color: #333;
+    text-decoration: none;
+    border-top: 1px solid #ccc;
+    font-weight: 600;
+    transition: background-color 0.2s;
+}
+.pdf-link-btn:hover {
+    background-color: #f9fafb;
+    color: #0284c7;
+}
+
+/* ÁUDIO */
+.audio-container iframe {
+    height: 100px; /* Altura suficiente para mostrar os controles do Drive */
+}
+
+/* ARQUIVOS GENÉRICOS */
+.generic-file-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 15px;
+    color: #555;
+    text-decoration: none;
+    font-weight: bold;
+    font-size: 13px;
+    transition: background-color 0.2s;
+}
+.generic-file-btn:hover {
+    background-color: #e8eaed;
+}
