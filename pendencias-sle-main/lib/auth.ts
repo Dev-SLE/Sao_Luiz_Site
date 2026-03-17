@@ -117,7 +117,8 @@ export class NeonDataClient {
   }
 
   async getUsers(): Promise<any[]> {
-    return this.fetchData('/users');
+    const resp = await this.fetchData('/users');
+    return Array.isArray(resp) ? resp : (resp?.data || []);
   }
 
   async getProfiles(): Promise<any[]> {
