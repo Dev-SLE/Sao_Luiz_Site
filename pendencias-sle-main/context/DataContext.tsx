@@ -14,6 +14,7 @@ interface Attachment {
   name: string;
   type: string;
   base64: string;
+  file?: File; // arquivo bruto para upload direto
 }
 
 interface DataContextType {
@@ -311,17 +312,32 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (notePayload.attachments && notePayload.attachments.length > 0) {
         for (const file of notePayload.attachments) {
           const formData = new FormData();
-          // Converter base64 para Blob
-          const base64Data = file.base64.split(',')[1];
-          const mime = file.type;
-          const byteCharacters = atob(base64Data);
-          const byteNumbers = new Array(byteCharacters.length);
-          for (let i = 0; i < byteCharacters.length; i++) {
-            byteNumbers[i] = byteCharacters.charCodeAt(i);
+          // Se tivermos o arquivo bruto, usamos diretamente (mais seguro)
+          if (file.file instanceof File) {
+            formData.append('file', file.file, file.name);
+          } else {
+            // Fallback: converter base64 dataURL para Blob, se estiver bem formatado
+            const parts = file.base64?.split(',');
+            if (!parts || parts.length < 2) {
+              console.warn('Base64 inválido para upload, ignorando arquivo:', file.name);
+              continue;
+            }
+            const base64Data = parts[1];
+            const mime = file.type || 'application/octet-stream';
+            try {
+              const byteCharacters = atob(base64Data);
+              const byteNumbers = new Array(byteCharacters.length);
+              for (let i = 0; i < byteCharacters.length; i++) {
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
+              }
+              const byteArray = new Uint8Array(byteNumbers);
+              const blob = new Blob([byteArray], { type: mime });
+              formData.append('file', blob, file.name);
+            } catch (e) {
+              console.error('Falha ao decodificar base64, ignorando arquivo:', file.name, e);
+              continue;
+            }
           }
-          const byteArray = new Uint8Array(byteNumbers);
-          const blob = new Blob([byteArray], { type: mime });
-          formData.append('file', blob, file.name);
           formData.append('username', user?.username || ''); // Passar username
           // Enviar para o backend
           const resp = await fetch('/api/uploadImage', {

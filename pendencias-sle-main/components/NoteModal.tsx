@@ -160,6 +160,7 @@ interface PendingFile {
     name: string;
     type: string;
     base64: string;
+    file?: File;
 }
 
 const NoteModal: React.FC<Props> = ({ cte, onClose }) => {
@@ -254,7 +255,7 @@ const NoteModal: React.FC<Props> = ({ cte, onClose }) => {
               } else {
                   base64 = await fileToBase64(file);
               }
-              newFiles.push({ name: file.name, type: file.type, base64: base64 });
+              newFiles.push({ name: file.name, type: file.type, base64: base64, file });
           } catch (e) { alert(`Erro ao processar: ${file.name}`); }
       }
       setPendingFiles(prev => [...prev, ...newFiles]);

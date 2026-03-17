@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { google } from "googleapis";
+import { Readable } from "stream";
 import { getPool } from "../../../lib/server/db";
 import { getDriveFolderId, getGoogleOAuthClient } from "../../../lib/server/googleDrive";
 import { ensureUserTokensTable } from "../../../lib/server/ensureSchema";
@@ -48,7 +49,7 @@ export async function POST(req: Request) {
       },
       media: {
         mimeType: f.type || "application/octet-stream",
-        body: buffer as any,
+        body: Readable.from(buffer),
       },
     });
 
