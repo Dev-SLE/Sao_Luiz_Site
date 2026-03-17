@@ -122,7 +122,8 @@ export class NeonDataClient {
   }
 
   async getProfiles(): Promise<any[]> {
-    return this.fetchData('/profiles');
+    const resp = await this.fetchData('/profiles');
+    return Array.isArray(resp) ? resp : (resp?.data || []);
   }
 
 
@@ -158,6 +159,48 @@ export class NeonDataClient {
 
   async addNote(note: any): Promise<any> {
     return this.insertData('notes', note);
+  }
+
+  async deleteNote(id: string): Promise<any> {
+    return await fetch(`${API_BASE_URL}/notes?id=${encodeURIComponent(id)}`, { method: 'DELETE' }).then(r => r.json());
+  }
+
+  async saveProcessData(payload: any): Promise<any> {
+    return this.postJson('/process_control', payload);
+  }
+
+  async markAsInSearch(payload: any): Promise<any> {
+    return this.postJson('/markAsInSearch', payload);
+  }
+
+  async stopAlarm(payload: any): Promise<any> {
+    return this.postJson('/stopAlarm', payload);
+  }
+
+  async saveProfile(profile: any): Promise<any> {
+    return this.postJson('/profiles', profile);
+  }
+
+  async deleteProfile(name: string): Promise<any> {
+    const url = `${API_BASE_URL}/profiles?name=${encodeURIComponent(name)}`;
+    const response = await fetch(url, { method: 'DELETE' });
+    if (!response.ok) throw new Error(`Erro na API: ${response.status}`);
+    return response.json();
+  }
+
+  async saveUser(user: any): Promise<any> {
+    return this.postJson('/users', user);
+  }
+
+  async deleteUser(username: string): Promise<any> {
+    const url = `${API_BASE_URL}/users?username=${encodeURIComponent(username)}`;
+    const response = await fetch(url, { method: 'DELETE' });
+    if (!response.ok) throw new Error(`Erro na API: ${response.status}`);
+    return response.json();
+  }
+
+  async changePassword(payload: { username: string; currentPassword: string; newPassword: string }): Promise<any> {
+    return this.postJson('/changePassword', payload);
   }
 
   async updateCte(cteId: string, updates: any): Promise<any> {

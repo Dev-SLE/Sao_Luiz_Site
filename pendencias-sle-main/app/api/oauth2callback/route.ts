@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getPool } from "../../../lib/server/db";
 import { getGoogleOAuthClient } from "../../../lib/server/googleDrive";
+import { ensureUserTokensTable } from "../../../lib/server/ensureSchema";
 
 export const runtime = "nodejs";
 
@@ -15,6 +16,7 @@ export async function GET(req: Request) {
     const { tokens } = await oAuth2Client.getToken(code);
 
     const pool = getPool();
+    await ensureUserTokensTable();
     await pool.query(
       `
         INSERT INTO pendencias.user_tokens (username, access_token, refresh_token, expiry_date)

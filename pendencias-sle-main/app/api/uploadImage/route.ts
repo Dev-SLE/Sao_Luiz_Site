@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { google } from "googleapis";
 import { getPool } from "../../../lib/server/db";
 import { getDriveFolderId, getGoogleOAuthClient } from "../../../lib/server/googleDrive";
+import { ensureUserTokensTable } from "../../../lib/server/ensureSchema";
 
 export const runtime = "nodejs";
 
@@ -15,6 +16,7 @@ export async function POST(req: Request) {
     if (!username) return NextResponse.json({ success: false, error: "Username necessário." }, { status: 400 });
 
     const pool = getPool();
+    await ensureUserTokensTable();
     const tokenResult = await pool.query("SELECT * FROM pendencias.user_tokens WHERE username = $1", [username]);
     if (tokenResult.rows.length === 0) {
       return NextResponse.json(

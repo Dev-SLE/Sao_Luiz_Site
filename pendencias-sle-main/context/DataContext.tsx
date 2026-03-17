@@ -221,7 +221,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setNotes([]);
       setProcessControlData([]);
       setUsers(normalizedUsers);
-      setProfiles([]); // Implementar depois
+
+      const profilesRaw = await authClient.getProfiles();
+      const normalizedProfiles: ProfileData[] = (profilesRaw || []).map((row: any) => ({
+        name: row.name || '',
+        description: row.description || '',
+        permissions: Array.isArray(row.permissions) ? row.permissions : (typeof row.permissions === 'string' ? row.permissions.split(',').map((p: string) => p.trim()).filter(Boolean) : []),
+      })).filter((p: ProfileData) => p.name);
+      setProfiles(normalizedProfiles);
       setGlobalData({ today: '', tomorrow: '', deadlineDays: 2 }); // Implementar depois
 
       setPendenciasState(s => ({ ...s, data: pendenciasData, total: pendResp.total || 0 }));
@@ -329,67 +336,42 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const deleteNote = async (id: string) => {
-      const noteToDelete = notes.find(n => String(n.ID) === String(id));
-      setNotes(prev => prev.filter(n => String(n.ID) !== String(id)));
-      // try { await postToSheet('deleteNote', { id: id }); } catch (error) {
-      //     if(noteToDelete) { setNotes(prev => [...prev, noteToDelete]); alert("Erro ao deletar nota."); }
-      // }
+      await authClient.deleteNote(String(id));
   };
 
   const resolveIssue = async (cte: string, serie?: string, customText?: string) => {
-      let targetSerie = serie || baseData.find(c => c.CTE === cte)?.SERIE || "0";
-      const now = new Date();
-      const formattedDate = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
-      const textMsg = customText || "RESOLVIDO: Mercadoria marcada como LOCALIZADA.";
+      const targetSerie = serie || baseData.find(c => c.CTE === cte)?.SERIE || "0";
       const username = user?.username || "Sistema";
-      const cleanSerie = String(targetSerie).replace(/^0+/, '');
-      
-      setBaseData(prev => prev.map(item => 
-          (item.CTE === cte && String(item.SERIE).replace(/^0+/, '') === cleanSerie) 
-          ? { ...item, STATUS: 'RESOLVIDO' } 
-          : item
-      ));
+      const textMsg = customText || "RESOLVIDO: Mercadoria marcada como LOCALIZADA.";
 
-      const resolveNote: NoteData = { ID: "temp-resolve-" + Math.random(), CTE: cte, SERIE: targetSerie!, CODIGO: "0", DATA: formattedDate, USUARIO: username, TEXTO: textMsg, LINK_IMAGEM: "", STATUS_BUSCA: "RESOLVIDO", pending: true };
-      
-      setNotes(prev => [...prev, resolveNote]);
-      setProcessControlData(prev => [...prev, { ID: resolveNote.ID, CTE: cte, SERIE: targetSerie!, DATA: formattedDate, USER: username, DESCRIPTION: textMsg, LINK: "", STATUS: "RESOLVIDO" }]);
-      
-      // try {
-      //     // CRÍTICO: markInSearch = true para garantir que o backend crie uma nova linha em PROCESS_CONTROL com o status RESOLVIDO
-      //     await postToSheet('addNote', { 
-      //     cte: cte,
-      //     serie: targetSerie,
-      //     username: username,
-      //     user: username,
-      //     text: textMsg,
-      //     markInSearch: true,
-      //     status: 'RESOLVIDO',
-      //     status_busca: 'RESOLVIDO'
-      // });
-      //
-      // await postToSheet('stopAlarm', { cte: cte, serie: targetSerie });
-      alert("Situação resolvida!");
-      setTimeout(() => { refreshData(); }, 4000);
-      // } catch (error) { alert("Erro ao resolver."); }
+      await authClient.stopAlarm({ cte, serie: targetSerie, user: username, description: textMsg });
+      await authClient.addNote({
+        cte,
+        serie: targetSerie,
+        codigo: "0",
+        usuario: username,
+        texto: textMsg,
+        link_imagem: "",
+        status_busca: "RESOLVIDO",
+      });
+      await refreshData();
   };
 
   const addUser = async (u: UserData) => {
-      setUsers(prev => [...prev, u]);
-      // try { await postToSheet('addUser', u); } catch(e) { setUsers(prev => prev.filter(usr => usr.username !== u.username)); }
+      await authClient.saveUser(u);
+      await refreshData();
   };
   const deleteUser = async (username: string) => {
-      const old = [...users]; setUsers(prev => prev.filter(u => u.username !== username));
-      // try { await postToSheet('deleteUser', { username }); } catch(e) { setUsers(old); }
+      await authClient.deleteUser(username);
+      await refreshData();
   };
   const saveProfile = async (p: ProfileData) => {
-      const old = [...profiles]; const idx = profiles.findIndex(pr => pr.name === p.name);
-      if (idx >= 0) { const upd = [...profiles]; upd[idx] = p; setProfiles(upd); } else setProfiles(prev => [...prev, p]);
-      // try { await postToSheet('saveProfile', { name: p.name, description: p.description, permissions: p.permissions.join(',') }); } catch(e) { setProfiles(old); }
+      await authClient.saveProfile(p);
+      await refreshData();
   };
   const deleteProfile = async (name: string) => {
-      const old = [...profiles]; setProfiles(prev => prev.filter(p => p.name !== name));
-      // try { await postToSheet('deleteProfile', { name }); } catch(e) { setProfiles(old); }
+      await authClient.deleteProfile(name);
+      await refreshData();
   };
 
   return (

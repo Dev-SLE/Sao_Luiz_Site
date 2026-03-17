@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Lock, Save, CheckCircle, Loader2, AlertTriangle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { postToSheet } from '../services/api';
+import { authClient } from '../lib/auth';
 
 const ChangePassword: React.FC = () => {
   const { user } = useAuth();
@@ -30,13 +30,13 @@ const ChangePassword: React.FC = () => {
     setLoading(true);
 
     try {
-        const result = await postToSheet('changePassword', {
-            username: user?.username,
-            currentPassword: currentPass,
-            newPassword: newPass
+        const resp = await authClient.changePassword({
+          username: user?.username || '',
+          currentPassword: currentPass,
+          newPassword: newPass
         });
 
-        if (result) {
+        if (resp?.success) {
             setSuccess(true);
             setCurrentPass('');
             setNewPass('');
