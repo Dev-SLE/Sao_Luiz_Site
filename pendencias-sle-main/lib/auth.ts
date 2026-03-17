@@ -7,8 +7,8 @@ const API_BASE_URL =
 // Por enquanto, vamos usar uma abordagem simplificada sem autenticação JWT
 // TODO: Configurar Neon Auth corretamente no painel
 export interface AuthUser {
-  id: string;
-  email: string;
+  id?: string;
+  email?: string;
   username: string;
   role: string;
   origin?: string;
