@@ -18,6 +18,7 @@ const AppContent: React.FC = () => {
     criticos,
     emBusca,
     tad,
+    concluidos,
     setPendenciasPage,
     setPendenciasLimit,
     setCriticosPage,
@@ -26,6 +27,8 @@ const AppContent: React.FC = () => {
     setEmBuscaLimit,
     setTadPage,
     setTadLimit,
+    setConcluidosPage,
+    setConcluidosLimit,
     hasPermission,
   } = useData();
   const [currentPage, setCurrentPage] = useState<Page>(Page.DASHBOARD);
@@ -103,6 +106,22 @@ const AppContent: React.FC = () => {
               total: tad.total,
               onPageChange: setTadPage,
               onLimitChange: setTadLimit,
+            }}
+          />
+        );
+      case Page.CONCLUIDOS:
+        return (
+          <DataTable
+            title="Concluídos"
+            data={concluidos.data}
+            onNoteClick={setSelectedCte}
+            enableFilters={true}
+            serverPagination={{
+              page: concluidos.page,
+              limit: concluidos.limit,
+              total: concluidos.total,
+              onPageChange: setConcluidosPage,
+              onLimitChange: setConcluidosLimit,
             }}
           />
         );

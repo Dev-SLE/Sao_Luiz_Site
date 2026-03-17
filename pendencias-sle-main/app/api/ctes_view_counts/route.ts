@@ -17,7 +17,7 @@ export async function POST(req: Request) {
       userLinkedDestUnit,
     } = body || {};
 
-    const viewKey = ["pendencias", "criticos", "em_busca", "tad"].includes(String(view)) ? String(view) : "pendencias";
+    const viewKey = ["pendencias", "criticos", "em_busca", "tad", "concluidos"].includes(String(view)) ? String(view) : "pendencias";
     const effectiveUnit = (ignoreUnitFilter ? "" : (unit || userLinkedDestUnit || "")).trim();
     const statusArr = Array.isArray(statusFilters) ? statusFilters.map(String) : [];
     const payArr = Array.isArray(paymentFilters) ? paymentFilters.map(String) : [];
@@ -37,7 +37,8 @@ export async function POST(req: Request) {
         SELECT
           c.*,
           i.status_calculado,
-          i.note_count
+          i.note_count,
+          CASE WHEN $1 = 'concluidos' THEN c.status ELSE i.status_calculado END AS status_key
         FROM pendencias.cte_view_index i
         JOIN pendencias.ctes c ON c.cte = i.cte AND c.serie = i.serie
         WHERE i.view = $1
@@ -51,28 +52,28 @@ export async function POST(req: Request) {
       ),
       base_for_payment AS (
         SELECT * FROM base b
-        WHERE (COALESCE(array_length($4::text[], 1), 0) = 0 OR b.status_calculado = ANY($4::text[]))
+        WHERE (COALESCE(array_length($4::text[], 1), 0) = 0 OR b.status_key = ANY($4::text[]))
           ${noteCond("b")}
           ${txCond("b")}
       ),
       base_for_note AS (
         SELECT * FROM base b
         WHERE (COALESCE(array_length($3::text[], 1), 0) = 0 OR b.frete_pago = ANY($3::text[]))
-          AND (COALESCE(array_length($4::text[], 1), 0) = 0 OR b.status_calculado = ANY($4::text[]))
+          AND (COALESCE(array_length($4::text[], 1), 0) = 0 OR b.status_key = ANY($4::text[]))
           ${txCond("b")}
       ),
       base_for_tx AS (
         SELECT * FROM base b
         WHERE (COALESCE(array_length($3::text[], 1), 0) = 0 OR b.frete_pago = ANY($3::text[]))
-          AND (COALESCE(array_length($4::text[], 1), 0) = 0 OR b.status_calculado = ANY($4::text[]))
+          AND (COALESCE(array_length($4::text[], 1), 0) = 0 OR b.status_key = ANY($4::text[]))
           ${noteCond("b")}
       )
       SELECT
         (SELECT COUNT(*)::int FROM base) AS total,
         (SELECT jsonb_object_agg(s, cnt) FROM (
-          SELECT status_calculado as s, COUNT(*)::int as cnt
+          SELECT status_key as s, COUNT(*)::int as cnt
           FROM base_for_status
-          GROUP BY status_calculado
+          GROUP BY status_key
         ) x) AS status_counts,
         (SELECT jsonb_object_agg(p, cnt) FROM (
           SELECT COALESCE(frete_pago, 'SEM_INFO') as p, COUNT(*)::int as cnt

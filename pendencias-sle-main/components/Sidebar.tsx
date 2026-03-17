@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Home, ClipboardList, AlertTriangle, Search, Settings, Key, LogOut, Menu, X, Tag, Cloud } from 'lucide-react';
+import { Home, ClipboardList, AlertTriangle, Search, Settings, Key, LogOut, Menu, X, Tag, Cloud, Archive } from 'lucide-react';
 import { Page } from '../types';
 import clsx from 'clsx';
 import { useAuth } from '../context/AuthContext';
@@ -23,6 +23,7 @@ const Sidebar: React.FC<Props> = ({ currentPage, setPage, logout }) => {
     { id: Page.CRITICOS, label: 'Críticos', icon: AlertTriangle, count: counts.criticos },
     { id: Page.EM_BUSCA, label: 'Em Busca', icon: Search, count: counts.emBusca },
     { id: Page.TAD, label: 'TAD', icon: Tag, count: counts.tad },
+    { id: Page.CONCLUIDOS, label: 'Concluídos', icon: Archive, count: counts.concluidos },
   ];
 
   // Configurações: por permissão do perfil (admin sempre vê)

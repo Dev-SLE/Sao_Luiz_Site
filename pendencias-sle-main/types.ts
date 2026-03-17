@@ -71,6 +71,7 @@ export enum Page {
   CRITICOS = 'criticos',
   EM_BUSCA = 'em_busca',
   TAD = 'tad',
+  CONCLUIDOS = 'concluidos',
   CONFIGURACOES = 'configuracoes',
   MUDAR_SENHA = 'mudar_senha',
 }

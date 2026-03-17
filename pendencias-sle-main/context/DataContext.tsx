@@ -8,6 +8,7 @@ interface KPICounts {
   criticos: number;
   emBusca: number;
   tad: number;
+  concluidos: number;
 }
 
 interface Attachment {
@@ -68,6 +69,7 @@ interface DataContextType {
   criticos: { data: CteData[]; page: number; limit: number; total: number };
   emBusca: { data: CteData[]; page: number; limit: number; total: number };
   tad: { data: CteData[]; page: number; limit: number; total: number };
+  concluidos: { data: CteData[]; page: number; limit: number; total: number };
 
   setPendenciasPage: (page: number) => void;
   setPendenciasLimit: (limit: number) => void;
@@ -77,6 +79,8 @@ interface DataContextType {
   setEmBuscaLimit: (limit: number) => void;
   setTadPage: (page: number) => void;
   setTadLimit: (limit: number) => void;
+  setConcluidosPage: (page: number) => void;
+  setConcluidosLimit: (limit: number) => void;
 
   // Permissões do perfil (role -> profiles.permissions)
   hasPermission: (perm: string) => boolean;
@@ -151,12 +155,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [searchTerm, setSearchTerm] = useState('');
   const [processedData, setProcessedData] = useState<CteData[]>([]);
   const [fullData, setFullData] = useState<CteData[]>([]);
-  const [counts, setCounts] = useState<KPICounts>({ pendencias: 0, criticos: 0, emBusca: 0, tad: 0 });
+  const [counts, setCounts] = useState<KPICounts>({ pendencias: 0, criticos: 0, emBusca: 0, tad: 0, concluidos: 0 });
 
   const [pendenciasState, setPendenciasState] = useState<{ data: CteData[]; page: number; limit: number; total: number }>({ data: [], page: 1, limit: 50, total: 0 });
   const [criticosState, setCriticosState] = useState<{ data: CteData[]; page: number; limit: number; total: number }>({ data: [], page: 1, limit: 50, total: 0 });
   const [emBuscaState, setEmBuscaState] = useState<{ data: CteData[]; page: number; limit: number; total: number }>({ data: [], page: 1, limit: 50, total: 0 });
   const [tadState, setTadState] = useState<{ data: CteData[]; page: number; limit: number; total: number }>({ data: [], page: 1, limit: 50, total: 0 });
+  const [concluidosState, setConcluidosState] = useState<{ data: CteData[]; page: number; limit: number; total: number }>({ data: [], page: 1, limit: 50, total: 0 });
 
   const setPendenciasPage = (page: number) => setPendenciasState(s => ({ ...s, page }));
   const setPendenciasLimit = (limit: number) => setPendenciasState(s => ({ ...s, limit, page: 1 }));
@@ -166,6 +171,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const setEmBuscaLimit = (limit: number) => setEmBuscaState(s => ({ ...s, limit, page: 1 }));
   const setTadPage = (page: number) => setTadState(s => ({ ...s, page }));
   const setTadLimit = (limit: number) => setTadState(s => ({ ...s, limit, page: 1 }));
+  const setConcluidosPage = (page: number) => setConcluidosState(s => ({ ...s, page }));
+  const setConcluidosLimit = (limit: number) => setConcluidosState(s => ({ ...s, limit, page: 1 }));
 
   const currentProfile = useMemo(() => {
     const roleName = (user?.role || '').trim();
@@ -208,11 +215,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!user) return;
     setLoading(true);
     try {
-      const [pendResp, critResp, buscaResp, tadResp, usersData] = await Promise.all([
+      const [pendResp, critResp, buscaResp, tadResp, conclResp, usersData] = await Promise.all([
         authClient.getCtesView('pendencias', pendenciasState.page, pendenciasState.limit),
         authClient.getCtesView('criticos', criticosState.page, criticosState.limit),
         authClient.getCtesView('em_busca', emBuscaState.page, emBuscaState.limit),
         authClient.getCtesView('tad', tadState.page, tadState.limit),
+        authClient.getCtesView('concluidos', concluidosState.page, concluidosState.limit),
         authClient.getUsers(),
       ]);
 
@@ -220,6 +228,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const criticosData = normalizeCtes(critResp.data || []);
       const emBuscaData = normalizeCtes(buscaResp.data || []);
       const tadData = normalizeCtes(tadResp.data || []);
+      const concluidosData = normalizeCtes(conclResp.data || []);
 
       const normalizedUsers = usersData.map((row: any) => ({
         username: row.username || '',
@@ -252,12 +261,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setCriticosState(s => ({ ...s, data: criticosData, total: critResp.total || 0 }));
       setEmBuscaState(s => ({ ...s, data: emBuscaData, total: buscaResp.total || 0 }));
       setTadState(s => ({ ...s, data: tadData, total: tadResp.total || 0 }));
+      setConcluidosState(s => ({ ...s, data: concluidosData, total: conclResp.total || 0 }));
 
       setCounts({
         pendencias: pendResp.total || 0,
         criticos: critResp.total || 0,
         emBusca: buscaResp.total || 0,
         tad: tadResp.total || 0,
+        concluidos: conclResp.total || 0,
       });
 
       // Mantém os campos antigos (não usados com server-side)
@@ -288,6 +299,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     emBuscaState.limit,
     tadState.page,
     tadState.limit,
+    concluidosState.page,
+    concluidosState.limit,
   ]);
 
   const getLatestNote = (_cte: string) => null;
@@ -457,7 +470,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       pendencias: pendenciasState,
       criticos: criticosState,
       emBusca: emBuscaState,
-      tad: tadState
+      tad: tadState,
+      concluidos: concluidosState
       ,
       setPendenciasPage,
       setPendenciasLimit,
@@ -466,7 +480,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setEmBuscaPage,
       setEmBuscaLimit,
       setTadPage,
-      setTadLimit
+      setTadLimit,
+      setConcluidosPage,
+      setConcluidosLimit
       ,
       hasPermission
     }}>

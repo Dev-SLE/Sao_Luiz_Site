@@ -85,13 +85,13 @@ export class NeonDataClient {
     return this.fetchData('/ctes', { page, limit });
   }
 
-  async getCtesView(view: 'pendencias' | 'criticos' | 'em_busca' | 'tad', page = 1, limit = 50): Promise<{ data: any[], total: number }> {
+  async getCtesView(view: 'pendencias' | 'criticos' | 'em_busca' | 'tad' | 'concluidos', page = 1, limit = 50): Promise<{ data: any[], total: number }> {
     const endpoint = `/ctes_view?view=${encodeURIComponent(view)}&page=${page}&limit=${limit}`;
     return this.fetchData(endpoint);
   }
 
   async getCtesViewCounts(payload: {
-    view: 'pendencias' | 'criticos' | 'em_busca' | 'tad';
+    view: 'pendencias' | 'criticos' | 'em_busca' | 'tad' | 'concluidos';
     unit?: string;
     statusFilters?: string[];
     paymentFilters?: string[];

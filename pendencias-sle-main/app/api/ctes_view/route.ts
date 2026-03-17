@@ -12,7 +12,7 @@ export async function GET(req: Request) {
     const limit = parseInt(searchParams.get("limit") || "50", 10) || 50;
     const offset = (page - 1) * limit;
 
-    const viewKey = ["pendencias", "criticos", "em_busca", "tad"].includes(view) ? view : "pendencias";
+    const viewKey = ["pendencias", "criticos", "em_busca", "tad", "concluidos"].includes(view) ? view : "pendencias";
 
     const pool = getPool();
     const totalResult = await pool.query(

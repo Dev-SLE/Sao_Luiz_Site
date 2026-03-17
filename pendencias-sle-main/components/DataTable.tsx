@@ -99,6 +99,7 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
     if (t.includes('crític') || t.includes('critic')) return 'criticos' as const;
     if (t.includes('em busca')) return 'em_busca' as const;
     if (t.includes('tad')) return 'tad' as const;
+    if (t.includes('conclu')) return 'concluidos' as const;
     return 'pendencias' as const;
   }, [title]);
 
@@ -215,7 +216,13 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
     if (effectiveUnit) {
       result = result.filter(d => d.ENTREGA === effectiveUnit || (d.IS_HISTORICAL && d.ENTREGA === 'ARQUIVO'));
     }
-    if (statusFilters.length > 0) result = result.filter(d => statusFilters.includes(d.STATUS_CALCULADO || ''));
+    if (statusFilters.length > 0) {
+      if (serverView === 'concluidos') {
+        result = result.filter(d => statusFilters.includes(d.STATUS || ''));
+      } else {
+        result = result.filter(d => statusFilters.includes(d.STATUS_CALCULADO || ''));
+      }
+    }
     if (paymentFilters.length > 0) result = result.filter(d => paymentFilters.includes(d.FRETE_PAGO || ''));
     if (noteFilter !== 'ALL') {
       result = result.filter(d => {
@@ -390,7 +397,10 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
       const effectiveUnit = selectedUnit || userRestrictedUnit;
       if (effectiveUnit) base = base.filter(d => d.ENTREGA === effectiveUnit);
 
-      if (filterType !== 'status' && statusFilters.length > 0) base = base.filter(d => statusFilters.includes(d.STATUS_CALCULADO || ''));
+      if (filterType !== 'status' && statusFilters.length > 0) {
+        if (serverView === 'concluidos') base = base.filter(d => statusFilters.includes(d.STATUS || ''));
+        else base = base.filter(d => statusFilters.includes(d.STATUS_CALCULADO || ''));
+      }
       if (filterType !== 'payment' && paymentFilters.length > 0) base = base.filter(d => paymentFilters.includes(d.FRETE_PAGO || ''));
       if (filterType !== 'note' && noteFilter !== 'ALL') {
           base = base.filter(d => {
