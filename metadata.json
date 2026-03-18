@@ -1,0 +1,8 @@
+{
+  "name": "Controle de Pendências - SLE",
+  "description": "Sistema de controle de prazos de CTEs, gestão de justificativas e inteligência de negócio.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
