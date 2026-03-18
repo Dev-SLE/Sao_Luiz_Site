@@ -105,6 +105,7 @@ const MediaAttachment: React.FC<MediaAttachmentProps> = ({ url, onImageClick }) 
                </div>
                <iframe 
                  src={`https://drive.google.com/file/d/${fileId}/preview`} 
+                 loading="lazy"
                  className="w-full h-[350px] border border-[#1E226F] rounded bg-[#070A20]"
                  allow="autoplay"
                  title="Drive Preview"
@@ -120,6 +121,8 @@ const MediaAttachment: React.FC<MediaAttachmentProps> = ({ url, onImageClick }) 
                 <img 
                     src={url} 
                     alt="Anexo" 
+                    loading="lazy"
+                    decoding="async"
                     className="w-full h-auto object-cover max-h-[300px] cursor-pointer hover:opacity-95 transition-opacity"
                     onClick={() => onImageClick(url)} 
                     onError={(e) => { e.currentTarget.style.display = 'none'; }}
@@ -174,6 +177,7 @@ const NoteModal: React.FC<Props> = ({ cte, onClose }) => {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [resolveChecked, setResolveChecked] = useState(false);
   const [showConfirmResolve, setShowConfirmResolve] = useState(false);
+  const [expandedAttachments, setExpandedAttachments] = useState<Record<string, boolean>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   if (!cte) return null;
@@ -438,9 +442,30 @@ const NoteModal: React.FC<Props> = ({ cte, onClose }) => {
                   <div className="flex items-center gap-2 font-mono text-[10px] text-gray-400">{note.DATA} {note.pending ? <Loader2 size={10} className="animate-spin" /> : <CheckCircle2 size={12} className="text-emerald-400" />}</div>
                 </div>
                 <p className="text-gray-100 text-sm leading-relaxed whitespace-pre-wrap font-medium">{note.TEXTO}</p>
-                {note.LINK_IMAGEM && getLinks(note.LINK_IMAGEM).map((link, lIdx) => (
-                    <MediaAttachment key={lIdx} url={link} onImageClick={setPreviewUrl} />
-                ))}
+                {note.LINK_IMAGEM && (() => {
+                  const links = getLinks(note.LINK_IMAGEM);
+                  const expanded = !!expandedAttachments[note.ID];
+                  const visibleLinks = expanded ? links : links.slice(0, 2);
+
+                  if (links.length === 0) return null;
+
+                  return (
+                    <>
+                      {visibleLinks.map((link, lIdx) => (
+                        <MediaAttachment key={`${note.ID}-${lIdx}`} url={link} onImageClick={setPreviewUrl} />
+                      ))}
+                      {!expanded && links.length > visibleLinks.length && (
+                        <button
+                          type="button"
+                          onClick={() => setExpandedAttachments(prev => ({ ...prev, [note.ID]: true }))}
+                          className="mt-2 w-fit text-[11px] font-bold text-primary-300 bg-[#0F103A] border border-[#1A1B62] px-3 py-1 rounded-lg hover:border-[#EC1B23] transition-colors"
+                        >
+                          Ver anexos ({links.length})
+                        </button>
+                      )}
+                    </>
+                  );
+                })()}
                 {note.STATUS_BUSCA === 'EM BUSCA' && <span className="mt-2 inline-flex items-center gap-1 bg-red-900/60 text-red-100 text-[10px] px-2 py-0.5 rounded font-bold border border-red-500/70 w-fit">EM BUSCA</span>}
                 {note.STATUS_BUSCA === 'TAD' && <span className="mt-2 inline-flex items-center gap-1 bg-violet-900/60 text-violet-100 text-[10px] px-2 py-0.5 rounded font-bold border border-violet-500/70 w-fit">TAD</span>}
               </div>

@@ -38,6 +38,7 @@ const AppContent: React.FC = () => {
   } = useData();
   const [currentPage, setCurrentPage] = useState<Page>(Page.DASHBOARD);
   const [selectedCte, setSelectedCte] = useState<CteData | null>(null);
+  const [selectedCrmLeadId, setSelectedCrmLeadId] = useState<string | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
 
   if (!user) {
@@ -216,9 +217,9 @@ const AppContent: React.FC = () => {
         }
         return (
           <CrmFunnel
-            onGoToChat={(leadName: string) => {
+            onGoToChat={(leadId: string) => {
+              setSelectedCrmLeadId(leadId);
               setCurrentPage(Page.CRM_CHAT);
-              // Futuro: poderíamos armazenar o lead selecionado em contexto para o chat usar.
             }}
           />
         );
@@ -233,7 +234,7 @@ const AppContent: React.FC = () => {
             </div>
           );
         }
-        return <CrmChat />;
+        return <CrmChat leadId={selectedCrmLeadId} />;
       case Page.CONFIGURACOES:
         if (!hasPermission('MANAGE_SETTINGS')) {
           return (

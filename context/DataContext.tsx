@@ -285,25 +285,59 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const refreshViewPage = async (
+    view: 'pendencias' | 'criticos' | 'em_busca' | 'tad' | 'concluidos',
+    page: number,
+    limit: number,
+    setState: React.Dispatch<React.SetStateAction<{ data: CteData[]; page: number; limit: number; total: number }>>,
+    countKey: keyof KPICounts
+  ) => {
+    if (!user) return;
+    setLoading(true);
+    try {
+      const resp = await authClient.getCtesView(view, page, limit);
+      const pageData = normalizeCtes(resp.data || []);
+      setState(s => ({ ...s, data: pageData, total: resp.total || 0 }));
+      setCounts(prev => ({ ...prev, [countKey]: resp.total || 0 }));
+    } catch (error) {
+      console.error(`Erro ao carregar paginação (${view}):`, error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
 
   useEffect(() => {
-    if (user) {
-      refreshData();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (user) refreshData();
   }, [
-    user,
-    pendenciasState.page,
-    pendenciasState.limit,
-    criticosState.page,
-    criticosState.limit,
-    emBuscaState.page,
-    emBuscaState.limit,
-    tadState.page,
-    tadState.limit,
-    concluidosState.page,
-    concluidosState.limit,
+    user
   ]);
+
+  // Recarrega SOMENTE a aba que mudou (melhor performance na paginação).
+  useEffect(() => {
+    if (user) refreshViewPage('pendencias', pendenciasState.page, pendenciasState.limit, setPendenciasState, 'pendencias');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, pendenciasState.page, pendenciasState.limit]);
+
+  useEffect(() => {
+    if (user) refreshViewPage('criticos', criticosState.page, criticosState.limit, setCriticosState, 'criticos');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, criticosState.page, criticosState.limit]);
+
+  useEffect(() => {
+    if (user) refreshViewPage('em_busca', emBuscaState.page, emBuscaState.limit, setEmBuscaState, 'emBusca');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, emBuscaState.page, emBuscaState.limit]);
+
+  useEffect(() => {
+    if (user) refreshViewPage('tad', tadState.page, tadState.limit, setTadState, 'tad');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, tadState.page, tadState.limit]);
+
+  useEffect(() => {
+    if (user) refreshViewPage('concluidos', concluidosState.page, concluidosState.limit, setConcluidosState, 'concluidos');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, concluidosState.page, concluidosState.limit]);
 
   const getLatestNote = (_cte: string) => null;
 

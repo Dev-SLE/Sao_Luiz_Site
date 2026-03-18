@@ -86,11 +86,29 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
   // --- Paginação (local ou server-side) ---
   const [pageLocal, setPageLocal] = useState(1);
   const [limitLocal, setLimitLocal] = useState(50);
-  const page = serverPagination?.page ?? pageLocal;
-  const limit = serverPagination?.limit ?? limitLocal;
+  const hasActiveTableFilters =
+    selectedUnit.trim().length > 0 ||
+    statusFilters.length > 0 ||
+    paymentFilters.length > 0 ||
+    noteFilter !== 'ALL' ||
+    filterTxEntrega ||
+    globalSearch.trim().length > 0;
+
+  const shouldUseLocalPagination = !!serverPagination && hasActiveTableFilters;
+  const useServerPagination = !!serverPagination && !shouldUseLocalPagination;
+
+  const page = useServerPagination ? serverPagination!.page : pageLocal;
+  const limit = useServerPagination ? serverPagination!.limit : limitLocal;
   const totalFromServer = serverPagination?.total;
-  const setPage = (p: number) => (serverPagination ? serverPagination.onPageChange(p) : setPageLocal(p));
-  const setLimit = (l: number) => (serverPagination ? serverPagination.onLimitChange(l) : setLimitLocal(l));
+
+  const setPage = (p: number) =>
+    useServerPagination ? serverPagination!.onPageChange(p) : setPageLocal(p);
+
+  const setLimit = (l: number) => {
+    if (useServerPagination) return serverPagination!.onLimitChange(l);
+    setLimitLocal(l);
+    setPageLocal(1);
+  };
 
   const serverView = useMemo(() => {
     const t = (title || '').toLowerCase();
@@ -100,6 +118,34 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
     if (t.includes('conclu')) return 'concluidos' as const;
     return 'pendencias' as const;
   }, [title]);
+
+  const [allViewData, setAllViewData] = useState<CteData[] | null>(null);
+  const [allViewLoading, setAllViewLoading] = useState(false);
+
+  const normalizeCtes = (rows: any[]): CteData[] =>
+    (rows || []).map((row: any) => ({
+      CTE: row.cte || '',
+      SERIE: row.serie || '',
+      CODIGO: row.codigo || '',
+      DATA_EMISSAO: row.data_emissao || '',
+      PRAZO_BAIXA_DIAS: row.prazo_baixa_dias?.toString() || '',
+      DATA_LIMITE_BAIXA: row.data_limite_baixa || '',
+      STATUS: row.status || '',
+      STATUS_CALCULADO: (row.status_calculado || undefined) as any,
+      COLETA: row.coleta || '',
+      ENTREGA: row.entrega || '',
+      VALOR_CTE: row.valor_cte?.toString() || '',
+      TX_ENTREGA: row.tx_entrega || '',
+      VOLUMES: row.volumes || '',
+      PESO: row.peso || '',
+      FRETE_PAGO: row.frete_pago || '',
+      DESTINATARIO: row.destinatario || '',
+      JUSTIFICATIVA: row.justificativa || '',
+      NOTE_COUNT:
+        typeof row.note_count === 'number'
+          ? row.note_count
+          : parseInt(row.note_count || '0') || 0,
+    }));
 
   const [serverCounts, setServerCounts] = useState<null | {
     total: number;
@@ -152,7 +198,34 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
     return () => {
       cancelled = true;
     };
-  }, [serverPagination, serverView, selectedUnit, statusFilters.join('|'), paymentFilters.join('|'), noteFilter, filterTxEntrega, ignoreUnitFilter, user?.linkedDestUnit, globalSearch]);
+  }, [serverView, selectedUnit, statusFilters.join('|'), paymentFilters.join('|'), noteFilter, filterTxEntrega, ignoreUnitFilter, user?.linkedDestUnit, globalSearch]);
+
+  // Quando houver filtros, buscamos o "view" completo uma vez e aplicamos os filtros localmente,
+  // para que o número de páginas e os resultados batam com os cards (ctes_view_counts).
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      if (!serverPagination) return;
+      if (!shouldUseLocalPagination) {
+        setAllViewData(null);
+        return;
+      }
+      setAllViewLoading(true);
+      try {
+        const resp = await authClient.getCtesView(serverView as any, 1, 10000);
+        if (cancelled) return;
+        setAllViewData(normalizeCtes(resp?.data || []));
+      } catch (e) {
+        if (!cancelled) setAllViewData([]);
+      } finally {
+        if (!cancelled) setAllViewLoading(false);
+      }
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [serverPagination, shouldUseLocalPagination, serverView]);
 
   // Main Data Filtering Logic
   // (Estados já declarados no início do componente)
@@ -162,10 +235,11 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
   // Main Data Filtering Logic
   const filteredData = useMemo(() => {
     const isGlobalSearch = globalSearch.trim().length > 0;
+    const sourceRows = shouldUseLocalPagination ? (allViewData ?? []) : data;
     let result: CteData[] = [];
     if (isGlobalSearch) {
       const term = globalSearch.toLowerCase();
-      const baseForSearch = fullData.length > 0 ? fullData : data;
+      const baseForSearch = shouldUseLocalPagination ? (allViewData ?? []) : (fullData.length > 0 ? fullData : data);
       const activeMatches = baseForSearch.filter(d =>
         d.CTE.toLowerCase().includes(term) ||
         (d.DESTINATARIO || '').toLowerCase().includes(term) ||
@@ -206,7 +280,7 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
       });
       result = [...activeMatches, ...historicalMatches];
     } else {
-      result = data;
+      result = sourceRows;
       if (isPendencyView) result = result.filter(d => d.STATUS_CALCULADO !== 'CRÍTICO');
     }
     const userRestrictedUnit = (ignoreUnitFilter || isGlobalSearch) ? null : user?.linkedDestUnit;
@@ -232,7 +306,23 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
       result = result.filter(d => parseCurrency(d.TX_ENTREGA) > 0);
     }
     return result;
-  }, [data, fullData, processControlData, notes, globalSearch, isPendencyView, user, selectedUnit, statusFilters, paymentFilters, noteFilter, filterTxEntrega, ignoreUnitFilter]);
+  }, [
+    data,
+    fullData,
+    allViewData,
+    shouldUseLocalPagination,
+    processControlData,
+    notes,
+    globalSearch,
+    isPendencyView,
+    user,
+    selectedUnit,
+    statusFilters,
+    paymentFilters,
+    noteFilter,
+    filterTxEntrega,
+    ignoreUnitFilter,
+  ]);
   const sortedData = useMemo(() => {
     const sorted = [...filteredData];
     sorted.sort((a, b) => {
@@ -266,14 +356,16 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
     return sorted;
   }, [filteredData, sortConfig]);
 
-  const total = typeof totalFromServer === 'number' ? totalFromServer : sortedData.length;
+  const total = shouldUseLocalPagination
+    ? (serverCounts?.total ?? sortedData.length)
+    : (typeof totalFromServer === 'number' ? totalFromServer : sortedData.length);
   const totalPages = Math.max(1, Math.ceil(total / limit));
   const paginatedData = useMemo(() => {
-    if (serverPagination) return sortedData;
+    if (useServerPagination) return sortedData;
     const start = (page - 1) * limit;
     const end = start + limit;
     return sortedData.slice(start, end);
-  }, [sortedData, page, limit, serverPagination]);
+  }, [sortedData, page, limit, useServerPagination]);
 
   // --- Constants ---
   const STATUS_OPTIONS = useMemo(() => {
@@ -300,10 +392,11 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
   };
 
   const latestEmissaoDate = useMemo(() => {
-    if (data.length === 0) return '--/--/----';
+    const source = shouldUseLocalPagination ? (allViewData ?? []) : data;
+    if (source.length === 0) return '--/--/----';
     let maxVal = 0;
     let maxStr = '';
-    data.forEach((d: CteData) => {
+    source.forEach((d: CteData) => {
        if (!d.DATA_EMISSAO) return;
        const parts = d.DATA_EMISSAO.split('/');
        if (parts.length === 3) {
@@ -312,7 +405,7 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
        }
     });
     return maxStr || '--/--/----';
-  }, [data]);
+  }, [data, allViewData, shouldUseLocalPagination]);
 
   const toggleFilter = (list: string[], item: string) => {
     return list.includes(item) ? list.filter(i => i !== item) : [...list, item];
@@ -354,10 +447,14 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
 
   const availableUnits = useMemo(() => {
     // During global search, allow searching any unit found in fullData
-    const sourceForUnits = globalSearch.trim().length > 0 ? fullData : data;
+    const sourceForUnits = shouldUseLocalPagination
+      ? (allViewData ?? [])
+      : globalSearch.trim().length > 0
+        ? fullData
+        : data;
     const units = new Set(sourceForUnits.map(d => d.ENTREGA).filter(Boolean));
     return Array.from(units).sort();
-  }, [data, fullData, globalSearch]);
+  }, [data, fullData, allViewData, shouldUseLocalPagination, globalSearch]);
 
   // Quando troca de aba (normalmente muda o `title`), evita “filtros vazando” para outras telas
   useEffect(() => {
@@ -373,7 +470,9 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
 
   // Evita “sumir dados” quando filtros/dados mudam e a página atual fica fora do range
   useEffect(() => {
-    setPage(1);
+    // Para paginação no servidor, o `data` muda ao navegar entre páginas.
+    // Não podemos resetar para 1 nesse momento senão a navegação nunca avança.
+    if (!useServerPagination) setPage(1);
   }, [
     limit,
     globalSearch,
@@ -385,6 +484,20 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
     data,
   ]);
 
+  // Para paginação no servidor, resetamos a página apenas quando os filtros/search mudam,
+  // nunca quando o `data` (resultado já paginado) é atualizado ao clicar em "Próxima".
+  useEffect(() => {
+    if (serverPagination) setPage(1);
+  }, [
+    limit,
+    globalSearch,
+    selectedUnit,
+    noteFilter,
+    filterTxEntrega,
+    statusFilters.join('|'),
+    paymentFilters.join('|'),
+  ]);
+
   const getCount = (filterType: 'status' | 'payment' | 'note' | 'txEntrega', key: string) => {
       if (serverPagination && serverCounts) {
         if (filterType === 'status') return serverCounts.statusCounts?.[key] ?? 0;
@@ -394,7 +507,8 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
       }
       // Logic mirrors filteredData but targets specific counts
       const isGlobalSearch = globalSearch.trim().length > 0;
-      let base = isGlobalSearch ? fullData : data; // Use fullData for global search counts too
+      const baseAll = shouldUseLocalPagination ? (allViewData ?? []) : data;
+      let base = isGlobalSearch ? (shouldUseLocalPagination ? (allViewData ?? []) : fullData) : baseAll;
       
       if (!isGlobalSearch && isPendencyView) base = base.filter(d => d.STATUS_CALCULADO !== 'CRÍTICO');
       

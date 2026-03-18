@@ -1,6 +1,8 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { MessageCircle, MapPin, Phone, Plus, Columns3, ArrowRightCircle } from 'lucide-react';
 import clsx from 'clsx';
+import { authClient } from '../lib/auth';
+import { useAuth } from '../context/AuthContext';
 
 type Priority = 'ALTA' | 'MEDIA' | 'BAIXA';
 type Source = 'WHATSAPP' | 'IA' | 'MANUAL';
@@ -53,54 +55,19 @@ const sourceConfig: Record<Source, { label: string; className: string }> = {
   },
 };
 
-const initialStages: Stage[] = [
-  { id: 'novo', name: 'Novos' },
-  { id: 'qualificando', name: 'Qualificando' },
-  { id: 'negociando', name: 'Negociando' },
-  { id: 'fechado', name: 'Fechado' },
-];
-
-const initialLeads: LeadCard[] = [
-  {
-    id: '1',
-    title: 'Mercado Central LTDA',
-    phone: '(11) 99999-0000',
-    cte: '12345',
-    freteValue: 3500,
-    source: 'WHATSAPP',
-    priority: 'ALTA',
-    currentLocation: 'CTE 12345 • SP → RJ • Em trânsito',
-    stageId: 'novo',
-  },
-  {
-    id: '2',
-    title: 'Distribuidora Norte',
-    phone: '(41) 98888-1111',
-    cte: '54321',
-    freteValue: 1800,
-    source: 'IA',
-    priority: 'MEDIA',
-    currentLocation: 'CTE 54321 • PR → SC • Aguardando coleta',
-    stageId: 'qualificando',
-  },
-  {
-    id: '3',
-    title: 'Cliente Walk-in',
-    phone: '(11) 97777-2222',
-    freteValue: 950,
-    source: 'MANUAL',
-    priority: 'BAIXA',
-    stageId: 'negociando',
-  },
-];
-
 interface Props {
-  onGoToChat?: (leadName: string) => void;
+  onGoToChat?: (leadId: string) => void;
 }
 
 const CrmFunnel: React.FC<Props> = ({ onGoToChat }) => {
-  const [stages, setStages] = useState<Stage[]>(initialStages);
-  const [leads, setLeads] = useState<LeadCard[]>(initialLeads);
+  const { user } = useAuth();
+  const [loading, setLoading] = useState(false);
+  const [isSavingLead, setIsSavingLead] = useState(false);
+  const [isSavingPipeline, setIsSavingPipeline] = useState(false);
+  const saveLeadLock = useRef(false);
+  const savePipelineLock = useRef(false);
+  const [stages, setStages] = useState<Stage[]>([]);
+  const [leads, setLeads] = useState<LeadCard[]>([]);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [newLeadOpen, setNewLeadOpen] = useState(false);
   const [newPipelineOpen, setNewPipelineOpen] = useState(false);
@@ -120,6 +87,35 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat }) => {
     columns: 'Novos, Qualificando, Negociando, Fechado',
   });
 
+  const refreshBoard = async () => {
+    setLoading(true);
+    try {
+      const board = await authClient.getCrmBoard();
+      setStages((board.stages || []).map((s: any) => ({ id: String(s.id), name: String(s.name) })));
+      setLeads((board.leads || []).map((l: any) => ({
+        id: String(l.id),
+        title: String(l.title),
+        phone: l.phone ? String(l.phone) : undefined,
+        cte: l.cte ? String(l.cte) : undefined,
+        freteValue: typeof l.freteValue === 'number' ? l.freteValue : undefined,
+        source: (String(l.source || 'MANUAL') as Source) || 'MANUAL',
+        priority: (String(l.priority || 'MEDIA') as Priority) || 'MEDIA',
+        currentLocation: l.currentLocation ? String(l.currentLocation) : undefined,
+        stageId: String(l.stageId),
+        logs: Array.isArray(l.logs) ? l.logs.map((x: any) => String(x)) : [],
+      })));
+    } catch (err) {
+      console.error('Erro ao carregar CRM board:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    refreshBoard();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const leadsByStage = useMemo(() => {
     const map: Record<string, LeadCard[]> = {};
     stages.forEach((s) => (map[s.id] = []));
@@ -136,20 +132,16 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat }) => {
 
   const handleDropOnStage = (stageId: string) => {
     if (!draggingId) return;
-    setLeads((prev) =>
-      prev.map((lead) =>
-        lead.id === draggingId
-          ? {
-              ...lead,
-              stageId,
-              logs: [
-                `Lead movido para "${stages.find((s) => s.id === stageId)?.name || stageId}"`,
-                ...(lead.logs || []),
-              ],
-            }
-          : lead
-      )
-    );
+    // Atualiza no banco e recarrega o board.
+    authClient
+      .moveCrmLead({
+        leadId: draggingId,
+        stageId,
+        ownerUsername: user?.username ?? null,
+      })
+      .then(() => refreshBoard())
+      .catch((err) => console.error('Erro ao mover lead:', err))
+      .finally(() => setDraggingId(null));
     setDraggingId(null);
   };
 
@@ -167,24 +159,27 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat }) => {
 
   const handleSaveLead = () => {
     if (!leadForm.title.trim()) return;
-    const id = String(Date.now());
-    const value = parseFloat(leadForm.freteValue.replace(',', '.')) || undefined;
-    const createdStageId = stages[0]?.id || 'novo';
-    setLeads((prev) => [
-      {
-        id,
+    if (saveLeadLock.current) return;
+    saveLeadLock.current = true;
+    setIsSavingLead(true);
+    const value = parseFloat(String(leadForm.freteValue).replace(',', '.')) || undefined;
+    authClient
+      .createCrmLead({
         title: leadForm.title.trim(),
-        phone: leadForm.phone.trim() || undefined,
-        cte: leadForm.cte.trim() || undefined,
+        phone: leadForm.phone.trim() || null,
+        cte: leadForm.cte.trim() || null,
         freteValue: value,
         source: leadForm.source,
         priority: leadForm.priority,
-        stageId: createdStageId,
-        logs: [`Lead criado em "${stages.find((s) => s.id === createdStageId)?.name || createdStageId}"`],
-      },
-      ...prev,
-    ]);
-    setNewLeadOpen(false);
+        ownerUsername: user?.username ?? null,
+      })
+      .then(() => refreshBoard())
+      .catch((err) => console.error('Erro ao salvar lead:', err))
+      .finally(() => {
+        saveLeadLock.current = false;
+        setIsSavingLead(false);
+        setNewLeadOpen(false);
+      });
   };
 
   const handleOpenPipelineModal = () => {
@@ -197,18 +192,21 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat }) => {
       .map((c) => c.trim())
       .filter(Boolean);
     if (cols.length === 0) return;
-    const newStages: Stage[] = cols.map((name, idx) => ({
-      id: `stage_${idx}`,
-      name,
-    }));
-    setStages(newStages);
-    setLeads((prev) =>
-      prev.map((lead) => ({
-        ...lead,
-        stageId: newStages[0]?.id || lead.stageId,
-      }))
-    );
-    setNewPipelineOpen(false);
+    if (savePipelineLock.current) return;
+    savePipelineLock.current = true;
+    setIsSavingPipeline(true);
+    authClient
+      .createCrmPipeline({
+        name: pipelineForm.name,
+        columns: cols,
+      })
+      .then(() => refreshBoard())
+      .catch((err) => console.error('Erro ao criar pipeline:', err))
+      .finally(() => {
+        savePipelineLock.current = false;
+        setIsSavingPipeline(false);
+        setNewPipelineOpen(false);
+      });
   };
 
   const selectedLead = useMemo(
@@ -338,7 +336,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat }) => {
                         <div className="flex gap-1.5" onClick={(e) => e.stopPropagation()}>
                           <button
                             type="button"
-                            onClick={() => onGoToChat?.(lead.title)}
+                            onClick={() => onGoToChat?.(lead.id)}
                             className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-[#070A20] border border-[#1E226F] text-gray-200 hover:border-[#6E71DA] hover:text-white text-[11px]"
                           >
                             <MessageCircle size={14} />
@@ -485,9 +483,10 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat }) => {
               <button
                 type="button"
                 onClick={handleSaveLead}
-                className="px-4 py-2 text-xs rounded-lg bg-[#1A1B62] text-white font-semibold hover:bg-[#EC1B23] shadow-[0_0_18px_rgba(26,27,98,0.8)]"
+                disabled={isSavingLead}
+                className="px-4 py-2 text-xs rounded-lg bg-[#1A1B62] text-white font-semibold shadow-[0_0_18px_rgba(26,27,98,0.8)] hover:bg-[#EC1B23] disabled:opacity-70 disabled:cursor-not-allowed"
               >
-                Salvar Lead
+                {isSavingLead ? "Salvando..." : "Salvar Lead"}
               </button>
             </div>
           </div>
@@ -543,9 +542,10 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat }) => {
               <button
                 type="button"
                 onClick={handleSavePipeline}
-                className="px-4 py-2 text-xs rounded-lg bg-[#1A1B62] text-white font-semibold hover:bg-[#EC1B23] shadow-[0_0_18px_rgba(26,27,98,0.8)]"
+                disabled={isSavingPipeline}
+                className="px-4 py-2 text-xs rounded-lg bg-[#1A1B62] text-white font-semibold shadow-[0_0_18px_rgba(26,27,98,0.8)] hover:bg-[#EC1B23] disabled:opacity-70 disabled:cursor-not-allowed"
               >
-                Aplicar Funil
+                {isSavingPipeline ? "Aplicando..." : "Aplicar Funil"}
               </button>
             </div>
           </div>
@@ -606,7 +606,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat }) => {
                 <button
                   type="button"
                   onClick={() => {
-                    onGoToChat(selectedLead.title);
+                    onGoToChat(selectedLead.id);
                   }}
                   className="inline-flex items-center gap-1 rounded-full bg-[#1A1B62] px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-[#EC1B23] shadow-[0_0_18px_rgba(26,27,98,0.8)]"
                 >

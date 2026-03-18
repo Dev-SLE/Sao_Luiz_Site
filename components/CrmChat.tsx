@@ -12,12 +12,18 @@ import {
 } from 'lucide-react';
 import clsx from 'clsx';
 import { useData } from '../context/DataContext';
+import { useAuth } from '../context/AuthContext';
+import { authClient } from '../lib/auth';
 
 type Channel = 'WHATSAPP' | 'IA' | 'INTERNO';
 
 interface ConversationSummary {
   id: string;
   leadName: string;
+  leadPhone?: string | null;
+  leadEmail?: string | null;
+  cte?: string | null;
+  leadId?: string;
   lastMessage: string;
   lastAt: string;
   unread: number;
@@ -129,8 +135,15 @@ const mockMessages: Record<string, Message[]> = {
   ],
 };
 
-const CrmChat: React.FC = () => {
-  const [selectedConversationId, setSelectedConversationId] = useState<string>('1');
+interface Props {
+  leadId?: string | null;
+}
+
+const CrmChat: React.FC<Props> = ({ leadId }) => {
+  const { user } = useAuth();
+  const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
+  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [clientePhone, setClientePhone] = useState('(11) 99999-0000');
   const [clienteEmail, setClienteEmail] = useState('contato@cliente.com.br');
@@ -150,12 +163,13 @@ const CrmChat: React.FC = () => {
 
   const { pendencias, criticos } = useData();
 
-  const selectedConversation = useMemo(
-    () => mockConversations.find((c) => c.id === selectedConversationId) || mockConversations[0],
-    [selectedConversationId]
-  );
-
-  const messages = mockMessages[selectedConversation.id] || [];
+  const selectedConversation = useMemo(() => {
+    if (!conversations.length) return null;
+    if (selectedConversationId) {
+      return conversations.find((c) => c.id === selectedConversationId) || conversations[0];
+    }
+    return conversations[0];
+  }, [conversations, selectedConversationId]);
 
   const lookupCte = (cteRaw: string) => {
     const normalized = cteRaw.replace(/\D/g, '');
@@ -185,9 +199,10 @@ const CrmChat: React.FC = () => {
     return `CTE ${found.CTE} • ${unidade} • ${status} • Limite ${dataLimite}`;
   };
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!input.trim()) return;
     const text = input.trim();
+
     const matches = text.match(/\b\d{5,}\b/g);
     if (matches && matches.length > 0) {
       for (const raw of matches) {
@@ -198,14 +213,46 @@ const CrmChat: React.FC = () => {
         }
       }
     }
-    setInput('');
+
+    const channel = (selectedConversation?.channel as any) || "WHATSAPP";
+    const leadForSend = leadId ?? selectedConversation?.leadId ?? null;
+
+    // Envia para o backend (Neon/PG) e recarrega mensagens.
+    try {
+      setInput('');
+      const resp = await authClient.sendCrmMessage({
+        conversationId: selectedConversationId,
+        leadId: leadForSend,
+        channel,
+        senderType: 'AGENTE',
+        body: text,
+        senderUsername: user?.username ?? null,
+      });
+
+      const nextConversationId = resp?.conversationId || selectedConversationId;
+      if (nextConversationId) {
+        const msgsResp = await authClient.getCrmMessages(nextConversationId);
+        setMessages(msgsResp.messages || []);
+      }
+
+      const convResp = await authClient.getCrmConversations({ leadId: leadId || null });
+      setConversations(convResp.conversations || []);
+      if (nextConversationId) setSelectedConversationId(nextConversationId);
+    } catch (err) {
+      console.error('Erro ao enviar mensagem CRM:', err);
+      // Mantém input se falhar para o usuário reenviar.
+      setInput(text);
+    }
   };
 
   useEffect(() => {
-    // Na troca de conversa, tenta detectar CTE nas mensagens existentes
-    const allText = (mockMessages[selectedConversation.id] || [])
-      .map((m) => m.text)
-      .join(' ');
+    // Detecta CTE no histórico atual (após carregar mensagens).
+    if (!messages.length) {
+      setUltimoRastreio(null);
+      return;
+    }
+
+    const allText = messages.map((m) => m.text).join(' ');
     const matches = allText.match(/\b\d{5,}\b/g);
     if (matches && matches.length > 0) {
       for (const raw of matches) {
@@ -215,10 +262,71 @@ const CrmChat: React.FC = () => {
           return;
         }
       }
-    } else {
-      setUltimoRastreio(null);
     }
-  }, [selectedConversation.id]);
+
+    setUltimoRastreio(null);
+  }, [messages]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const resp = await authClient.getCrmConversations({ leadId: leadId || null });
+        let convs: ConversationSummary[] = resp?.conversations || [];
+
+        // Se o lead abriu o chat mas ainda não existe conversation criada,
+        // criamos uma conversação "WHATSAPP" vazia para a UI mostrar dados.
+        if (convs.length === 0 && leadId) {
+          await authClient.createCrmConversation({ leadId, channel: "WHATSAPP" });
+          const resp2 = await authClient.getCrmConversations({ leadId: leadId || null });
+          convs = resp2?.conversations || [];
+        }
+        if (cancelled) return;
+        setConversations(convs);
+        setSelectedConversationId(convs[0]?.id || null);
+      } catch (err) {
+        console.error('Erro ao carregar conversas CRM:', err);
+        if (cancelled) return;
+        setConversations([]);
+        setSelectedConversationId(null);
+      }
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [leadId]);
+
+  useEffect(() => {
+    if (!selectedConversation) return;
+    setClientePhone(selectedConversation.leadPhone ? String(selectedConversation.leadPhone) : '');
+    setClienteEmail(selectedConversation.leadEmail ? String(selectedConversation.leadEmail) : '');
+    // Observações ainda são locais (fase 2: persistir).
+  }, [selectedConversation?.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      if (!selectedConversationId) {
+        setMessages([]);
+        return;
+      }
+      try {
+        const resp = await authClient.getCrmMessages(selectedConversationId);
+        const msgs: Message[] = resp?.messages || [];
+        if (cancelled) return;
+        setMessages(msgs);
+      } catch (err) {
+        console.error('Erro ao carregar mensagens CRM:', err);
+        if (cancelled) return;
+        setMessages([]);
+      }
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedConversationId]);
 
   useEffect(() => {
     // Carrega configurações da Sofia salvas localmente
@@ -261,7 +369,7 @@ const CrmChat: React.FC = () => {
                 Conversas
               </h2>
               <p className="text-[10px] text-gray-500">
-                {mockConversations.length} atendimentos ativos
+                {conversations.length} atendimentos ativos
               </p>
             </div>
           </div>
@@ -280,8 +388,8 @@ const CrmChat: React.FC = () => {
           </div>
         </div>
         <div className="flex-1 overflow-y-auto">
-          {mockConversations.map((conv) => {
-            const active = conv.id === selectedConversation.id;
+          {conversations.map((conv) => {
+            const active = conv.id === selectedConversationId;
             const channel = channelConfig[conv.channel];
             return (
               <button
@@ -338,7 +446,7 @@ const CrmChat: React.FC = () => {
         <div className="px-4 py-3 border-b border-[#1A1B62] flex items-center justify-between">
           <div>
             <h2 className="text-sm font-bold text-white">
-              {selectedConversation.leadName}
+              {selectedConversation?.leadName || 'Selecione um atendimento'}
             </h2>
             <div className="flex items-center gap-2 mt-0.5">
               <span className="text-[10px] text-gray-400 flex items-center gap-1">
@@ -348,10 +456,10 @@ const CrmChat: React.FC = () => {
               <span
                 className={clsx(
                   'px-1.5 py-0.5 rounded-full text-[9px] font-bold border',
-                  channelConfig[selectedConversation.channel].className
+                  channelConfig[(selectedConversation?.channel || 'WHATSAPP') as Channel].className
                 )}
               >
-                {channelConfig[selectedConversation.channel].label}
+                {channelConfig[(selectedConversation?.channel || 'WHATSAPP') as Channel].label}
               </span>
             </div>
           </div>
@@ -532,10 +640,10 @@ const CrmChat: React.FC = () => {
                 <UserCircle2 size={28} className="text-[#EC1B23]" />
                 <div>
                   <p className="text-xs font-semibold text-white">
-                    {selectedConversation.leadName}
+                    {selectedConversation?.leadName || '—'}
                   </p>
                   <p className="text-[11px] text-gray-400">
-                    Código interno #{selectedConversation.id.padStart(4, '0')}
+                    Código interno #{(selectedConversation?.id || '').padStart(4, '0')}
                   </p>
                 </div>
               </div>

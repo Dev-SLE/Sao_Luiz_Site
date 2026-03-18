@@ -224,6 +224,83 @@ export class NeonDataClient {
     console.log('Update CTE não implementado ainda:', cteId, updates);
     return Promise.resolve();
   }
+
+  // ----------------------------
+  // CRM (Fase 1 - DB + rotas)
+  // ----------------------------
+
+  async getCrmBoard(): Promise<{
+    pipeline: { id: string; name: string } | null;
+    stages: Array<{ id: string; name: string; position: number }>;
+    leads: Array<{
+      id: string;
+      title: string;
+      phone?: string | null;
+      email?: string | null;
+      cte?: string | null;
+      freteValue?: number;
+      source: string;
+      priority: string;
+      currentLocation?: string | null;
+      stageId: string;
+      logs?: string[];
+    }>;
+  }> {
+    const resp = await fetch(`${API_BASE_URL}/crm/board`);
+    if (!resp.ok) throw new Error(`Erro ao buscar CRM board: ${resp.status}`);
+    return resp.json();
+  }
+
+  async createCrmLead(payload: any): Promise<any> {
+    return this.postJson("/crm/leads", payload);
+  }
+
+  async createCrmPipeline(payload: any): Promise<any> {
+    return this.postJson("/crm/pipelines", payload);
+  }
+
+  async moveCrmLead(payload: { leadId: string; stageId: string; ownerUsername?: string | null }): Promise<any> {
+    const url = `${API_BASE_URL}/crm/leads/move`;
+    const response = await fetch(url, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload ?? {}),
+    });
+    if (!response.ok) throw new Error(`Erro na API: ${response.status}`);
+    return response.json();
+  }
+
+  async getCrmConversations(params?: { leadId?: string | null }): Promise<any> {
+    const usp = new URLSearchParams();
+    if (params?.leadId) usp.set("leadId", params.leadId);
+    const qs = usp.toString();
+    const url = `${API_BASE_URL}/crm/conversations${qs ? `?${qs}` : ""}`;
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`Erro ao buscar conversas: ${resp.status}`);
+    return resp.json();
+  }
+
+  async createCrmConversation(payload: { leadId: string; channel?: string }): Promise<any> {
+    return this.postJson("/crm/conversations", payload);
+  }
+
+  async getCrmMessages(conversationId: string): Promise<any> {
+    const url = `${API_BASE_URL}/crm/messages?conversationId=${encodeURIComponent(conversationId)}`;
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`Erro ao buscar mensagens: ${resp.status}`);
+    return resp.json();
+  }
+
+  async sendCrmMessage(payload: {
+    conversationId?: string | null;
+    leadId?: string | null;
+    channel?: string;
+    senderType: string; // AGENTE/CLIENTE/IA
+    body: string;
+    senderUsername?: string | null;
+  }): Promise<any> {
+    return this.postJson("/crm/messages", payload);
+  }
 }
 
 export const authClient = new NeonDataClient();
