@@ -485,7 +485,7 @@ const Dashboard: React.FC = () => {
                     tickFormatter={(val) => {
                       const n = typeof val === 'number' ? val : Number(val);
                       if (!Number.isFinite(n) || n === 0) return '-';
-                      return viewMode === 'value' ? `R$ ${(n/1000).toFixed(0)}k` : n;
+                      return viewMode === 'value' ? `R$ ${(n/1000).toFixed(0)}k` : String(n);
                     }} 
                     axisLine={false}
                     tickLine={false}
