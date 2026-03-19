@@ -19,6 +19,7 @@ const Dashboard: React.FC = () => {
   const [paymentFilters, setPaymentFilters] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<'qty' | 'value'>('qty');
   const [pieMode, setPieMode] = useState<'status' | 'payment'>('status');
+  const [activePieKey, setActivePieKey] = useState<string | null>(null);
 
   const STATUS_COLORS: Record<string, string> = {
     'CRÍTICO': COLORS.critical,
@@ -323,7 +324,7 @@ const Dashboard: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col gap-4 animate-in fade-in duration-500 h-full max-h-[calc(100vh-80px)] overflow-y-auto md:overflow-hidden pb-20 md:pb-0 text-white">
+    <div className="flex flex-col gap-4 animate-in fade-in duration-500 text-white min-h-0">
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-2 shrink-0">
         <div className="flex items-center gap-3">
              <div className="hidden md:block rounded-lg bg-[#0F103A] p-2 text-[#EC1B23] border border-[#1A1B62] shadow-[0_0_18px_rgba(236,27,35,0.4)]">
@@ -461,6 +462,14 @@ const Dashboard: React.FC = () => {
                  </button>
               </div>
            </div>
+           <div className="flex flex-wrap gap-2 mb-3">
+             <span className="text-[10px] font-bold uppercase tracking-wider bg-[#080816] border border-[#1A1B62] text-gray-300 px-2 py-1 rounded-lg">
+               Qtd filtrada: {formatNumber(mainKPIs.qty)}
+             </span>
+             <span className="text-[10px] font-bold uppercase tracking-wider bg-[#080816] border border-[#1A1B62] text-gray-300 px-2 py-1 rounded-lg">
+               Valor filtrado: {formatCurrency(mainKPIs.val)}
+             </span>
+           </div>
            
            <div className="flex-1 w-full min-h-[350px]">
              <ResponsiveContainer width="100%" height="100%">
@@ -473,7 +482,11 @@ const Dashboard: React.FC = () => {
                  <XAxis 
                     type="number" 
                     fontSize={9} 
-                    tickFormatter={(val) => viewMode === 'value' ? `R$ ${(val/1000).toFixed(0)}k` : val} 
+                    tickFormatter={(val) => {
+                      const n = typeof val === 'number' ? val : Number(val);
+                      if (!Number.isFinite(n) || n === 0) return '-';
+                      return viewMode === 'value' ? `R$ ${(n/1000).toFixed(0)}k` : n;
+                    }} 
                     axisLine={false}
                     tickLine={false}
                  />
@@ -544,7 +557,16 @@ const Dashboard: React.FC = () => {
                       const color = pieMode === 'status' 
                         ? (STATUS_COLORS[entry.name] || '#ccc') 
                         : (PAYMENT_COLORS[entry.name] || '#ccc');
-                      return <Cell key={`cell-${index}`} fill={color} stroke="white" strokeWidth={2} />;
+                      return (
+                        <Cell
+                          key={`cell-${index}`}
+                          fill={color}
+                          stroke="white"
+                          strokeWidth={2}
+                          onMouseEnter={() => setActivePieKey(entry.name)}
+                          onMouseLeave={() => setActivePieKey(null)}
+                        />
+                      );
                    })}
                  </Pie>
                  <Tooltip content={<CustomPieTooltip />} />
@@ -561,7 +583,19 @@ const Dashboard: React.FC = () => {
              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                  <div className="text-center">
                     <span className="text-[10px] text-gray-400 font-bold block uppercase">Total</span>
-                    <span className="text-lg font-black text-white">{formatNumber(mainKPIs.qty)}</span>
+                    <span className="text-lg font-black text-white">
+                      {(() => {
+                        if (!activePieKey) return formatNumber(mainKPIs.qty);
+                        const found = chartData.pieData.find(p => p.name === activePieKey);
+                        if (!found) return '-';
+                        return viewMode === 'qty' ? formatNumber(found.value) : formatCurrency(found.monetary);
+                      })()}
+                    </span>
+                    {activePieKey && (
+                      <span className="text-[10px] text-gray-400 font-bold block uppercase mt-1 tracking-wider">
+                        {activePieKey}
+                      </span>
+                    )}
                  </div>
              </div>
            </div>

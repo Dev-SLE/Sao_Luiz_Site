@@ -4,6 +4,7 @@ export interface CteData {
   SERIE: string;
   CODIGO: string;
   DATA_EMISSAO: string;
+  DATA_BAIXA?: string;
   PRAZO_BAIXA_DIAS: string;
   DATA_LIMITE_BAIXA: string;
   STATUS: string;
@@ -77,6 +78,7 @@ export enum Page {
   CRM_CHAT = 'crm_chat',
   CONFIGURACOES = 'configuracoes',
   SOFIA_CONFIG = 'sofia_config',
+  RELATORIOS = 'relatorios',
   MUDAR_SENHA = 'mudar_senha',
 }
 

@@ -13,6 +13,7 @@ import {
   ChevronsRight,
   Columns3,
   MessagesSquare,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { Page } from '../types';
 import clsx from 'clsx';
@@ -120,6 +121,7 @@ const Sidebar: React.FC<Props> = ({ currentPage, setPage, logout }) => {
         label: 'Administração',
         items: [
           { id: Page.CONFIGURACOES, label: 'Configurações', icon: Settings, count: 0 },
+          { id: Page.RELATORIOS, label: 'Relatórios', icon: FileSpreadsheet, count: 0 },
           hasPermission('MANAGE_SOFIA') && {
             id: Page.SOFIA_CONFIG,
             label: 'Configurações da Sofia',
@@ -287,11 +289,11 @@ const Sidebar: React.FC<Props> = ({ currentPage, setPage, logout }) => {
                     pinned ? 'block' : 'hidden group-hover:block'
                   )}
                 >
-                  <div className="rounded-xl bg-gradient-to-br from-[#0F103A] via-[#080816] to-[#131437] border border-[#EC1B23]/35 shadow-[0_0_18px_rgba(236,27,35,0.45)] px-3 py-2">
+                  <div className="rounded-xl bg-gradient-to-br from-[#0F103A] via-[#080816] to-[#131437] border border-[#EC1B23]/35 shadow-[0_0_18px_rgba(236,27,35,0.45)] px-1.5 py-1.5 flex items-center justify-center overflow-visible">
                     <img
                       src="/logo_transparente.png"
                       alt="São Luiz Express"
-                      className="h-12 w-full object-contain scale-[1.6]"
+                      className="h-14 w-full object-contain scale-[2.35] translate-y-[6.5px]"
                       draggable={false}
                     />
                   </div>

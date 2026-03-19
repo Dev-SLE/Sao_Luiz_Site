@@ -328,6 +328,26 @@ const CrmChat: React.FC<Props> = ({ leadId }) => {
     };
   }, [selectedConversationId]);
 
+  // Polling barato para refletir mensagens recebidas via webhook.
+  useEffect(() => {
+    if (!leadId) return;
+    if (!selectedConversationId) return;
+
+    const interval = window.setInterval(async () => {
+      try {
+        const convResp = await authClient.getCrmConversations({ leadId: leadId || null });
+        setConversations(convResp?.conversations || []);
+
+        const msgsResp = await authClient.getCrmMessages(selectedConversationId);
+        setMessages(msgsResp?.messages || []);
+      } catch (err) {
+        // não quebra a UI por falha de polling
+      }
+    }, 5000);
+
+    return () => window.clearInterval(interval);
+  }, [leadId, selectedConversationId]);
+
   useEffect(() => {
     // Carrega configurações da Sofia salvas localmente
     try {

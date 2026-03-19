@@ -28,3 +28,43 @@ html, body, #root {
   background: #f0f9ff;
   color: #0284c7;
 }
+
+/* Scrollbars: align to app dark theme */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #1E226F #070A20;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: #070A20;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: #1E226F;
+  border-radius: 9999px;
+  border: 2px solid #070A20;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: #2B2F8F;
+}
+
+/* Select (dark dropdown) */
+select {
+  background-color: #070A20 !important;
+  color: #E5E7EB !important;
+}
+
+select option {
+  background-color: #070A20 !important;
+  color: #E5E7EB !important;
+}
+
+select:focus {
+  outline: none;
+}

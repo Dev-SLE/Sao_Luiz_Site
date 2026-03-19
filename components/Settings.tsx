@@ -1,22 +1,53 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useData } from '../context/DataContext';
-import { UserData, ProfileData } from '../types';
+import { Page, UserData, ProfileData } from '../types';
 import { Trash2, UserPlus, Save, Copy, Shield, Users, CheckSquare, Square, X, Activity, Search } from 'lucide-react';
 import clsx from 'clsx';
 import { authClient } from '../lib/auth';
 
+const excludedViewPages = new Set<Page>([
+  Page.CONFIGURACOES,
+  Page.SOFIA_CONFIG,
+  Page.MUDAR_SENHA,
+]);
+
+const viewLabelOverrides: Partial<Record<Page, string>> = {
+  [Page.DASHBOARD]: 'Dashboard Operacional',
+  [Page.PENDENCIAS]: 'Tela: Pendências',
+  [Page.CRITICOS]: 'Tela: Críticos',
+  [Page.EM_BUSCA]: 'Tela: Em Busca',
+  [Page.TAD]: 'Tela: Processos TAD',
+  [Page.CONCLUIDOS]: 'Tela: Concluídos/Resolvidos',
+  [Page.CRM_DASHBOARD]: 'Tela: Dashboard CRM',
+  [Page.CRM_FUNIL]: 'Tela: Funil de Rastreio',
+  [Page.CRM_CHAT]: 'Tela: Chat IA',
+  [Page.RELATORIOS]: 'Tela: Relatórios',
+};
+
+const humanizePage = (p: Page) => {
+  if (viewLabelOverrides[p]) return viewLabelOverrides[p];
+  const words = String(p).split('_').filter(Boolean);
+  return words
+    .map(w => {
+      if (w.toLowerCase() === 'crm') return 'CRM';
+      if (w.toLowerCase() === 'tad') return 'TAD';
+      const lower = w.toLowerCase();
+      return lower.charAt(0).toUpperCase() + lower.slice(1);
+    })
+    .join(' ');
+};
+
+const autoViewPermissions = Array.from(
+  new Set(
+    Object.values(Page)
+      .filter((p): p is Page => typeof p === 'string')
+      .filter(p => !excludedViewPages.has(p))
+      .map(p => ({ key: `VIEW_${String(p).toUpperCase()}`, label: humanizePage(p), description: `Acessar ${humanizePage(p).toLowerCase()}.` }))
+  )
+);
+
 const PERMISSIONS: Array<{ key: string; label: string; description: string }> = [
-  // Operacional (telas)
-  { key: 'VIEW_DASHBOARD', label: 'Dashboard Operacional', description: 'Acessar a visão geral e indicadores.' },
-  { key: 'VIEW_PENDENCIAS', label: 'Tela: Pendências', description: 'Acessar a lista de pendências.' },
-  { key: 'VIEW_CRITICOS', label: 'Tela: Críticos', description: 'Acessar a lista de pendências críticas.' },
-  { key: 'VIEW_EM_BUSCA', label: 'Tela: Em Busca', description: 'Acessar a lista de mercadorias em busca.' },
-  { key: 'VIEW_TAD', label: 'Tela: Processos TAD', description: 'Acessar a lista de processos de TAD.' },
-  { key: 'VIEW_CONCLUIDOS', label: 'Tela: Concluídos/Resolvidos', description: 'Acessar a lista de concluídos e resolvidos.' },
-  // CRM (telas)
-  { key: 'VIEW_CRM_DASHBOARD', label: 'Tela: Dashboard CRM', description: 'Acessar o dashboard do CRM.' },
-  { key: 'VIEW_CRM_FUNIL', label: 'Tela: Funil de Rastreio', description: 'Acessar o funil de rastreio.' },
-  { key: 'VIEW_CRM_CHAT', label: 'Tela: Chat IA', description: 'Acessar o chat CRM.' },
+  ...autoViewPermissions,
   // Ações (funções)
   { key: 'EDIT_NOTES', label: 'Ação: Criar/editar anotações', description: 'Permite registrar notas e marcar status (Em Busca/TAD/Resolvido).' },
   { key: 'EXPORT_DATA', label: 'Ação: Exportar dados', description: 'Permite exportar Excel nas tabelas.' },

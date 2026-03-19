@@ -102,6 +102,11 @@ export class NeonDataClient {
     return this.fetchData(endpoint);
   }
 
+  async getCtesDashboard(page = 1, limit = 10000): Promise<{ data: any[], total: number }> {
+    const endpoint = `/ctes_dashboard?page=${page}&limit=${limit}`;
+    return this.fetchData(endpoint);
+  }
+
   async getCtesViewCounts(payload: {
     view: 'pendencias' | 'criticos' | 'em_busca' | 'tad' | 'concluidos';
     unit?: string;

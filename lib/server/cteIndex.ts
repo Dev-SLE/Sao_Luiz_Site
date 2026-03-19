@@ -16,6 +16,11 @@ function statusCalculadoSQL(paramIndex: number) {
   `;
 }
 
+function normalizedStatusExpr(expr: string) {
+  // Normaliza acentos comuns para comparar status textuais com segurança.
+  return `TRANSLATE(UPPER(COALESCE(${expr}, '')), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇ', 'AAAAAEEEEIIIIOOOOOUUUUC')`;
+}
+
 export async function rebuildCteViewIndexAll(toleranceDays = DEFAULT_TOLERANCE_DAYS) {
   const pool = getPool();
   await ensureCteViewIndexTable();
@@ -44,7 +49,8 @@ export async function rebuildCteViewIndexAll(toleranceDays = DEFAULT_TOLERANCE_D
         CASE
           WHEN c.status IN ('RESOLVIDO', 'LOCALIZADA') THEN 'concluidos'
           WHEN lp.process_status IN ('RESOLVIDO', 'LOCALIZADA') THEN 'concluidos'
-          WHEN UPPER(COALESCE(c.status, '')) LIKE 'CONCLUIDO%' THEN 'concluidos'
+          WHEN ${normalizedStatusExpr("c.status")} LIKE 'CONCLUIDO%' THEN 'concluidos'
+          WHEN ${normalizedStatusExpr("c.status")} LIKE 'ENTREGUE%' THEN 'concluidos'
           WHEN lp.process_status = 'TAD' THEN 'tad'
           WHEN lp.process_status = 'EM BUSCA' AND UPPER(COALESCE(lp.process_description, '')) LIKE '%TAD%' THEN 'tad'
           WHEN lp.process_status = 'EM BUSCA' THEN 'em_busca'
@@ -94,7 +100,8 @@ export async function refreshCteViewIndexOne(cte: string, serie: string, toleran
         CASE
           WHEN c.status IN ('RESOLVIDO', 'LOCALIZADA') THEN 'concluidos'
           WHEN COALESCE((SELECT process_status FROM latest_process), '') IN ('RESOLVIDO', 'LOCALIZADA') THEN 'concluidos'
-          WHEN UPPER(COALESCE(c.status, '')) LIKE 'CONCLUIDO%' THEN 'concluidos'
+          WHEN ${normalizedStatusExpr("c.status")} LIKE 'CONCLUIDO%' THEN 'concluidos'
+          WHEN ${normalizedStatusExpr("c.status")} LIKE 'ENTREGUE%' THEN 'concluidos'
           WHEN (SELECT process_status FROM latest_process) = 'TAD' THEN 'tad'
           WHEN (SELECT process_status FROM latest_process) = 'EM BUSCA'
             AND UPPER(COALESCE((SELECT process_description FROM latest_process), '')) LIKE '%TAD%'

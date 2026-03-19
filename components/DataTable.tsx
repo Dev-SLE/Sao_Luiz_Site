@@ -28,7 +28,7 @@ interface Props {
 
 type SortDirection = 'asc' | 'desc';
 interface SortConfig {
-  key: keyof CteData | 'STATUS_CALCULADO' | 'VALOR_NUMBER' | 'DATA_LIMITE_DATE';
+  key: keyof CteData | 'STATUS_CALCULADO' | 'VALOR_NUMBER' | 'DATA_LIMITE_DATE' | 'DATA_BAIXA_DATE';
   direction: SortDirection;
 }
 
@@ -128,6 +128,7 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
       SERIE: row.serie || '',
       CODIGO: row.codigo || '',
       DATA_EMISSAO: row.data_emissao || '',
+      DATA_BAIXA: row.data_baixa || '',
       PRAZO_BAIXA_DIAS: row.prazo_baixa_dias?.toString() || '',
       DATA_LIMITE_BAIXA: row.data_limite_baixa || '',
       STATUS: row.status || '',
@@ -336,6 +337,10 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
         case 'DATA_LIMITE_DATE':
           valA = parseDate(a.DATA_LIMITE_BAIXA);
           valB = parseDate(b.DATA_LIMITE_BAIXA);
+          break;
+        case 'DATA_BAIXA_DATE':
+          valA = parseDate(a.DATA_BAIXA || '');
+          valB = parseDate(b.DATA_BAIXA || '');
           break;
         case 'CTE':
           valA = parseInt(a.CTE) || 0;
@@ -749,6 +754,7 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
                 CTE: d.CTE,
                 SERIE: d.SERIE,
                 DATA_EMISSAO: d.DATA_EMISSAO,
+                DATA_BAIXA: d.DATA_BAIXA || '',
                 DATA_LIMITE: d.DATA_LIMITE_BAIXA,
                 STATUS: d.STATUS_CALCULADO || d.STATUS,
                 UNIDADE: d.ENTREGA,
@@ -777,7 +783,9 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
             <tr>
               <SortHeader label="Status" sortKey="STATUS_CALCULADO" />
               <SortHeader label="CTE / Série" sortKey="CTE" />
+              <SortHeader label="Data Emissão" sortKey="DATA_EMISSAO" />
               <SortHeader label="Data Limite" sortKey="DATA_LIMITE_DATE" />
+              <SortHeader label="Data Baixa" sortKey="DATA_BAIXA_DATE" />
               <SortHeader label="Unid. Destino / Cliente" sortKey="DESTINATARIO" />
               <SortHeader label="Valor" sortKey="VALOR_NUMBER" />
               <th className="px-4 py-3">Ações</th>
@@ -822,6 +830,11 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
                     <div className="text-xs text-gray-400">Série: {row.SERIE}</div>
                   </td>
                   <td className="px-4 py-3">
+                    <span className="text-gray-200">
+                      {formatDateOnly(row.DATA_EMISSAO)}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
                     <span
                       className={clsx(
                         "font-bold",
@@ -830,6 +843,9 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
                     >
                       {formatDateOnly(row.DATA_LIMITE_BAIXA)}
                     </span>
+                  </td>
+                  <td className="px-4 py-3 text-gray-200">
+                    {formatDateOnly(row.DATA_BAIXA)}
                   </td>
                   <td className="px-4 py-3 truncate max-w-xs">
                     <div className="truncate text-xs text-primary-300 font-bold uppercase mb-0.5">
@@ -904,8 +920,16 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
               </div>
               <div className="grid grid-cols-2 gap-2 text-sm text-gray-100 mb-3 pt-2 border-t border-[#1A1B62]">
                 <div>
+                  <span className="block text-xs text-gray-400">Emissão</span>
+                  <span className="font-bold">{formatDateOnly(row.DATA_EMISSAO)}</span>
+                </div>
+                <div>
                   <span className="block text-xs text-gray-400">Limite</span>
                   <span className="font-bold">{formatDateOnly(row.DATA_LIMITE_BAIXA)}</span>
+                </div>
+                <div>
+                  <span className="block text-xs text-gray-400">Data baixa</span>
+                  <span className="font-bold">{formatDateOnly(row.DATA_BAIXA)}</span>
                 </div>
                 <div>
                   <span className="block text-xs text-gray-400">Valor</span>

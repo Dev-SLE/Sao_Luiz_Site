@@ -193,6 +193,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       SERIE: row.serie || '',
       CODIGO: row.codigo || '',
       DATA_EMISSAO: row.data_emissao || '',
+      DATA_BAIXA: row.data_baixa || '',
       PRAZO_BAIXA_DIAS: row.prazo_baixa_dias?.toString() || '',
       DATA_LIMITE_BAIXA: row.data_limite_baixa || '',
       STATUS: row.status || '',
@@ -215,8 +216,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!user) return;
     setLoading(true);
     try {
-      const [allPendResp, pendResp, critResp, buscaResp, tadResp, conclResp, usersData] = await Promise.all([
-        authClient.getCtesView('pendencias', 1, 10000),
+      const [
+        dashboardResp,
+        pendResp,
+        critResp,
+        buscaResp,
+        tadResp,
+        conclResp,
+        usersData,
+      ] = await Promise.all([
+        authClient.getCtesDashboard(1, 10000),
         authClient.getCtesView('pendencias', pendenciasState.page, pendenciasState.limit),
         authClient.getCtesView('criticos', criticosState.page, criticosState.limit),
         authClient.getCtesView('em_busca', emBuscaState.page, emBuscaState.limit),
@@ -225,7 +234,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         authClient.getUsers(),
       ]);
 
-      const allPendenciasData = normalizeCtes(allPendResp.data || []);
+      const dashboardData = normalizeCtes(dashboardResp.data || []);
+
       const pendenciasData = normalizeCtes(pendResp.data || []);
       const criticosData = normalizeCtes(critResp.data || []);
       const emBuscaData = normalizeCtes(buscaResp.data || []);
@@ -241,9 +251,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }));
 
       // Compatibilidade: baseData/fullData/processedData = pendências COMPLETAS (para dashboards)
-      setBaseData(allPendenciasData);
-      setFullData(allPendenciasData);
-      setProcessedData(allPendenciasData);
+      setBaseData(dashboardData);
+      setFullData(dashboardData);
+      setProcessedData(dashboardData);
 
       // Não carregar notas/processo globais (pesado). Usaremos endpoints específicos quando abrir o modal.
       setNotes([]);
