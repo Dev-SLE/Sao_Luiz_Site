@@ -12,12 +12,21 @@ const StatusBadge: React.FC<Props> = ({ status, onClick }) => {
       case 'FORA DO PRAZO':
       case 'CRÍTICO':
         return 'bg-red-950/70 text-red-200 border-red-500/60';
+      case 'CONCLUIDO CRÍTICO':
+        return 'bg-red-950/65 text-red-100 border-red-400/60 font-bold';
+      case 'CONCLUIDO FORA DO PRAZO':
+        return 'bg-orange-900/60 text-orange-100 border-orange-400/60 font-bold';
       case 'PRIORIDADE':
         return 'bg-amber-900/60 text-amber-200 border-amber-500/60';
       case 'VENCE AMANHÃ':
         return 'bg-yellow-900/55 text-yellow-200 border-yellow-500/55';
       case 'NO PRAZO':
         return 'bg-sky-900/55 text-sky-200 border-sky-500/55';
+      case 'CONCLUIDO NO PRAZO':
+      case 'CONCLUIDO (SEM LIMITE)':
+        return 'bg-emerald-900/65 text-emerald-100 border-emerald-400/60 font-bold';
+      case 'CALCULANDO...':
+        return 'bg-slate-800 text-slate-200 border-slate-500/50';
       // New Payment Colors
       case 'CIF':
         return 'bg-emerald-900/55 text-emerald-200 border-emerald-500/55';

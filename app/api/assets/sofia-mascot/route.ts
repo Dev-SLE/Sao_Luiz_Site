@@ -5,10 +5,12 @@ import path from "path";
 export const runtime = "nodejs";
 
 const CANDIDATE_PATHS = [
-  // Imagem anexada no Cursor (prioridade)
-  "C:/Users/dev/.cursor/projects/c-Users-dev-Downloads-Pendencias/assets/c__Users_dev_Downloads_Pendencias_ChatGPT_Image_20_de_mar._de_2026__18_30_15.png",
-  // Fallback dentro do projeto
+  // Prioridade: imagem versionada no projeto (funciona local e Vercel)
+  path.join(process.cwd(), "public", "sofia-mascot.png"),
+  // Fallback para o logo institucional
   path.join(process.cwd(), "public", "logo_transparente.png"),
+  // Fallback local (desenvolvimento no Cursor)
+  "C:/Users/dev/.cursor/projects/c-Users-dev-Downloads-Pendencias/assets/c__Users_dev_Downloads_Pendencias_ChatGPT_Image_20_de_mar._de_2026__18_30_15.png",
 ];
 
 export async function GET() {

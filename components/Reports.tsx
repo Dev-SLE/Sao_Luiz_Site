@@ -100,15 +100,29 @@ const Reports: React.FC = () => {
 
   // Filtros simples (unidade)
   const [unit, setUnit] = useState<string>('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const units = useMemo(() => {
     const s = new Set(rows.map(r => r.ENTREGA).filter(Boolean));
     return Array.from(s).sort();
   }, [rows]);
 
   const filteredRows = useMemo(() => {
-    if (!unit) return rows;
-    return rows.filter(r => r.ENTREGA === unit);
-  }, [rows, unit]);
+    const from = dateFrom ? parseInt(dateFrom.replace(/-/g, ''), 10) : 0;
+    const to = dateTo ? parseInt(dateTo.replace(/-/g, ''), 10) : 0;
+    return rows.filter((r) => {
+      if (unit && r.ENTREGA !== unit) return false;
+      if (!from && !to) return true;
+      const baseDate = kind === 'concluidos' ? (r.DATA_BAIXA || '') : (r.DATA_EMISSAO || '');
+      const [datePart] = String(baseDate).split(' ');
+      const p = datePart.split('/');
+      if (p.length !== 3) return false;
+      const k = parseInt(`${p[2]}${p[1]}${p[0]}`, 10);
+      if (from && k < from) return false;
+      if (to && k > to) return false;
+      return true;
+    });
+  }, [rows, unit, kind, dateFrom, dateTo]);
 
   const [selectedColumns, setSelectedColumns] = useState<ColumnKey[]>([
     'CTE',
@@ -353,6 +367,23 @@ const Reports: React.FC = () => {
               </option>
             ))}
           </select>
+        </div>
+        <div className="flex items-center gap-2 bg-[#070A20] border border-[#1E226F] rounded-xl px-3 py-2">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-gray-300">
+            {kind === 'concluidos' ? 'Data baixa' : 'Data emissão'}
+          </span>
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="bg-[#070A20] border border-[#1E226F] text-gray-100 text-xs font-bold px-2 py-1 rounded-lg outline-none focus:ring-2 focus:ring-[#EC1B23]/60"
+          />
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="bg-[#070A20] border border-[#1E226F] text-gray-100 text-xs font-bold px-2 py-1 rounded-lg outline-none focus:ring-2 focus:ring-[#EC1B23]/60"
+          />
         </div>
 
         <div className="text-[11px] text-gray-400">

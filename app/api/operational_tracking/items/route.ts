@@ -16,6 +16,8 @@ export async function GET(req: Request) {
 
     const unit = String(searchParams.get("unit") || "").trim();
     const q = String(searchParams.get("q") || "").trim();
+    const dateFrom = String(searchParams.get("dateFrom") || "").trim();
+    const dateTo = String(searchParams.get("dateTo") || "").trim();
 
     const pool = getPool();
 
@@ -34,8 +36,24 @@ export async function GET(req: Request) {
             OR c.coleta ILIKE '%' || $2::text || '%'
             OR c.destinatario ILIKE '%' || $2::text || '%'
           )
+          AND (
+            $3::text = '' OR DATE(
+              GREATEST(
+                COALESCE((SELECT MAX(n.data) FROM pendencias.notes n WHERE n.cte = c.cte AND n.serie = c.serie), '1970-01-01'::timestamptz),
+                COALESCE((SELECT MAX(e.event_time) FROM pendencias.operacional_tracking_events e WHERE e.cte = c.cte AND e.serie = c.serie), '1970-01-01'::timestamptz)
+              )
+            ) >= $3::date
+          )
+          AND (
+            $4::text = '' OR DATE(
+              GREATEST(
+                COALESCE((SELECT MAX(n.data) FROM pendencias.notes n WHERE n.cte = c.cte AND n.serie = c.serie), '1970-01-01'::timestamptz),
+                COALESCE((SELECT MAX(e.event_time) FROM pendencias.operacional_tracking_events e WHERE e.cte = c.cte AND e.serie = c.serie), '1970-01-01'::timestamptz)
+              )
+            ) <= $4::date
+          )
       `,
-      [unit || "", q || ""]
+      [unit || "", q || "", dateFrom || "", dateTo || ""]
     );
     const total = totalResult.rows?.[0]?.total || 0;
 
@@ -68,13 +86,29 @@ export async function GET(req: Request) {
               OR c.coleta ILIKE '%' || $2::text || '%'
               OR c.destinatario ILIKE '%' || $2::text || '%'
             )
+            AND (
+              $3::text = '' OR DATE(
+                GREATEST(
+                  COALESCE((SELECT MAX(n.data) FROM pendencias.notes n WHERE n.cte = c.cte AND n.serie = c.serie), '1970-01-01'::timestamptz),
+                  COALESCE((SELECT MAX(e.event_time) FROM pendencias.operacional_tracking_events e WHERE e.cte = c.cte AND e.serie = c.serie), '1970-01-01'::timestamptz)
+                )
+              ) >= $3::date
+            )
+            AND (
+              $4::text = '' OR DATE(
+                GREATEST(
+                  COALESCE((SELECT MAX(n.data) FROM pendencias.notes n WHERE n.cte = c.cte AND n.serie = c.serie), '1970-01-01'::timestamptz),
+                  COALESCE((SELECT MAX(e.event_time) FROM pendencias.operacional_tracking_events e WHERE e.cte = c.cte AND e.serie = c.serie), '1970-01-01'::timestamptz)
+                )
+              ) <= $4::date
+            )
         )
         SELECT *
         FROM base
         ORDER BY last_update_at DESC, cte ASC
-        LIMIT $3 OFFSET $4
+        LIMIT $5 OFFSET $6
       `,
-      [unit || "", q || "", limit, offset]
+      [unit || "", q || "", dateFrom || "", dateTo || "", limit, offset]
     );
 
     const data = (result.rows || []).map((row: any) => ({

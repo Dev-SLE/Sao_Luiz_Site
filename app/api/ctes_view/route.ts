@@ -53,12 +53,6 @@ export async function GET(req: Request) {
           i.status_calculado,
           i.note_count,
           CASE
-            WHEN (
-              i.view = 'concluidos'
-              OR ${NORMALIZED_STATUS_SQL} LIKE 'CONCLUIDO%'
-              OR ${NORMALIZED_STATUS_SQL} LIKE 'ENTREGUE%'
-              OR ${NORMALIZED_STATUS_SQL} LIKE 'RESOLVIDO%'
-            ) AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'CONCLUIDO%' THEN 'RESOLVIDO'
             WHEN i.view = 'tad' THEN 'TAD'
             WHEN i.view = 'em_busca' THEN 'EM BUSCA'
             ELSE c.status

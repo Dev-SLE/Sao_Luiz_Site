@@ -17,6 +17,8 @@ const Dashboard: React.FC = () => {
   const [selectedUnit, setSelectedUnit] = useState<string>('');
   const [statusFilters, setStatusFilters] = useState<string[]>([]);
   const [paymentFilters, setPaymentFilters] = useState<string[]>([]);
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [viewMode, setViewMode] = useState<'qty' | 'value'>('qty');
   const [pieMode, setPieMode] = useState<'status' | 'payment'>('status');
   const [activePieKey, setActivePieKey] = useState<string | null>(null);
@@ -72,6 +74,13 @@ const Dashboard: React.FC = () => {
     return 0;
   };
 
+  const parseInputDateToComparable = (v: string) => {
+    if (!v) return 0;
+    const p = v.split('-');
+    if (p.length !== 3) return 0;
+    return parseInt(`${p[0]}${p[1]}${p[2]}`);
+  };
+
   // --- Data Processing ---
   const isUserUnitBound = !!user?.linkedDestUnit;
   const activeUnit = isUserUnitBound ? user.linkedDestUnit : selectedUnit;
@@ -96,11 +105,19 @@ const Dashboard: React.FC = () => {
   }, [processedData]);
 
   const baseScopeData = useMemo(() => {
+    const from = parseInputDateToComparable(dateFrom);
+    const to = parseInputDateToComparable(dateTo);
     return processedData.filter(item => {
       if (activeUnit && item.ENTREGA !== activeUnit) return false;
+      if (from || to) {
+        const dt = parseDateToComparable(item.DATA_EMISSAO || '');
+        if (!dt) return false;
+        if (from && dt < from) return false;
+        if (to && dt > to) return false;
+      }
       return true;
     });
-  }, [processedData, activeUnit]);
+  }, [processedData, activeUnit, dateFrom, dateTo]);
 
   const statusCardsData = useMemo(() => {
     return baseScopeData.filter(item => {
@@ -339,9 +356,9 @@ const Dashboard: React.FC = () => {
         </div>
 
         <div className="w-full lg:w-auto flex flex-col md:flex-row gap-2 items-center">
-            {(statusFilters.length > 0 || paymentFilters.length > 0) && (
+            {(statusFilters.length > 0 || paymentFilters.length > 0 || dateFrom || dateTo) && (
                 <button 
-                    onClick={() => { setStatusFilters([]); setPaymentFilters([]); }}
+                    onClick={() => { setStatusFilters([]); setPaymentFilters([]); setDateFrom(''); setDateTo(''); }}
                     className="text-xs text-red-300 hover:text-red-100 font-bold flex items-center justify-center gap-1 px-3 py-2 bg-red-950/30 rounded-lg border border-red-500/40 transition-colors w-full md:w-auto"
                 >
                     <X size={14} /> Limpar Filtros
@@ -367,6 +384,20 @@ const Dashboard: React.FC = () => {
                </div>
              </div>
            )}
+           <div className="flex items-center gap-2 w-full md:w-auto">
+             <input
+               type="date"
+               value={dateFrom}
+               onChange={(e) => setDateFrom(e.target.value)}
+               className="bg-[#080816] border border-[#1A1B62] text-gray-100 py-2 px-3 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#EC1B23] w-full md:w-auto"
+             />
+             <input
+               type="date"
+               value={dateTo}
+               onChange={(e) => setDateTo(e.target.value)}
+               className="bg-[#080816] border border-[#1A1B62] text-gray-100 py-2 px-3 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#EC1B23] w-full md:w-auto"
+             />
+           </div>
         </div>
       </div>
 
@@ -396,7 +427,7 @@ const Dashboard: React.FC = () => {
                     {['FORA DO PRAZO', 'CRÍTICO', 'PRIORIDADE', 'VENCE AMANHÃ', 'NO PRAZO'].map(status => (
                         <FilterCard 
                             key={status}
-                            label={status}
+                            label={status === 'PRIORIDADE' ? 'VENCE HOJE' : status}
                             qty={statusAgg[status]?.qty || 0}
                             val={statusAgg[status]?.val || 0}
                             color={STATUS_COLORS[status]}

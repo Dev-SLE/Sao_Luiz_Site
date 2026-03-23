@@ -17,7 +17,17 @@ export interface CteData {
   FRETE_PAGO: string;
   DESTINATARIO: string;
   JUSTIFICATIVA: string;
-  STATUS_CALCULADO?: 'FORA DO PRAZO' | 'CRÍTICO' | 'PRIORIDADE' | 'VENCE AMANHÃ' | 'NO PRAZO';
+  STATUS_CALCULADO?:
+    | 'CALCULANDO...'
+    | 'FORA DO PRAZO'
+    | 'CRÍTICO'
+    | 'PRIORIDADE'
+    | 'VENCE AMANHÃ'
+    | 'NO PRAZO'
+    | 'CONCLUIDO (SEM LIMITE)'
+    | 'CONCLUIDO CRÍTICO'
+    | 'CONCLUIDO FORA DO PRAZO'
+    | 'CONCLUIDO NO PRAZO';
   IS_HISTORICAL?: boolean; // Flag to indicate if data comes from history/logs
   NOTE_COUNT?: number; // opcional (server-side), para badge na tabela sem carregar todas as notas
 }

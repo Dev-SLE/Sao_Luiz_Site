@@ -3,14 +3,23 @@ import { ensureCteViewIndexTable } from "./ensureSchema";
 
 const DEFAULT_TOLERANCE_DAYS = parseInt(process.env.DEADLINE_TOLERANCE_DAYS || "2", 10) || 0;
 
-function statusCalculadoSQL(paramIndex: number) {
+function statusCalculadoSQL() {
   return `
     CASE
-      WHEN c.data_limite_baixa IS NULL THEN 'NO PRAZO'
-      WHEN CURRENT_DATE > (c.data_limite_baixa::date + $${paramIndex}::int) THEN 'CRÍTICO'
-      WHEN CURRENT_DATE > (c.data_limite_baixa::date) THEN 'FORA DO PRAZO'
-      WHEN CURRENT_DATE = (c.data_limite_baixa::date) THEN 'PRIORIDADE'
-      WHEN (CURRENT_DATE + 1) = (c.data_limite_baixa::date) THEN 'VENCE AMANHÃ'
+      -- 1) Histórico (já baixado): avalia performance passada
+      WHEN c.data_baixa IS NOT NULL THEN
+        CASE
+          WHEN c.data_limite_baixa IS NULL THEN 'CONCLUIDO (SEM LIMITE)'
+          WHEN (c.data_limite_baixa::date - c.data_baixa::date) <= -3 THEN 'CONCLUIDO CRÍTICO'
+          WHEN (c.data_limite_baixa::date - c.data_baixa::date) < 0 THEN 'CONCLUIDO FORA DO PRAZO'
+          ELSE 'CONCLUIDO NO PRAZO'
+        END
+      -- 2) Operação em aberto (sem baixa): avalia risco atual
+      WHEN c.data_limite_baixa IS NULL THEN 'CALCULANDO...'
+      WHEN (c.data_limite_baixa::date - CURRENT_DATE) <= -10 THEN 'CRÍTICO'
+      WHEN (c.data_limite_baixa::date - CURRENT_DATE) < 0 THEN 'FORA DO PRAZO'
+      WHEN (c.data_limite_baixa::date - CURRENT_DATE) = 0 THEN 'PRIORIDADE'
+      WHEN (c.data_limite_baixa::date - CURRENT_DATE) = 1 THEN 'VENCE AMANHÃ'
       ELSE 'NO PRAZO'
     END
   `;
@@ -45,7 +54,7 @@ export async function rebuildCteViewIndexAll(toleranceDays = DEFAULT_TOLERANCE_D
         c.cte::text AS cte,
         c.serie::text AS serie,
         COALESCE(nc.note_count, 0) AS note_count,
-        ${statusCalculadoSQL(1)} AS status_calculado,
+        ${statusCalculadoSQL()} AS status_calculado,
         CASE
           WHEN c.status IN ('RESOLVIDO', 'LOCALIZADA') THEN 'concluidos'
           WHEN lp.process_status IN ('RESOLVIDO', 'LOCALIZADA') THEN 'concluidos'
@@ -54,7 +63,7 @@ export async function rebuildCteViewIndexAll(toleranceDays = DEFAULT_TOLERANCE_D
           WHEN lp.process_status = 'TAD' THEN 'tad'
           WHEN lp.process_status = 'EM BUSCA' AND UPPER(COALESCE(lp.process_description, '')) LIKE '%TAD%' THEN 'tad'
           WHEN lp.process_status = 'EM BUSCA' THEN 'em_busca'
-          WHEN (${statusCalculadoSQL(1)}) = 'CRÍTICO' THEN 'criticos'
+          WHEN (${statusCalculadoSQL()}) = 'CRÍTICO' THEN 'criticos'
           ELSE 'pendencias'
         END AS view
       FROM pendencias.ctes c
@@ -71,7 +80,7 @@ export async function rebuildCteViewIndexAll(toleranceDays = DEFAULT_TOLERANCE_D
       updated_at = NOW()
   `;
 
-  await pool.query(sql, [toleranceDays]);
+  await pool.query(sql);
 }
 
 export async function refreshCteViewIndexOne(cte: string, serie: string, toleranceDays = DEFAULT_TOLERANCE_DAYS) {
@@ -82,21 +91,21 @@ export async function refreshCteViewIndexOne(cte: string, serie: string, toleran
     WITH latest_process AS (
       SELECT status AS process_status, description AS process_description
       FROM pendencias.process_control
-      WHERE cte = $2 AND serie = $3
+      WHERE cte = $1 AND serie = $2
       ORDER BY data DESC
       LIMIT 1
     ),
     note_counts AS (
       SELECT COUNT(*)::int AS note_count
       FROM pendencias.notes
-      WHERE cte = $2
+      WHERE cte = $1
     ),
     computed AS (
       SELECT
         c.cte::text AS cte,
         c.serie::text AS serie,
         (SELECT note_count FROM note_counts) AS note_count,
-        ${statusCalculadoSQL(1)} AS status_calculado,
+        ${statusCalculadoSQL()} AS status_calculado,
         CASE
           WHEN c.status IN ('RESOLVIDO', 'LOCALIZADA') THEN 'concluidos'
           WHEN COALESCE((SELECT process_status FROM latest_process), '') IN ('RESOLVIDO', 'LOCALIZADA') THEN 'concluidos'
@@ -107,11 +116,11 @@ export async function refreshCteViewIndexOne(cte: string, serie: string, toleran
             AND UPPER(COALESCE((SELECT process_description FROM latest_process), '')) LIKE '%TAD%'
           THEN 'tad'
           WHEN (SELECT process_status FROM latest_process) = 'EM BUSCA' THEN 'em_busca'
-          WHEN (${statusCalculadoSQL(1)}) = 'CRÍTICO' THEN 'criticos'
+          WHEN (${statusCalculadoSQL()}) = 'CRÍTICO' THEN 'criticos'
           ELSE 'pendencias'
         END AS view
       FROM pendencias.ctes c
-      WHERE c.cte = $2 AND c.serie = $3
+      WHERE c.cte = $1 AND c.serie = $2
     )
     INSERT INTO pendencias.cte_view_index (cte, serie, view, status_calculado, note_count, updated_at)
     SELECT cte, serie, view, status_calculado, note_count, NOW()
@@ -123,6 +132,6 @@ export async function refreshCteViewIndexOne(cte: string, serie: string, toleran
       updated_at = NOW()
   `;
 
-  await pool.query(sql, [toleranceDays, cte, serie]);
+  await pool.query(sql, [cte, serie]);
 }
 

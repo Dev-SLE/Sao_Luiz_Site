@@ -155,6 +155,8 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
 
   const [q, setQ] = useState("");
   const [unit, setUnit] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
 
   const [selected, setSelected] = useState<TrackingDetail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
@@ -189,6 +191,8 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
       usp.set("limit", String(limit));
       if (unit.trim()) usp.set("unit", unit.trim());
       if (q.trim()) usp.set("q", q.trim());
+      if (dateFrom.trim()) usp.set("dateFrom", dateFrom.trim());
+      if (dateTo.trim()) usp.set("dateTo", dateTo.trim());
 
       const resp = await fetch(`/api/operational_tracking/items?${usp.toString()}`);
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
@@ -206,7 +210,7 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
     }, 250);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, unit, page, limit]);
+  }, [q, unit, dateFrom, dateTo, page, limit]);
 
   const resetForm = () => {
     setMode("ROTA");
@@ -447,6 +451,18 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
                 </option>
               ))}
             </select>
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="appearance-none rounded-xl bg-[#080816] border border-[#1A1B62] px-3 py-2 text-xs text-gray-100 outline-none focus:ring-1 focus:ring-[#EC1B23]"
+            />
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="appearance-none rounded-xl bg-[#080816] border border-[#1A1B62] px-3 py-2 text-xs text-gray-100 outline-none focus:ring-1 focus:ring-[#EC1B23]"
+            />
 
             <button
               type="button"

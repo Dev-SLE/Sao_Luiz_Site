@@ -77,6 +77,9 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
   const [noteFilter, setNoteFilter] = useState<'ALL' | 'WITH' | 'WITHOUT'>('ALL');
   const [filterTxEntrega, setFilterTxEntrega] = useState(false);
   const [globalSearch, setGlobalSearch] = useState('');
+  const [dateField, setDateField] = useState<'EMISSAO' | 'LIMITE' | 'BAIXA'>('LIMITE');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   // --- Sort State ---
   const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'DATA_LIMITE_DATE', direction: 'asc' });
 
@@ -92,6 +95,8 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
     paymentFilters.length > 0 ||
     noteFilter !== 'ALL' ||
     filterTxEntrega ||
+    dateFrom.trim().length > 0 ||
+    dateTo.trim().length > 0 ||
     globalSearch.trim().length > 0;
 
   const shouldUseLocalPagination = !!serverPagination && hasActiveTableFilters;
@@ -166,6 +171,10 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
       setServerCounts(null);
       return;
     }
+    if (dateFrom || dateTo) {
+      setServerCounts(null);
+      return;
+    }
 
     let cancelled = false;
     (async () => {
@@ -199,7 +208,7 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
     return () => {
       cancelled = true;
     };
-  }, [serverView, selectedUnit, statusFilters.join('|'), paymentFilters.join('|'), noteFilter, filterTxEntrega, ignoreUnitFilter, user?.linkedDestUnit, globalSearch]);
+  }, [serverView, selectedUnit, statusFilters.join('|'), paymentFilters.join('|'), noteFilter, filterTxEntrega, ignoreUnitFilter, user?.linkedDestUnit, globalSearch, dateFrom, dateTo]);
 
   // Quando houver filtros, buscamos o "view" completo uma vez e aplicamos os filtros localmente,
   // para que o número de páginas e os resultados batam com os cards (ctes_view_counts).
@@ -306,6 +315,17 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
     if (filterTxEntrega) {
       result = result.filter(d => parseCurrency(d.TX_ENTREGA) > 0);
     }
+    const fromKey = dateInputToKey(dateFrom);
+    const toKey = dateInputToKey(dateTo);
+    if (fromKey || toKey) {
+      result = result.filter((d) => {
+        const k = getDateKeyByField(d);
+        if (!k) return false;
+        if (fromKey && k < fromKey) return false;
+        if (toKey && k > toKey) return false;
+        return true;
+      });
+    }
     return result;
   }, [
     data,
@@ -322,6 +342,9 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
     paymentFilters,
     noteFilter,
     filterTxEntrega,
+    dateField,
+    dateFrom,
+    dateTo,
     ignoreUnitFilter,
   ]);
   const sortedData = useMemo(() => {
@@ -375,9 +398,20 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
   // --- Constants ---
   const STATUS_OPTIONS = useMemo(() => {
     if (isCriticalView) return [];
+    if (serverView === 'concluidos') {
+      return [
+        'CONCLUIDO CRÍTICO',
+        'CONCLUIDO FORA DO PRAZO',
+        'CONCLUIDO NO PRAZO',
+        'CONCLUIDO (SEM LIMITE)',
+      ];
+    }
     if (isPendencyView) return ['FORA DO PRAZO', 'PRIORIDADE', 'VENCE AMANHÃ', 'NO PRAZO'];
     return ['CRÍTICO', 'FORA DO PRAZO', 'PRIORIDADE', 'VENCE AMANHÃ', 'NO PRAZO'];
-  }, [isPendencyView, isCriticalView]);
+  }, [isPendencyView, isCriticalView, serverView]);
+  const STATUS_LABELS: Record<string, string> = {
+    PRIORIDADE: 'VENCE HOJE',
+  };
 
   const PAYMENT_OPTIONS = ['CIF', 'FOB', 'FATURAR_REMETENTE', 'FATURAR_DEST'];
   
@@ -387,6 +421,10 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
     'PRIORIDADE': COLORS.priority,
     'VENCE AMANHÃ': COLORS.tomorrow,
     'NO PRAZO': COLORS.ontime,
+    'CONCLUIDO CRÍTICO': COLORS.critical,
+    'CONCLUIDO FORA DO PRAZO': COLORS.priority,
+    'CONCLUIDO NO PRAZO': COLORS.ontime,
+    'CONCLUIDO (SEM LIMITE)': '#10b981',
   };
 
   const PAYMENT_COLORS_MAP: Record<string, string> = {
@@ -443,6 +481,23 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
     return parseInt(`${parts[2]}${parts[1]}${parts[0]}`);
   }
 
+  function dateInputToKey(input: string) {
+    if (!input) return 0;
+    const parts = input.split('-');
+    if (parts.length !== 3) return 0;
+    return parseInt(`${parts[0]}${parts[1]}${parts[2]}`);
+  }
+
+  function getDateKeyByField(row: CteData) {
+    const raw =
+      dateField === 'EMISSAO'
+        ? row.DATA_EMISSAO || ''
+        : dateField === 'BAIXA'
+          ? row.DATA_BAIXA || ''
+          : row.DATA_LIMITE_BAIXA || '';
+    return parseDate(raw);
+  }
+
   const handleSort = (sortKey: SortConfig['key']) => {
     setSortConfig(current => ({
       key: sortKey,
@@ -468,6 +523,8 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
     setPaymentFilters([]);
     setNoteFilter('ALL');
     setFilterTxEntrega(false);
+    setDateFrom('');
+    setDateTo('');
     setGlobalSearch('');
     setSortConfig({ key: 'DATA_LIMITE_DATE', direction: 'asc' });
     setPage(1);
@@ -482,6 +539,9 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
     limit,
     globalSearch,
     selectedUnit,
+    dateField,
+    dateFrom,
+    dateTo,
     noteFilter,
     filterTxEntrega,
     statusFilters.join('|'),
@@ -497,6 +557,9 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
     limit,
     globalSearch,
     selectedUnit,
+    dateField,
+    dateFrom,
+    dateTo,
     noteFilter,
     filterTxEntrega,
     statusFilters.join('|'),
@@ -504,7 +567,7 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
   ]);
 
   const getCount = (filterType: 'status' | 'payment' | 'note' | 'txEntrega', key: string) => {
-      if (serverPagination && serverCounts) {
+      if (serverPagination && serverCounts && !dateFrom && !dateTo) {
         if (filterType === 'status') return serverCounts.statusCounts?.[key] ?? 0;
         if (filterType === 'payment') return serverCounts.paymentCounts?.[key] ?? 0;
         if (filterType === 'note') return key === 'WITH' ? serverCounts.noteWith : serverCounts.noteWithout;
@@ -533,8 +596,22 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
           });
       }
       if (filterType !== 'txEntrega' && filterTxEntrega) base = base.filter(d => parseCurrency(d.TX_ENTREGA) > 0);
+      const fromKey = dateInputToKey(dateFrom);
+      const toKey = dateInputToKey(dateTo);
+      if (fromKey || toKey) {
+        base = base.filter((d) => {
+          const k = getDateKeyByField(d);
+          if (!k) return false;
+          if (fromKey && k < fromKey) return false;
+          if (toKey && k > toKey) return false;
+          return true;
+        });
+      }
 
-      if (filterType === 'status') return base.filter(d => d.STATUS_CALCULADO === key).length;
+      if (filterType === 'status') {
+        if (serverView === 'concluidos') return base.filter(d => (d.STATUS || '') === key).length;
+        return base.filter(d => d.STATUS_CALCULADO === key).length;
+      }
       if (filterType === 'payment') return base.filter(d => d.FRETE_PAGO === key).length;
       if (filterType === 'note') {
          return base.filter(d => {
@@ -652,6 +729,37 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
                 </div>
             </div>
 
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-5">
+                <select
+                    value={dateField}
+                    onChange={(e) => setDateField(e.target.value as 'EMISSAO' | 'LIMITE' | 'BAIXA')}
+                    className="appearance-none bg-[#080816] border border-[#1A1B62] text-gray-100 py-2.5 px-3 rounded-xl text-xs font-bold focus:outline-none focus:ring-1 focus:ring-[#EC1B23]"
+                >
+                    <option value="EMISSAO">Filtrar por emissão</option>
+                    <option value="LIMITE">Filtrar por limite</option>
+                    <option value="BAIXA">Filtrar por baixa</option>
+                </select>
+                <input
+                    type="date"
+                    value={dateFrom}
+                    onChange={(e) => setDateFrom(e.target.value)}
+                    className="bg-[#080816] border border-[#1A1B62] text-gray-100 py-2.5 px-3 rounded-xl text-xs font-bold focus:outline-none focus:ring-1 focus:ring-[#EC1B23]"
+                />
+                <input
+                    type="date"
+                    value={dateTo}
+                    onChange={(e) => setDateTo(e.target.value)}
+                    className="bg-[#080816] border border-[#1A1B62] text-gray-100 py-2.5 px-3 rounded-xl text-xs font-bold focus:outline-none focus:ring-1 focus:ring-[#EC1B23]"
+                />
+                <button
+                    type="button"
+                    onClick={() => { setDateFrom(''); setDateTo(''); }}
+                    className="px-3 py-2 text-xs text-gray-200 font-bold bg-[#080816] hover:bg-[#0F103A] rounded-xl transition-colors border border-[#1A1B62]"
+                >
+                    Limpar datas
+                </button>
+            </div>
+
             <div className="flex flex-col gap-6">
                 
                 {/* BLOCO 1: STATUS (Apenas se não for visualização crítica) */}
@@ -662,7 +770,7 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
                             {STATUS_OPTIONS.map(status => (
                                 <FilterCard 
                                     key={status}
-                                    label={status}
+                                    label={STATUS_LABELS[status] || status}
                                     count={getCount('status', status)}
                                     color={STATUS_COLORS_MAP[status]}
                                     selected={statusFilters.includes(status)}
@@ -729,10 +837,10 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
             </div>
              
              {/* FOOTER: CLEAR FILTERS */}
-             {(statusFilters.length > 0 || paymentFilters.length > 0 || noteFilter !== 'ALL' || filterTxEntrega) && (
+             {(statusFilters.length > 0 || paymentFilters.length > 0 || noteFilter !== 'ALL' || filterTxEntrega || dateFrom || dateTo) && (
                  <div className="flex justify-end mt-6 pt-3 border-t border-[#1A1B62]">
                     <button
-                      onClick={() => { setStatusFilters([]); setPaymentFilters([]); setNoteFilter('ALL'); setFilterTxEntrega(false); }}
+                      onClick={() => { setStatusFilters([]); setPaymentFilters([]); setNoteFilter('ALL'); setFilterTxEntrega(false); setDateFrom(''); setDateTo(''); }}
                       className="px-4 py-2 text-xs text-red-300 font-bold bg-red-900/40 hover:bg-red-900/70 rounded-lg transition-colors flex items-center gap-2 border border-red-500/60"
                     >
                         <X size={14} /> Limpar Todos os Filtros
