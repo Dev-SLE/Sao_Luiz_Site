@@ -17,8 +17,10 @@ const Dashboard: React.FC = () => {
   const [selectedUnit, setSelectedUnit] = useState<string>('');
   const [statusFilters, setStatusFilters] = useState<string[]>([]);
   const [paymentFilters, setPaymentFilters] = useState<string[]>([]);
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const [draftDateFrom, setDraftDateFrom] = useState('');
+  const [draftDateTo, setDraftDateTo] = useState('');
+  const [appliedDateFrom, setAppliedDateFrom] = useState('');
+  const [appliedDateTo, setAppliedDateTo] = useState('');
   const [viewMode, setViewMode] = useState<'qty' | 'value'>('qty');
   const [pieMode, setPieMode] = useState<'status' | 'payment'>('status');
   const [activePieKey, setActivePieKey] = useState<string | null>(null);
@@ -67,10 +69,23 @@ const Dashboard: React.FC = () => {
 
   const parseDateToComparable = (dateStr: string) => {
     if (!dateStr || typeof dateStr !== 'string') return 0;
-    const parts = dateStr.split('/');
-    if (parts.length === 3) {
-      return parseInt(parts[2] + parts[1].padStart(2, '0') + parts[0].padStart(2, '0'));
+    const raw = dateStr.trim();
+    if (!raw) return 0;
+
+    // Formato principal esperado no dataset: DD/MM/AAAA (com ou sem hora).
+    const ddmmyyyy = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (ddmmyyyy) {
+      const [, dd, mm, yyyy] = ddmmyyyy;
+      return Number(`${yyyy}${mm.padStart(2, '0')}${dd.padStart(2, '0')}`);
     }
+
+    // Fallback: AAAA-MM-DD (ou datetime ISO).
+    const yyyymmdd = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (yyyymmdd) {
+      const [, yyyy, mm, dd] = yyyymmdd;
+      return Number(`${yyyy}${mm.padStart(2, '0')}${dd.padStart(2, '0')}`);
+    }
+
     return 0;
   };
 
@@ -105,8 +120,8 @@ const Dashboard: React.FC = () => {
   }, [processedData]);
 
   const baseScopeData = useMemo(() => {
-    const from = parseInputDateToComparable(dateFrom);
-    const to = parseInputDateToComparable(dateTo);
+    const from = parseInputDateToComparable(appliedDateFrom);
+    const to = parseInputDateToComparable(appliedDateTo);
     return processedData.filter(item => {
       if (activeUnit && item.ENTREGA !== activeUnit) return false;
       if (from || to) {
@@ -117,7 +132,7 @@ const Dashboard: React.FC = () => {
       }
       return true;
     });
-  }, [processedData, activeUnit, dateFrom, dateTo]);
+  }, [processedData, activeUnit, appliedDateFrom, appliedDateTo]);
 
   const statusCardsData = useMemo(() => {
     return baseScopeData.filter(item => {
@@ -356,9 +371,16 @@ const Dashboard: React.FC = () => {
         </div>
 
         <div className="w-full lg:w-auto flex flex-col md:flex-row gap-2 items-center">
-            {(statusFilters.length > 0 || paymentFilters.length > 0 || dateFrom || dateTo) && (
+            {(statusFilters.length > 0 || paymentFilters.length > 0 || appliedDateFrom || appliedDateTo) && (
                 <button 
-                    onClick={() => { setStatusFilters([]); setPaymentFilters([]); setDateFrom(''); setDateTo(''); }}
+                    onClick={() => {
+                      setStatusFilters([]);
+                      setPaymentFilters([]);
+                      setDraftDateFrom('');
+                      setDraftDateTo('');
+                      setAppliedDateFrom('');
+                      setAppliedDateTo('');
+                    }}
                     className="text-xs text-red-300 hover:text-red-100 font-bold flex items-center justify-center gap-1 px-3 py-2 bg-red-950/30 rounded-lg border border-red-500/40 transition-colors w-full md:w-auto"
                 >
                     <X size={14} /> Limpar Filtros
@@ -387,16 +409,43 @@ const Dashboard: React.FC = () => {
            <div className="flex items-center gap-2 w-full md:w-auto">
              <input
                type="date"
-               value={dateFrom}
-               onChange={(e) => setDateFrom(e.target.value)}
+               value={draftDateFrom}
+               onChange={(e) => setDraftDateFrom(e.target.value)}
                className="bg-[#080816] border border-[#1A1B62] text-gray-100 py-2 px-3 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#EC1B23] w-full md:w-auto"
+               title="Data de emissão inicial"
              />
              <input
                type="date"
-               value={dateTo}
-               onChange={(e) => setDateTo(e.target.value)}
+               value={draftDateTo}
+               onChange={(e) => setDraftDateTo(e.target.value)}
                className="bg-[#080816] border border-[#1A1B62] text-gray-100 py-2 px-3 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#EC1B23] w-full md:w-auto"
+               title="Data de emissão final"
              />
+             <button
+               type="button"
+               onClick={() => {
+                 setAppliedDateFrom(draftDateFrom);
+                 setAppliedDateTo(draftDateTo);
+               }}
+               className="inline-flex items-center gap-1 bg-[#2B2F8F] hover:bg-[#3A3FB0] text-white py-2 px-3 rounded-xl text-xs font-black border border-[#6E71DA] transition-colors whitespace-nowrap"
+               title="Aplicar filtro por data de emissão"
+             >
+               <CalendarCheck2 size={14} />
+               Aplicar
+             </button>
+             <button
+               type="button"
+               onClick={() => {
+                 setDraftDateFrom('');
+                 setDraftDateTo('');
+                 setAppliedDateFrom('');
+                 setAppliedDateTo('');
+               }}
+               className="bg-[#080816] hover:bg-[#0F103A] text-gray-100 py-2 px-3 rounded-xl text-xs font-bold border border-[#1A1B62] transition-colors whitespace-nowrap"
+               title="Limpar filtro por data de emissão"
+             >
+               Limpar datas
+             </button>
            </div>
         </div>
       </div>

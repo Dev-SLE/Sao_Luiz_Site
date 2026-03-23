@@ -4,7 +4,7 @@ import * as XLSX from 'xlsx';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { authClient } from '../lib/auth';
-import { FileSpreadsheet, Download, Loader2, SlidersHorizontal } from 'lucide-react';
+import { FileSpreadsheet, Download, Loader2, SlidersHorizontal, CalendarCheck2 } from 'lucide-react';
 import { CteData } from '../types';
 
 type ReportKind = 'dashboard' | 'pendencias' | 'criticos' | 'em_busca' | 'tad' | 'concluidos' | 'mix';
@@ -100,29 +100,45 @@ const Reports: React.FC = () => {
 
   // Filtros simples (unidade)
   const [unit, setUnit] = useState<string>('');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const [draftDateFrom, setDraftDateFrom] = useState('');
+  const [draftDateTo, setDraftDateTo] = useState('');
+  const [appliedDateFrom, setAppliedDateFrom] = useState('');
+  const [appliedDateTo, setAppliedDateTo] = useState('');
   const units = useMemo(() => {
     const s = new Set(rows.map(r => r.ENTREGA).filter(Boolean));
     return Array.from(s).sort();
   }, [rows]);
 
+  const parseDateKey = (value: string) => {
+    if (!value) return 0;
+    const [datePart] = String(value).split(' ');
+    const dmy = datePart.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (dmy) {
+      const [, dd, mm, yyyy] = dmy;
+      return Number(`${yyyy}${mm.padStart(2, '0')}${dd.padStart(2, '0')}`);
+    }
+    const ymd = datePart.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (ymd) {
+      const [, yyyy, mm, dd] = ymd;
+      return Number(`${yyyy}${mm.padStart(2, '0')}${dd.padStart(2, '0')}`);
+    }
+    return 0;
+  };
+
   const filteredRows = useMemo(() => {
-    const from = dateFrom ? parseInt(dateFrom.replace(/-/g, ''), 10) : 0;
-    const to = dateTo ? parseInt(dateTo.replace(/-/g, ''), 10) : 0;
+    const from = appliedDateFrom ? parseInt(appliedDateFrom.replace(/-/g, ''), 10) : 0;
+    const to = appliedDateTo ? parseInt(appliedDateTo.replace(/-/g, ''), 10) : 0;
     return rows.filter((r) => {
       if (unit && r.ENTREGA !== unit) return false;
       if (!from && !to) return true;
       const baseDate = kind === 'concluidos' ? (r.DATA_BAIXA || '') : (r.DATA_EMISSAO || '');
-      const [datePart] = String(baseDate).split(' ');
-      const p = datePart.split('/');
-      if (p.length !== 3) return false;
-      const k = parseInt(`${p[2]}${p[1]}${p[0]}`, 10);
+      const k = parseDateKey(baseDate);
+      if (!k) return false;
       if (from && k < from) return false;
       if (to && k > to) return false;
       return true;
     });
-  }, [rows, unit, kind, dateFrom, dateTo]);
+  }, [rows, unit, kind, appliedDateFrom, appliedDateTo]);
 
   const [selectedColumns, setSelectedColumns] = useState<ColumnKey[]>([
     'CTE',
@@ -338,6 +354,10 @@ const Reports: React.FC = () => {
             onClick={() => {
               setKind(k);
               setUnit('');
+              setDraftDateFrom('');
+              setDraftDateTo('');
+              setAppliedDateFrom('');
+              setAppliedDateTo('');
             }}
             className={clsx(
               'px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors',
@@ -374,16 +394,31 @@ const Reports: React.FC = () => {
           </span>
           <input
             type="date"
-            value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
+            value={draftDateFrom}
+            onChange={(e) => setDraftDateFrom(e.target.value)}
             className="bg-[#070A20] border border-[#1E226F] text-gray-100 text-xs font-bold px-2 py-1 rounded-lg outline-none focus:ring-2 focus:ring-[#EC1B23]/60"
           />
           <input
             type="date"
-            value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
+            value={draftDateTo}
+            onChange={(e) => setDraftDateTo(e.target.value)}
             className="bg-[#070A20] border border-[#1E226F] text-gray-100 text-xs font-bold px-2 py-1 rounded-lg outline-none focus:ring-2 focus:ring-[#EC1B23]/60"
           />
+          <button
+            type="button"
+            onClick={() => { setAppliedDateFrom(draftDateFrom); setAppliedDateTo(draftDateTo); }}
+            className="inline-flex items-center gap-1 rounded-lg bg-[#2B2F8F] border border-[#6E71DA] px-3 py-1 text-[11px] font-black text-white hover:bg-[#3A3FB0] transition-colors"
+          >
+            <CalendarCheck2 size={12} />
+            Aplicar
+          </button>
+          <button
+            type="button"
+            onClick={() => { setDraftDateFrom(''); setDraftDateTo(''); setAppliedDateFrom(''); setAppliedDateTo(''); }}
+            className="rounded-lg bg-[#080816] border border-[#1A1B62] px-3 py-1 text-[11px] font-bold text-gray-200 hover:bg-[#0F103A] transition-colors"
+          >
+            Limpar
+          </button>
         </div>
 
         <div className="text-[11px] text-gray-400">

@@ -78,8 +78,10 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
   const [filterTxEntrega, setFilterTxEntrega] = useState(false);
   const [globalSearch, setGlobalSearch] = useState('');
   const [dateField, setDateField] = useState<'EMISSAO' | 'LIMITE' | 'BAIXA'>('LIMITE');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const [draftDateFrom, setDraftDateFrom] = useState('');
+  const [draftDateTo, setDraftDateTo] = useState('');
+  const [appliedDateFrom, setAppliedDateFrom] = useState('');
+  const [appliedDateTo, setAppliedDateTo] = useState('');
   // --- Sort State ---
   const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'DATA_LIMITE_DATE', direction: 'asc' });
 
@@ -95,8 +97,8 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
     paymentFilters.length > 0 ||
     noteFilter !== 'ALL' ||
     filterTxEntrega ||
-    dateFrom.trim().length > 0 ||
-    dateTo.trim().length > 0 ||
+    appliedDateFrom.trim().length > 0 ||
+    appliedDateTo.trim().length > 0 ||
     globalSearch.trim().length > 0;
 
   const shouldUseLocalPagination = !!serverPagination && hasActiveTableFilters;
@@ -171,7 +173,7 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
       setServerCounts(null);
       return;
     }
-    if (dateFrom || dateTo) {
+    if (appliedDateFrom || appliedDateTo) {
       setServerCounts(null);
       return;
     }
@@ -208,7 +210,7 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
     return () => {
       cancelled = true;
     };
-  }, [serverView, selectedUnit, statusFilters.join('|'), paymentFilters.join('|'), noteFilter, filterTxEntrega, ignoreUnitFilter, user?.linkedDestUnit, globalSearch, dateFrom, dateTo]);
+  }, [serverView, selectedUnit, statusFilters.join('|'), paymentFilters.join('|'), noteFilter, filterTxEntrega, ignoreUnitFilter, user?.linkedDestUnit, globalSearch, appliedDateFrom, appliedDateTo]);
 
   // Quando houver filtros, buscamos o "view" completo uma vez e aplicamos os filtros localmente,
   // para que o número de páginas e os resultados batam com os cards (ctes_view_counts).
@@ -315,8 +317,8 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
     if (filterTxEntrega) {
       result = result.filter(d => parseCurrency(d.TX_ENTREGA) > 0);
     }
-    const fromKey = dateInputToKey(dateFrom);
-    const toKey = dateInputToKey(dateTo);
+    const fromKey = dateInputToKey(appliedDateFrom);
+    const toKey = dateInputToKey(appliedDateTo);
     if (fromKey || toKey) {
       result = result.filter((d) => {
         const k = getDateKeyByField(d);
@@ -343,8 +345,8 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
     noteFilter,
     filterTxEntrega,
     dateField,
-    dateFrom,
-    dateTo,
+    appliedDateFrom,
+    appliedDateTo,
     ignoreUnitFilter,
   ]);
   const sortedData = useMemo(() => {
@@ -523,8 +525,10 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
     setPaymentFilters([]);
     setNoteFilter('ALL');
     setFilterTxEntrega(false);
-    setDateFrom('');
-    setDateTo('');
+    setDraftDateFrom('');
+    setDraftDateTo('');
+    setAppliedDateFrom('');
+    setAppliedDateTo('');
     setGlobalSearch('');
     setSortConfig({ key: 'DATA_LIMITE_DATE', direction: 'asc' });
     setPage(1);
@@ -540,8 +544,8 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
     globalSearch,
     selectedUnit,
     dateField,
-    dateFrom,
-    dateTo,
+    appliedDateFrom,
+    appliedDateTo,
     noteFilter,
     filterTxEntrega,
     statusFilters.join('|'),
@@ -558,8 +562,8 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
     globalSearch,
     selectedUnit,
     dateField,
-    dateFrom,
-    dateTo,
+    appliedDateFrom,
+    appliedDateTo,
     noteFilter,
     filterTxEntrega,
     statusFilters.join('|'),
@@ -567,7 +571,7 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
   ]);
 
   const getCount = (filterType: 'status' | 'payment' | 'note' | 'txEntrega', key: string) => {
-      if (serverPagination && serverCounts && !dateFrom && !dateTo) {
+      if (serverPagination && serverCounts && !appliedDateFrom && !appliedDateTo) {
         if (filterType === 'status') return serverCounts.statusCounts?.[key] ?? 0;
         if (filterType === 'payment') return serverCounts.paymentCounts?.[key] ?? 0;
         if (filterType === 'note') return key === 'WITH' ? serverCounts.noteWith : serverCounts.noteWithout;
@@ -596,8 +600,8 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
           });
       }
       if (filterType !== 'txEntrega' && filterTxEntrega) base = base.filter(d => parseCurrency(d.TX_ENTREGA) > 0);
-      const fromKey = dateInputToKey(dateFrom);
-      const toKey = dateInputToKey(dateTo);
+      const fromKey = dateInputToKey(appliedDateFrom);
+      const toKey = dateInputToKey(appliedDateTo);
       if (fromKey || toKey) {
         base = base.filter((d) => {
           const k = getDateKeyByField(d);
@@ -741,19 +745,27 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
                 </select>
                 <input
                     type="date"
-                    value={dateFrom}
-                    onChange={(e) => setDateFrom(e.target.value)}
+                    value={draftDateFrom}
+                    onChange={(e) => setDraftDateFrom(e.target.value)}
                     className="bg-[#080816] border border-[#1A1B62] text-gray-100 py-2.5 px-3 rounded-xl text-xs font-bold focus:outline-none focus:ring-1 focus:ring-[#EC1B23]"
                 />
                 <input
                     type="date"
-                    value={dateTo}
-                    onChange={(e) => setDateTo(e.target.value)}
+                    value={draftDateTo}
+                    onChange={(e) => setDraftDateTo(e.target.value)}
                     className="bg-[#080816] border border-[#1A1B62] text-gray-100 py-2.5 px-3 rounded-xl text-xs font-bold focus:outline-none focus:ring-1 focus:ring-[#EC1B23]"
                 />
                 <button
                     type="button"
-                    onClick={() => { setDateFrom(''); setDateTo(''); }}
+                    onClick={() => { setAppliedDateFrom(draftDateFrom); setAppliedDateTo(draftDateTo); }}
+                    className="px-3 py-2 text-xs text-white font-black bg-[#2B2F8F] hover:bg-[#3A3FB0] rounded-xl transition-colors border border-[#6E71DA] inline-flex items-center justify-center gap-1"
+                >
+                    <CalendarCheck2 size={14} />
+                    Aplicar
+                </button>
+                <button
+                    type="button"
+                    onClick={() => { setDraftDateFrom(''); setDraftDateTo(''); setAppliedDateFrom(''); setAppliedDateTo(''); }}
                     className="px-3 py-2 text-xs text-gray-200 font-bold bg-[#080816] hover:bg-[#0F103A] rounded-xl transition-colors border border-[#1A1B62]"
                 >
                     Limpar datas
@@ -837,10 +849,10 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
             </div>
              
              {/* FOOTER: CLEAR FILTERS */}
-             {(statusFilters.length > 0 || paymentFilters.length > 0 || noteFilter !== 'ALL' || filterTxEntrega || dateFrom || dateTo) && (
+             {(statusFilters.length > 0 || paymentFilters.length > 0 || noteFilter !== 'ALL' || filterTxEntrega || appliedDateFrom || appliedDateTo) && (
                  <div className="flex justify-end mt-6 pt-3 border-t border-[#1A1B62]">
                     <button
-                      onClick={() => { setStatusFilters([]); setPaymentFilters([]); setNoteFilter('ALL'); setFilterTxEntrega(false); setDateFrom(''); setDateTo(''); }}
+                      onClick={() => { setStatusFilters([]); setPaymentFilters([]); setNoteFilter('ALL'); setFilterTxEntrega(false); setDraftDateFrom(''); setDraftDateTo(''); setAppliedDateFrom(''); setAppliedDateTo(''); }}
                       className="px-4 py-2 text-xs text-red-300 font-bold bg-red-900/40 hover:bg-red-900/70 rounded-lg transition-colors flex items-center gap-2 border border-red-500/60"
                     >
                         <X size={14} /> Limpar Todos os Filtros
