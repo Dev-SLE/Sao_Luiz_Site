@@ -1,7 +1,7 @@
-import React, { useMemo } from 'react';
-import { useData } from '../context/DataContext';
+import React, { useEffect, useMemo, useState } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, BarChart, XAxis, YAxis, Bar } from 'recharts';
 import { MessageSquare, Activity, Radar, Filter } from 'lucide-react';
+import { authClient } from '../lib/auth';
 
 const CHANNEL_COLORS: Record<string, string> = {
   WHATSAPP: '#10b981',
@@ -10,27 +10,21 @@ const CHANNEL_COLORS: Record<string, string> = {
 };
 
 const CrmDashboard: React.FC = () => {
-  const { baseData } = useData();
+  const [productivity, setProductivity] = useState<any>(null);
 
-  // Mock de conversas por canal (futuramente virá do backend CRM)
   const conversationsByChannel = useMemo(
-    () => [
-      { name: 'WhatsApp', key: 'WHATSAPP', value: 18 },
-      { name: 'IA', key: 'IA', value: 7 },
-      { name: 'Interno', key: 'INTERNO', value: 5 },
-    ],
-    []
+    () =>
+      (productivity?.channels || []).map((c: any) => ({
+        name: c.channel,
+        key: c.channel,
+        value: c.total,
+      })),
+    [productivity]
   );
 
-  // Mock de tempo médio de resposta por estágio (em minutos)
   const responseTimeByStage = useMemo(
-    () => [
-      { stage: 'Novos', minutes: 12 },
-      { stage: 'Qualificando', minutes: 25 },
-      { stage: 'Negociando', minutes: 40 },
-      { stage: 'Fechado', minutes: 8 },
-    ],
-    []
+    () => productivity?.stageTimes || [],
+    [productivity]
   );
 
   // Volume de rastreios automáticos da IA (hoje) via localStorage
@@ -47,10 +41,25 @@ const CrmDashboard: React.FC = () => {
     }
   }, []);
 
-  const availableUnits = useMemo(() => {
-    const units = new Set(baseData.map((d) => d.ENTREGA).filter(Boolean));
-    return Array.from(units).sort();
-  }, [baseData]);
+  const topAgents = useMemo(() => productivity?.agents || [], [productivity]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const data = await authClient.getCrmProductivity();
+        if (!cancelled) setProductivity(data);
+      } catch {
+        if (!cancelled) setProductivity(null);
+      }
+    };
+    run();
+    const interval = window.setInterval(run, 8000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, []);
 
   return (
     <div className="flex flex-col gap-4 animate-in fade-in duration-500 text-white">
@@ -77,7 +86,7 @@ const CrmDashboard: React.FC = () => {
           <div>
             <p className="text-[11px] text-gray-400 uppercase tracking-wide">Conversas ativas</p>
             <p className="text-2xl font-black">
-              {conversationsByChannel.reduce((acc, c) => acc + c.value, 0)}
+              {conversationsByChannel.reduce((acc: number, c: any) => acc + Number(c.value || 0), 0)}
             </p>
             <p className="text-[11px] text-gray-400 mt-1">
               Distribuídas entre WhatsApp, IA e Interno.
@@ -91,9 +100,9 @@ const CrmDashboard: React.FC = () => {
             <p className="text-[11px] text-gray-400 uppercase tracking-wide">
               Tempo médio de resposta
             </p>
-            <p className="text-2xl font-black">~ 21 min</p>
+            <p className="text-2xl font-black">{productivity?.sla?.hitRate ?? 0}%</p>
             <p className="text-[11px] text-gray-400 mt-1">
-              Média ponderada entre os estágios do funil.
+              Taxa de cumprimento do SLA nas conversas ativas.
             </p>
           </div>
           <Radar size={32} className="text-sky-400" />
@@ -131,7 +140,7 @@ const CrmDashboard: React.FC = () => {
                     `${name} ${(percent * 100).toFixed(0)}%`
                   }
                 >
-                  {conversationsByChannel.map((entry, index) => (
+                  {conversationsByChannel.map((entry: any, index: number) => (
                     <Cell
                       key={`cell-${index}`}
                       fill={CHANNEL_COLORS[entry.key] || '#9ca3af'}
@@ -191,19 +200,21 @@ const CrmDashboard: React.FC = () => {
 
         <div className="bg-[#070A20] border border-[#1E226F] rounded-xl p-4 shadow-[0_0_24px_rgba(0,0,0,0.85)] flex flex-col h-[260px]">
           <div className="flex items-center justify-between mb-2">
-            <h2 className="text-sm font-bold">Unidades atendidas</h2>
+            <h2 className="text-sm font-bold">Produtividade por atendente</h2>
           </div>
           <div className="flex-1 min-h-0 overflow-y-auto text-[11px] text-gray-200 space-y-1">
-            {availableUnits.length === 0 ? (
-              <p className="text-gray-500">Nenhuma unidade carregada da base logística.</p>
+            {topAgents.length === 0 ? (
+              <p className="text-gray-500">Sem dados de atendentes ainda.</p>
             ) : (
-              availableUnits.map((u) => (
+              topAgents.map((a: any) => (
                 <div
-                  key={u}
+                  key={a.username}
                   className="flex items-center justify-between px-2 py-1 rounded border border-[#1A1B62] bg-[#080816]"
                 >
-                  <span className="truncate max-w-[70%]">{u}</span>
-                  <span className="text-[10px] text-gray-400">Ativa</span>
+                  <span className="truncate max-w-[70%]">{a.username}</span>
+                  <span className="text-[10px] text-gray-400">
+                    {a.openCount} abertos / SLA {a.slaBreached}
+                  </span>
                 </div>
               ))
             )}

@@ -11,28 +11,28 @@ const StatusBadge: React.FC<Props> = ({ status, onClick }) => {
     switch (s?.toUpperCase()) {
       case 'FORA DO PRAZO':
       case 'CRÍTICO':
-        return 'bg-red-100 text-red-800 border-red-200';
+        return 'bg-red-950/70 text-red-200 border-red-500/60';
       case 'PRIORIDADE':
-        return 'bg-orange-100 text-orange-800 border-orange-200';
+        return 'bg-amber-900/60 text-amber-200 border-amber-500/60';
       case 'VENCE AMANHÃ':
-        return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+        return 'bg-yellow-900/55 text-yellow-200 border-yellow-500/55';
       case 'NO PRAZO':
-        return 'bg-cyan-100 text-cyan-800 border-cyan-200';
+        return 'bg-sky-900/55 text-sky-200 border-sky-500/55';
       // New Payment Colors
       case 'CIF':
-        return 'bg-emerald-50 text-emerald-700 border-emerald-100'; // Green
+        return 'bg-emerald-900/55 text-emerald-200 border-emerald-500/55';
       case 'FOB':
-        return 'bg-red-50 text-red-600 border-red-100'; // Red
+        return 'bg-rose-900/60 text-rose-200 border-rose-500/60';
       case 'FATURAR_REMETENTE':
-        return 'bg-yellow-50 text-yellow-700 border-yellow-100'; // Yellow
+        return 'bg-orange-900/55 text-orange-200 border-orange-500/55';
       case 'FATURAR_DEST':
-        return 'bg-orange-50 text-orange-700 border-orange-100'; // Orange
+        return 'bg-fuchsia-900/50 text-fuchsia-200 border-fuchsia-500/55';
       // Resolved Status
       case 'RESOLVIDO':
       case 'LOCALIZADA':
-        return 'bg-green-100 text-green-800 border-green-200 font-bold';
+        return 'bg-emerald-900/65 text-emerald-100 border-emerald-400/60 font-bold';
       default:
-        return 'bg-gray-100 text-gray-800 border-gray-200';
+        return 'bg-slate-800 text-slate-200 border-slate-500/50';
     }
   };
 
@@ -40,7 +40,7 @@ const StatusBadge: React.FC<Props> = ({ status, onClick }) => {
     <span
       onClick={onClick}
       className={clsx(
-        "px-2 py-1 rounded-full text-[11px] font-semibold border cursor-pointer transition-all whitespace-nowrap shadow-[0_0_10px_rgba(0,0,0,0.4)]",
+        "px-2 py-1 rounded-full text-[11px] font-semibold border cursor-pointer transition-all whitespace-nowrap",
         getColors(status)
       )}
     >

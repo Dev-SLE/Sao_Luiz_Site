@@ -1,0 +1,261 @@
+import { NextResponse } from "next/server";
+import { getPool } from "../../../../../lib/server/db";
+import { ensureCrmSchemaTables } from "../../../../../lib/server/ensureSchema";
+import { countTrailingClientStreak } from "../../../../../lib/server/sofiaStreak";
+
+export const runtime = "nodejs";
+
+function fallbackReply(input: { customerName?: string; cte?: string; text?: string }) {
+  const lower = String(input.text || "").toLowerCase();
+  if (lower.includes("prazo") || lower.includes("entrega")) {
+    return `Recebi sua dúvida sobre prazo. Vou conferir o status e já te atualizo com a previsão mais precisa.`;
+  }
+  if (lower.includes("cte") || lower.includes("rastre")) {
+    return `Perfeito, vou validar o rastreio do CTE ${input.cte || ""} e te retorno em seguida com os detalhes.`;
+  }
+  return `Oi${input.customerName ? `, ${input.customerName}` : ""}! Recebi sua mensagem e já estou verificando para te responder com precisão.`;
+}
+
+function getWeekdayKey(d = new Date()) {
+  const map: Record<number, string> = {
+    0: "domingo",
+    1: "segunda",
+    2: "terca",
+    3: "quarta",
+    4: "quinta",
+    5: "sexta",
+    6: "sabado",
+  };
+  return map[d.getDay()];
+}
+
+function parseHmToMinutes(hm: string | null | undefined) {
+  const s = String(hm || "00:00");
+  const [h, m] = s.split(":").map((x) => Number(x || 0));
+  return h * 60 + m;
+}
+
+async function callOpenAi(prompt: string, modelOverride?: string | null) {
+  const apiKey = process.env.OPENAI_API_KEY;
+  const model =
+    (modelOverride && String(modelOverride).trim()) || process.env.OPENAI_MODEL || "gpt-4o-mini";
+  if (!apiKey) return null;
+  const resp = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      temperature: 0.2,
+      messages: [
+        { role: "system", content: "Você é Sofia, assistente de CRM logístico. Seja objetiva e cordial." },
+        { role: "user", content: prompt },
+      ],
+    }),
+  });
+  if (!resp.ok) return null;
+  const json = await resp.json().catch(() => ({}));
+  return json?.choices?.[0]?.message?.content ? String(json.choices[0].message.content) : null;
+}
+
+export async function POST(req: Request) {
+  try {
+    await ensureCrmSchemaTables();
+    const pool = getPool();
+    const body = await req.json().catch(() => ({}));
+    const conversationId = body?.conversationId ? String(body.conversationId) : null;
+    const text = body?.text ? String(body.text) : "";
+    if (!conversationId) return NextResponse.json({ error: "conversationId obrigatório" }, { status: 400 });
+
+    const [convRes, settingsRes, lastMsgsRes] = await Promise.all([
+      pool.query(
+        `
+          SELECT c.id, c.channel, c.topic, l.title, l.cte_number, l.contact_phone
+               , l.customer_status, l.agency_requested_at, l.agency_sla_minutes
+               , c.status, c.sla_breached_at
+          FROM pendencias.crm_conversations c
+          JOIN pendencias.crm_leads l ON l.id = c.lead_id
+          WHERE c.id = $1
+          LIMIT 1
+        `,
+        [conversationId]
+      ),
+      pool.query(
+        `
+          SELECT
+            name, welcome_message, knowledge_base, auto_reply_enabled, escalation_keywords,
+            active_days, auto_mode, min_confidence, max_auto_replies_per_conversation,
+            business_hours_start, business_hours_end, blocked_topics, blocked_statuses,
+            require_human_if_sla_breached, require_human_after_customer_messages,
+            model_name
+          FROM pendencias.crm_sofia_settings
+          ORDER BY updated_at DESC
+          LIMIT 1
+        `
+      ),
+      pool.query(
+        `
+          SELECT sender_type, body, created_at
+          FROM pendencias.crm_messages
+          WHERE conversation_id = $1
+          ORDER BY created_at DESC
+          LIMIT 30
+        `,
+        [conversationId]
+      ),
+    ]);
+
+    const conv = convRes.rows?.[0];
+    if (!conv) return NextResponse.json({ error: "conversa não encontrada" }, { status: 404 });
+    const settings = settingsRes.rows?.[0] || {};
+    const transcript = (lastMsgsRes.rows || [])
+      .reverse()
+      .map((m: any) => `${String(m.sender_type)}: ${String(m.body)}`)
+      .join("\n");
+    const escalationKeywords: string[] = Array.isArray(settings.escalation_keywords)
+      ? settings.escalation_keywords.map((x: any) => String(x).toLowerCase())
+      : [];
+    const shouldEscalate = escalationKeywords.some((k: string) => text.toLowerCase().includes(k));
+    const blockedTopics: string[] = Array.isArray(settings.blocked_topics) ? settings.blocked_topics.map((x: any) => String(x).toUpperCase()) : [];
+    const blockedStatuses: string[] = Array.isArray(settings.blocked_statuses) ? settings.blocked_statuses.map((x: any) => String(x).toUpperCase()) : [];
+
+    const iaMsgCount = (lastMsgsRes.rows || []).filter((m: any) => String(m.sender_type || "").toUpperCase() === "IA").length;
+    /** Sequência atual de mensagens do cliente sem resposta (histórico DESC = mais novo primeiro). */
+    const trailingClientStreak = countTrailingClientStreak(lastMsgsRes.rows || []);
+
+    const now = new Date();
+    const dayKey = getWeekdayKey(now);
+    const activeDays = settings.active_days && typeof settings.active_days === "object" ? settings.active_days : {};
+    const isDayEnabled = !!activeDays[dayKey];
+    const nowMinutes = now.getHours() * 60 + now.getMinutes();
+    const startMinutes = parseHmToMinutes(settings.business_hours_start || "08:00");
+    const endMinutes = parseHmToMinutes(settings.business_hours_end || "18:00");
+    const isInBusinessHours = nowMinutes >= startMinutes && nowMinutes <= endMinutes;
+
+    const minConfidence = Number(settings.min_confidence || 70);
+    const maxAutoReplies = Number(settings.max_auto_replies_per_conversation || 2);
+    const requireHumanIfSlaBreached = settings.require_human_if_sla_breached === undefined ? true : !!settings.require_human_if_sla_breached;
+    const requireHumanAfterCustomerMessages = Number(settings.require_human_after_customer_messages || 4);
+    const autoMode = String(settings.auto_mode || "ASSISTIDO").toUpperCase(); // ASSISTIDO | SEMI_AUTO | AUTO_TOTAL
+
+    const prompt = [
+      `Nome cliente: ${String(conv.title || "")}`,
+      `CTE: ${String(conv.cte_number || "")}`,
+      `Tópico: ${String(conv.topic || "")}`,
+      `Conhecimento: ${String(settings.knowledge_base || "")}`,
+      `Histórico:\n${transcript}`,
+      `Mensagem atual: ${text}`,
+      `Responda em pt-BR, curta e precisa.`,
+    ].join("\n\n");
+
+    let suggestion = await callOpenAi(prompt, settings.model_name);
+    const fromOpenAi = !!suggestion?.trim();
+    if (!suggestion) {
+      suggestion = fallbackReply({
+        customerName: String(conv.title || ""),
+        cte: String(conv.cte_number || ""),
+        text,
+      });
+    }
+
+    const confidence = shouldEscalate
+      ? 15
+      : fromOpenAi
+        ? Math.max(minConfidence, 85)
+        : text.length > 80
+          ? 85
+          : text.length > 30
+            ? 75
+            : 65;
+
+    let allowAutoSend = !!settings.auto_reply_enabled;
+    let governanceReason = "ok";
+
+    if (autoMode === "ASSISTIDO") {
+      allowAutoSend = false;
+      governanceReason = "assistido_mode";
+    } else if (autoMode === "SEMI_AUTO") {
+      allowAutoSend = false;
+      governanceReason = "semi_auto_requires_human_confirm";
+    }
+    if (!isDayEnabled) {
+      allowAutoSend = false;
+      governanceReason = "outside_active_day";
+    }
+    if (!isInBusinessHours) {
+      allowAutoSend = false;
+      governanceReason = "outside_business_hours";
+    }
+    if (confidence < minConfidence) {
+      allowAutoSend = false;
+      governanceReason = "low_confidence";
+    }
+    if (iaMsgCount >= maxAutoReplies) {
+      allowAutoSend = false;
+      governanceReason = "max_auto_replies_reached";
+    }
+    if (blockedTopics.includes(String(conv.topic || "").toUpperCase())) {
+      allowAutoSend = false;
+      governanceReason = "blocked_topic";
+    }
+    if (blockedStatuses.includes(String(conv.status || "").toUpperCase())) {
+      allowAutoSend = false;
+      governanceReason = "blocked_status";
+    }
+    if (String(conv.customer_status || "").toUpperCase() === "AGUARDANDO_RETORNO_AGENCIA") {
+      allowAutoSend = false;
+      governanceReason = "agency_waiting_human_followup";
+    }
+    if (conv.agency_requested_at) {
+      const requestedAt = new Date(String(conv.agency_requested_at)).getTime();
+      if (Number.isFinite(requestedAt)) {
+        const elapsedMinutes = Math.floor((Date.now() - requestedAt) / 60000);
+        const agencySlaMinutes = Number(conv.agency_sla_minutes || 60);
+        if (elapsedMinutes > agencySlaMinutes) {
+          allowAutoSend = false;
+          governanceReason = "agency_sla_breached";
+        }
+      }
+    }
+    if (requireHumanIfSlaBreached && !!conv.sla_breached_at) {
+      allowAutoSend = false;
+      governanceReason = "sla_breached";
+    }
+    if (trailingClientStreak > requireHumanAfterCustomerMessages) {
+      allowAutoSend = false;
+      governanceReason = "too_many_customer_messages_without_human";
+    }
+    if (shouldEscalate) {
+      allowAutoSend = false;
+      governanceReason = "keyword_detected";
+    }
+
+    return NextResponse.json({
+      suggestion,
+      autoReplyEnabled: !!settings.auto_reply_enabled,
+      shouldEscalate,
+      escalateReason: shouldEscalate ? "keyword_detected" : null,
+      governance: {
+        autoMode,
+        allowAutoSend,
+        reason: governanceReason,
+        confidence,
+        minConfidence,
+        iaMsgCount,
+        maxAutoReplies,
+        trailingClientStreak,
+        requireHumanAfterCustomerMessages,
+      },
+      context: {
+        topic: conv.topic || null,
+        channel: conv.channel || "WHATSAPP",
+      },
+    });
+  } catch (error) {
+    console.error("CRM Sofia respond POST error:", error);
+    return NextResponse.json({ error: "Erro interno" }, { status: 500 });
+  }
+}
+

@@ -22,10 +22,43 @@ export interface AuthResponse {
 
 export class NeonDataClient {
   private apiKey: string | null = null;
+  private cache = new Map<string, { expiresAt: number; data: any }>();
+
+  private getApiBaseUrl() {
+    const raw = String(API_BASE_URL || '/api').trim();
+    const sanitized = raw.replace(/\/+$/, '');
+    if (!sanitized) return '/api';
+    // Se já veio com /api no final, não duplica.
+    if (sanitized === '/api' || sanitized.endsWith('/api')) return sanitized;
+    return `${sanitized}/api`;
+  }
+
+  private makeApiUrl(endpoint: string) {
+    const base = this.getApiBaseUrl();
+    const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+    return `${base}${cleanEndpoint}`;
+  }
+
+  private async buildHttpError(prefix: string, response: Response) {
+    let detail = '';
+    try {
+      const ct = response.headers.get('content-type') || '';
+      if (ct.includes('application/json')) {
+        const data = await response.json();
+        detail = data?.error || data?.message || JSON.stringify(data);
+      } else {
+        detail = await response.text();
+      }
+    } catch {
+      detail = '';
+    }
+    const suffix = detail ? ` - ${detail}` : '';
+    return new Error(`${prefix}: ${response.status}${suffix}`);
+  }
 
   // Login real via backend Express
   async login(username: string, password: string): Promise<AuthResponse> {
-    const response = await fetch(`${API_BASE_URL}/login`, {
+    const response = await fetch(this.makeApiUrl('/login'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
@@ -48,7 +81,7 @@ export class NeonDataClient {
   // Método para buscar dados com paginação
   async fetchData(endpoint: string, params?: { page?: number, limit?: number }): Promise<any> {
     try {
-      let url = `${API_BASE_URL}${endpoint}`;
+      let url = this.makeApiUrl(endpoint);
       if (params && (params.page || params.limit)) {
         const usp = new URLSearchParams();
         if (params.page) usp.append('page', params.page.toString());
@@ -57,7 +90,7 @@ export class NeonDataClient {
       }
       const response = await fetch(url);
       if (!response.ok) {
-        throw new Error(`Erro na API: ${response.status}`);
+        throw await this.buildHttpError('Erro na API', response);
       }
       return response.json();
     } catch (error) {
@@ -66,17 +99,56 @@ export class NeonDataClient {
     }
   }
 
+  private getCacheKey(url: string) {
+    return `GET:${url}`;
+  }
+
+  private getCached(url: string) {
+    const key = this.getCacheKey(url);
+    const hit = this.cache.get(key);
+    if (!hit) return null;
+    if (Date.now() > hit.expiresAt) {
+      this.cache.delete(key);
+      return null;
+    }
+    return hit.data;
+  }
+
+  private setCached(url: string, data: any, ttlMs: number) {
+    const key = this.getCacheKey(url);
+    this.cache.set(key, { data, expiresAt: Date.now() + ttlMs });
+  }
+
+  private clearCache(prefix?: string) {
+    if (!prefix) {
+      this.cache.clear();
+      return;
+    }
+    const p = String(prefix).toLowerCase();
+    for (const key of this.cache.keys()) {
+      if (key.toLowerCase().includes(p)) this.cache.delete(key);
+    }
+  }
+
   async postJson(endpoint: string, body: any): Promise<any> {
-    const url = `${API_BASE_URL}${endpoint}`;
+    const url = this.makeApiUrl(endpoint);
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body ?? {}),
     });
     if (!response.ok) {
-      throw new Error(`Erro na API: ${response.status}`);
+      throw await this.buildHttpError('Erro na API', response);
     }
-    return response.json();
+    const json = await response.json();
+    // Mutações invalidam caches correlatos para reduzir re-fetches inconsistentes.
+    if (endpoint.includes('/crm/')) this.clearCache('/crm/');
+    if (endpoint.includes('/ctes_') || endpoint.includes('/notes') || endpoint.includes('/process')) {
+      this.clearCache('/ctes_');
+      this.clearCache('/notes');
+      this.clearCache('/process');
+    }
+    return json;
   }
 
   async logEvent(payload: {
@@ -99,12 +171,22 @@ export class NeonDataClient {
 
   async getCtesView(view: 'pendencias' | 'criticos' | 'em_busca' | 'tad' | 'concluidos', page = 1, limit = 50): Promise<{ data: any[], total: number }> {
     const endpoint = `/ctes_view?view=${encodeURIComponent(view)}&page=${page}&limit=${limit}`;
-    return this.fetchData(endpoint);
+    const url = this.makeApiUrl(endpoint);
+    const cached = this.getCached(url);
+    if (cached) return cached;
+    const data = await this.fetchData(endpoint);
+    this.setCached(url, data, 15_000);
+    return data;
   }
 
   async getCtesDashboard(page = 1, limit = 10000): Promise<{ data: any[], total: number }> {
     const endpoint = `/ctes_dashboard?page=${page}&limit=${limit}`;
-    return this.fetchData(endpoint);
+    const url = this.makeApiUrl(endpoint);
+    const cached = this.getCached(url);
+    if (cached) return cached;
+    const data = await this.fetchData(endpoint);
+    this.setCached(url, data, 20_000);
+    return data;
   }
 
   async getCtesViewCounts(payload: {
@@ -134,12 +216,18 @@ export class NeonDataClient {
   }
 
   async getUsers(): Promise<any[]> {
-    const resp = await this.fetchData('/users');
+    const url = this.makeApiUrl('/users');
+    const cached = this.getCached(url);
+    const resp = cached || (await this.fetchData('/users'));
+    if (!cached) this.setCached(url, resp, 30_000);
     return Array.isArray(resp) ? resp : (resp?.data || []);
   }
 
   async getProfiles(): Promise<any[]> {
-    const resp = await this.fetchData('/profiles');
+    const url = this.makeApiUrl('/profiles');
+    const cached = this.getCached(url);
+    const resp = cached || (await this.fetchData('/profiles'));
+    if (!cached) this.setCached(url, resp, 30_000);
     return Array.isArray(resp) ? resp : (resp?.data || []);
   }
 
@@ -159,7 +247,7 @@ export class NeonDataClient {
   // Método para inserir dados
   async insertData(table: string, data: any): Promise<any> {
     try {
-      const response = await fetch(`${API_BASE_URL}/${table}`, {
+      const response = await fetch(this.makeApiUrl(`/${table}`), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -183,7 +271,7 @@ export class NeonDataClient {
   }
 
   async deleteNote(id: string): Promise<any> {
-    return await fetch(`${API_BASE_URL}/notes?id=${encodeURIComponent(id)}`, { method: 'DELETE' }).then(r => r.json());
+    return await fetch(`${this.makeApiUrl('/notes')}?id=${encodeURIComponent(id)}`, { method: 'DELETE' }).then(r => r.json());
   }
 
   async saveProcessData(payload: any): Promise<any> {
@@ -203,7 +291,7 @@ export class NeonDataClient {
   }
 
   async deleteProfile(name: string): Promise<any> {
-    const url = `${API_BASE_URL}/profiles?name=${encodeURIComponent(name)}`;
+    const url = `${this.makeApiUrl('/profiles')}?name=${encodeURIComponent(name)}`;
     const response = await fetch(url, { method: 'DELETE' });
     if (!response.ok) throw new Error(`Erro na API: ${response.status}`);
     return response.json();
@@ -214,7 +302,7 @@ export class NeonDataClient {
   }
 
   async deleteUser(username: string): Promise<any> {
-    const url = `${API_BASE_URL}/users?username=${encodeURIComponent(username)}`;
+    const url = `${this.makeApiUrl('/users')}?username=${encodeURIComponent(username)}`;
     const response = await fetch(url, { method: 'DELETE' });
     if (!response.ok) throw new Error(`Erro na API: ${response.status}`);
     return response.json();
@@ -247,52 +335,154 @@ export class NeonDataClient {
       source: string;
       priority: string;
       currentLocation?: string | null;
+      ownerUsername?: string | null;
+      topic?: string | null;
+      assignedTeamId?: string | null;
+      assignedUsername?: string | null;
+      assignmentMode?: string | null;
+      protocolNumber?: string | null;
+      mdfeDate?: string | null;
+      routeOrigin?: string | null;
+      routeDestination?: string | null;
+      requestedAt?: string | null;
+      serviceType?: string | null;
+      cargoStatus?: string | null;
+      customerStatus?: string | null;
+      agencyId?: string | null;
+      agencyRequestedAt?: string | null;
+      agencySlaMinutes?: number | null;
+      agencyName?: string | null;
       stageId: string;
       logs?: string[];
     }>;
+    agencies?: Array<{
+      id: string;
+      name: string;
+      city?: string | null;
+      state?: string | null;
+      phone?: string | null;
+      whatsapp?: string | null;
+      contactName?: string | null;
+      serviceRegion?: string | null;
+      avgResponseMinutes?: number | null;
+      internalRating?: number | null;
+      notes?: string | null;
+    }>;
   }> {
-    const resp = await fetch(`${API_BASE_URL}/crm/board`);
-    if (!resp.ok) throw new Error(`Erro ao buscar CRM board: ${resp.status}`);
-    return resp.json();
+    const url = this.makeApiUrl('/crm/board');
+    const cached = this.getCached(url);
+    if (cached) return cached;
+    const resp = await fetch(url);
+    if (!resp.ok) throw await this.buildHttpError('Erro ao buscar CRM board', resp);
+    const data = await resp.json();
+    this.setCached(url, data, 12_000);
+    return data;
   }
 
   async createCrmLead(payload: any): Promise<any> {
     return this.postJson("/crm/leads", payload);
   }
 
-  async createCrmPipeline(payload: any): Promise<any> {
-    return this.postJson("/crm/pipelines", payload);
-  }
-
-  async moveCrmLead(payload: { leadId: string; stageId: string; ownerUsername?: string | null }): Promise<any> {
-    const url = `${API_BASE_URL}/crm/leads/move`;
+  async updateCrmLead(payload: any): Promise<any> {
+    const url = this.makeApiUrl('/crm/leads');
     const response = await fetch(url, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload ?? {}),
     });
-    if (!response.ok) throw new Error(`Erro na API: ${response.status}`);
+    if (!response.ok) throw await this.buildHttpError('Erro na API', response);
     return response.json();
   }
 
-  async getCrmConversations(params?: { leadId?: string | null }): Promise<any> {
+  async deleteCrmLead(payload: { leadId: string; deletedByUsername?: string | null }): Promise<any> {
+    const response = await fetch(`${this.makeApiUrl('/crm/leads')}?leadId=${encodeURIComponent(payload.leadId)}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        deletedByUsername: payload.deletedByUsername ?? null,
+      }),
+    });
+    if (!response.ok) throw await this.buildHttpError('Erro na API', response);
+    return response.json();
+  }
+
+  async createCrmPipeline(payload: any): Promise<any> {
+    return this.postJson("/crm/pipelines", payload);
+  }
+
+  async moveCrmLead(payload: {
+    leadId: string;
+    stageId?: string;
+    ownerUsername?: string | null;
+    action?: "REQUEST_AGENCY_RETURN" | string;
+    agencyId?: string | null;
+    slaMinutes?: number | null;
+  }): Promise<any> {
+    const url = this.makeApiUrl('/crm/leads/move');
+    const response = await fetch(url, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload ?? {}),
+    });
+    if (!response.ok) throw await this.buildHttpError('Erro na API', response);
+    return response.json();
+  }
+
+  async getCrmConversations(params?: {
+    leadId?: string | null;
+    requestUsername?: string | null;
+    requestRole?: string | null;
+    mineOnly?: boolean;
+    teamId?: string | null;
+  }): Promise<any> {
     const usp = new URLSearchParams();
     if (params?.leadId) usp.set("leadId", params.leadId);
+    if (params?.requestUsername) usp.set("requestUsername", params.requestUsername);
+    if (params?.requestRole) usp.set("requestRole", params.requestRole);
+    if (params?.mineOnly) usp.set("mineOnly", "true");
+    if (params?.teamId) usp.set("teamId", params.teamId);
     const qs = usp.toString();
-    const url = `${API_BASE_URL}/crm/conversations${qs ? `?${qs}` : ""}`;
+    const url = `${this.makeApiUrl('/crm/conversations')}${qs ? `?${qs}` : ""}`;
+    const cached = this.getCached(url);
+    if (cached) return cached;
     const resp = await fetch(url);
-    if (!resp.ok) throw new Error(`Erro ao buscar conversas: ${resp.status}`);
-    return resp.json();
+    if (!resp.ok) throw await this.buildHttpError('Erro ao buscar conversas', resp);
+    const data = await resp.json();
+    this.setCached(url, data, 5_000);
+    return data;
   }
 
   async createCrmConversation(payload: { leadId: string; channel?: string }): Promise<any> {
     return this.postJson("/crm/conversations", payload);
   }
 
+  async updateCrmConversation(payload: {
+    conversationId: string;
+    status?: string;
+    assignedUsername?: string | null;
+    assignedTeamId?: string | null;
+    assignmentMode?: string;
+    lockAction?: "LOCK" | "UNLOCK" | "CLAIM";
+    lockBy?: string | null;
+    lockMinutes?: number;
+    topic?: string;
+  }): Promise<any> {
+    const url = this.makeApiUrl('/crm/conversations');
+    const response = await fetch(url, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload ?? {}),
+    });
+    if (!response.ok) throw await this.buildHttpError('Erro na API', response);
+    this.clearCache("/crm/conversations");
+    return response.json();
+  }
+
   async getCrmMessages(conversationId: string): Promise<any> {
-    const url = `${API_BASE_URL}/crm/messages?conversationId=${encodeURIComponent(conversationId)}`;
+    const url = `${this.makeApiUrl('/crm/messages')}?conversationId=${encodeURIComponent(conversationId)}`;
+    // Sem cache: mensagens precisam refletir o banco na hora (WhatsApp + Sofia).
     const resp = await fetch(url);
-    if (!resp.ok) throw new Error(`Erro ao buscar mensagens: ${resp.status}`);
+    if (!resp.ok) throw await this.buildHttpError('Erro ao buscar mensagens', resp);
     return resp.json();
   }
 
@@ -303,8 +493,122 @@ export class NeonDataClient {
     senderType: string; // AGENTE/CLIENTE/IA
     body: string;
     senderUsername?: string | null;
+    attachments?: Array<{ type?: string; filename?: string; url?: string }>;
   }): Promise<any> {
     return this.postJson("/crm/messages", payload);
+  }
+
+  async getCrmAgents(): Promise<any> {
+    const url = this.makeApiUrl('/crm/agents');
+    const cached = this.getCached(url);
+    if (cached) return cached;
+    const resp = await fetch(url);
+    if (!resp.ok) throw await this.buildHttpError('Erro ao buscar agentes CRM', resp);
+    const data = await resp.json();
+    this.setCached(url, data, 15_000);
+    return data;
+  }
+
+  async getCrmTeams(): Promise<any> {
+    const url = this.makeApiUrl('/crm/teams');
+    const cached = this.getCached(url);
+    if (cached) return cached;
+    const resp = await fetch(url);
+    if (!resp.ok) throw await this.buildHttpError('Erro ao buscar times CRM', resp);
+    const data = await resp.json();
+    this.setCached(url, data, 10_000);
+    return data;
+  }
+
+  async saveCrmTeam(payload: any): Promise<any> {
+    return this.postJson("/crm/teams", { ...payload, action: "UPSERT_TEAM" });
+  }
+
+  async deleteCrmTeam(id: string): Promise<any> {
+    return this.postJson("/crm/teams", { action: "DELETE_TEAM", id });
+  }
+
+  async saveCrmTeamMember(payload: any): Promise<any> {
+    return this.postJson("/crm/teams", { ...payload, action: "UPSERT_MEMBER" });
+  }
+
+  async deleteCrmTeamMember(id: string): Promise<any> {
+    return this.postJson("/crm/teams", { action: "DELETE_MEMBER", id });
+  }
+
+  async getCrmRoutingRules(): Promise<any> {
+    const url = this.makeApiUrl('/crm/routing');
+    const cached = this.getCached(url);
+    if (cached) return cached;
+    const resp = await fetch(url);
+    if (!resp.ok) throw await this.buildHttpError('Erro ao buscar regras de roteamento', resp);
+    const data = await resp.json();
+    this.setCached(url, data, 15_000);
+    return data;
+  }
+
+  async suggestCrmRouting(payload: {
+    conversationId?: string;
+    leadId?: string | null;
+    text?: string | null;
+    title?: string | null;
+    cte?: string | null;
+  }): Promise<any> {
+    return this.postJson("/crm/routing", { ...payload, action: "SUGGEST" });
+  }
+
+  async saveCrmRoutingRule(payload: any): Promise<any> {
+    return this.postJson("/crm/routing", { ...payload, action: "UPSERT_RULE" });
+  }
+
+  async getCrmSlaRules(): Promise<any> {
+    const url = this.makeApiUrl('/crm/sla');
+    const cached = this.getCached(url);
+    if (cached) return cached;
+    const resp = await fetch(url);
+    if (!resp.ok) throw await this.buildHttpError('Erro ao buscar SLA CRM', resp);
+    const data = await resp.json();
+    this.setCached(url, data, 10_000);
+    return data;
+  }
+
+  async saveCrmSlaRule(payload: any): Promise<any> {
+    return this.postJson("/crm/sla", { ...payload, action: "UPSERT" });
+  }
+
+  async deleteCrmSlaRule(id: string): Promise<any> {
+    return this.postJson("/crm/sla", { action: "DELETE", id });
+  }
+
+  async getCrmProductivity(): Promise<any> {
+    const url = this.makeApiUrl('/crm/productivity');
+    const cached = this.getCached(url);
+    if (cached) return cached;
+    const resp = await fetch(url);
+    if (!resp.ok) throw await this.buildHttpError('Erro ao buscar produtividade CRM', resp);
+    const data = await resp.json();
+    this.setCached(url, data, 8_000);
+    return data;
+  }
+
+  async getSofiaSettings(): Promise<any> {
+    const url = this.makeApiUrl('/crm/sofia');
+    const cached = this.getCached(url);
+    if (cached) return cached;
+    const resp = await fetch(url);
+    if (!resp.ok) throw await this.buildHttpError('Erro ao buscar Sofia settings', resp);
+    const data = await resp.json();
+    // Config muda pouco; cache reduz espera ao abrir tela / CRM (invalida em save via postJson).
+    this.setCached(url, data, 120_000);
+    return data;
+  }
+
+  async saveSofiaSettings(payload: any): Promise<any> {
+    return this.postJson("/crm/sofia", payload);
+  }
+
+  async getSofiaReplySuggestion(payload: { conversationId: string; text: string }): Promise<any> {
+    return this.postJson("/crm/sofia/respond", payload);
   }
 }
 

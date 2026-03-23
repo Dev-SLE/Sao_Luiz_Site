@@ -14,6 +14,7 @@ import {
   Columns3,
   MessagesSquare,
   FileSpreadsheet,
+  MapPin,
 } from 'lucide-react';
 import { Page } from '../types';
 import clsx from 'clsx';
@@ -74,6 +75,12 @@ const Sidebar: React.FC<Props> = ({ currentPage, setPage, logout }) => {
           label: 'Processos TAD',
           icon: Tag,
           count: counts.tad,
+        },
+        hasPermission('VIEW_RASTREIO_OPERACIONAL') && {
+          id: Page.RASTREIO_OPERACIONAL,
+          label: 'Rastreio Operacional',
+          icon: MapPin,
+          count: counts.emBusca,
         },
       ].filter(Boolean) as any[],
     },
@@ -251,10 +258,10 @@ const Sidebar: React.FC<Props> = ({ currentPage, setPage, logout }) => {
 
   const desktopSidebar = (
     <div className="hidden md:flex h-screen">
-      <div className="group flex h-full bg-[#050511]">
+      <div className="group flex h-full bg-[#070B1A]">
         <aside
           className={clsx(
-            'relative flex h-full bg-[#080816]/95 border-r border-[#151745] shadow-[12px_0_35px_rgba(0,0,0,0.65)] transition-[width] duration-300 ease-out overflow-x-hidden',
+            'relative flex h-full bg-[#0B1226]/95 border-r border-[#1E2A44] shadow-[8px_0_24px_rgba(0,0,0,0.35)] transition-[width] duration-300 ease-out overflow-x-hidden',
             pinned ? 'w-64' : 'w-20 group-hover:w-64'
           )}
         >
@@ -269,7 +276,7 @@ const Sidebar: React.FC<Props> = ({ currentPage, setPage, logout }) => {
                 {/* Collapsed: only compact logo */}
                 <div
                   className={clsx(
-                    'relative h-10 w-10 items-center justify-center rounded-xl bg-[#EC1B23]/10 border border-[#EC1B23]/45 shadow-[0_0_18px_rgba(236,27,35,0.65)] overflow-hidden',
+                    'relative h-10 w-10 items-center justify-center rounded-xl bg-[#1A2742] border border-[#2F466F] overflow-hidden',
                     pinned ? 'hidden' : 'flex group-hover:hidden'
                   )}
                 >
@@ -289,7 +296,7 @@ const Sidebar: React.FC<Props> = ({ currentPage, setPage, logout }) => {
                     pinned ? 'block' : 'hidden group-hover:block'
                   )}
                 >
-                  <div className="rounded-xl bg-gradient-to-br from-[#0F103A] via-[#080816] to-[#131437] border border-[#EC1B23]/35 shadow-[0_0_18px_rgba(236,27,35,0.45)] px-1.5 py-1.5 flex items-center justify-center overflow-visible">
+                  <div className="rounded-xl bg-gradient-to-br from-[#121E39] via-[#0E172D] to-[#0B1327] border border-[#2E456E]/80 px-1.5 py-1.5 flex items-center justify-center overflow-visible">
                     <img
                       src="/logo_transparente.png"
                       alt="São Luiz Express"
@@ -321,18 +328,18 @@ const Sidebar: React.FC<Props> = ({ currentPage, setPage, logout }) => {
                           title={item.label}
                           className={clsx(
                             'relative w-full flex items-center justify-center rounded-xl py-3 text-sm text-gray-200 transition-all duration-300',
-                            'hover:bg-[#131437]',
-                            active && 'bg-[#131437] text-white'
+                            'hover:bg-[#121D39]',
+                            active && 'bg-[#121D39] text-white'
                           )}
                         >
                           {active && (
-                            <div className="absolute inset-y-1 left-0 w-1 rounded-r-full bg-[#FF1744] shadow-[0_0_12px_rgba(255,23,68,0.8)]" />
+                            <div className="absolute inset-y-1 left-0 w-1 rounded-r-full bg-[#4B6FA8]" />
                           )}
                           <item.icon
                             size={20}
                             className={clsx(
                               'shrink-0 text-[#6E71DA]',
-                              active && 'text-[#FF4D4D]'
+                              active && 'text-[#8FB3E8]'
                             )}
                           />
                         </button>
@@ -357,7 +364,7 @@ const Sidebar: React.FC<Props> = ({ currentPage, setPage, logout }) => {
                 <button
                   type="button"
                   onClick={() => setPinned((v) => !v)}
-                  className="ml-2 inline-flex h-7 w-7 items-center justify-center rounded-full border border-[#2F3278] bg-[#050511] text-[#6E71DA] hover:border-[#EC1B23] hover:text-[#EC1B23] shadow-[0_0_10px_rgba(0,0,0,0.6)] transition-all"
+                  className="ml-2 inline-flex h-7 w-7 items-center justify-center rounded-full border border-[#2E456E] bg-[#0B1226] text-[#8FB3E8] hover:border-[#4B6FA8] hover:text-white transition-all"
                   title={pinned ? 'Desafixar menu' : 'Fixar menu'}
                 >
                   {pinned ? <ChevronsLeft size={16} /> : <ChevronsRight size={16} />}
@@ -395,10 +402,10 @@ const Sidebar: React.FC<Props> = ({ currentPage, setPage, logout }) => {
       {/* Mobile Drawer */}
       {mobileOpen && (
         <div className="fixed inset-0 z-50 flex">
-          <div className="w-72 h-full bg-[#050511] border-r border-[#151745] shadow-2xl flex flex-col">
-            <div className="flex items-center justify-between px-4 py-4 border-b border-[#151745]">
+          <div className="w-72 h-full bg-[#0B1226] border-r border-[#1E2A44] shadow-2xl flex flex-col">
+            <div className="flex items-center justify-between px-4 py-4 border-b border-[#1E2A44]">
               <div className="flex items-center gap-2">
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#EC1B23]/10 border border-[#EC1B23]/45 shadow-[0_0_18px_rgba(236,27,35,0.6)] overflow-hidden">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#1A2742] border border-[#2F466F] overflow-hidden">
                   <img
                     src="/logo_transparente.png"
                     alt="São Luiz Express"

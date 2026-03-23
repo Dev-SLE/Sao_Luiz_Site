@@ -15,6 +15,7 @@ import CrmFunnel from './components/CrmFunnel.tsx';
 import CrmChat from './components/CrmChat.tsx';
 import Reports from './components/Reports';
 import { Page, CteData } from './types';
+import OperationalTracking from './components/OperationalTracking';
 import { ChevronDown, CircleDot, LogOut, KeyRound, User as UserIcon } from 'lucide-react';
 
 const AppContent: React.FC = () => {
@@ -40,7 +41,10 @@ const AppContent: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<Page>(Page.DASHBOARD);
   const [selectedCte, setSelectedCte] = useState<CteData | null>(null);
   const [selectedCrmLeadId, setSelectedCrmLeadId] = useState<string | null>(null);
+  const [selectedTrackingCte, setSelectedTrackingCte] = useState<string | null>(null);
+  const [selectedTrackingSerie, setSelectedTrackingSerie] = useState<string | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
+  const isCrmPage = currentPage === Page.CRM_FUNIL || currentPage === Page.CRM_CHAT;
 
   if (!user) {
     return <Login />;
@@ -140,6 +144,18 @@ const AppContent: React.FC = () => {
             }}
           />
         );
+      case Page.RASTREIO_OPERACIONAL:
+        if (!hasPermission('VIEW_RASTREIO_OPERACIONAL')) {
+          return (
+            <div className="bg-[#070A20] border border-[#1E226F] rounded-xl p-6 shadow-sm">
+              <h3 className="text-lg font-bold text-white">Sem permissão</h3>
+              <p className="text-sm text-gray-400 mt-1">
+                Seu perfil não possui acesso ao Rastreio Operacional.
+              </p>
+            </div>
+          );
+        }
+        return <OperationalTracking initialCte={selectedTrackingCte} initialSerie={selectedTrackingSerie} />;
       case Page.TAD:
         if (!hasPermission('VIEW_TAD')) {
           return (
@@ -216,14 +232,7 @@ const AppContent: React.FC = () => {
             </div>
           );
         }
-        return (
-          <CrmFunnel
-            onGoToChat={(leadId: string) => {
-              setSelectedCrmLeadId(leadId);
-              setCurrentPage(Page.CRM_CHAT);
-            }}
-          />
-        );
+        return null;
       case Page.CRM_CHAT:
         if (!hasPermission('VIEW_CRM_CHAT')) {
           return (
@@ -235,7 +244,7 @@ const AppContent: React.FC = () => {
             </div>
           );
         }
-        return <CrmChat leadId={selectedCrmLeadId} />;
+        return null;
       case Page.CONFIGURACOES:
         if (!hasPermission('MANAGE_SETTINGS')) {
           return (
@@ -280,12 +289,12 @@ const AppContent: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen bg-[#050511] text-white overflow-hidden">
+    <div className="flex h-screen bg-[#070B1A] text-white overflow-hidden">
       <AlertOverlay onOpenCte={setSelectedCte} />
       <Sidebar currentPage={currentPage} setPage={setCurrentPage} logout={logout} />
       
       <main className="flex-1 flex flex-col overflow-hidden">
-        <header className="relative z-10 h-16 flex items-center justify-between px-4 md:px-8 bg-[#080816]/95 border-b border-[#151745] shadow-[0_10px_30px_rgba(0,0,0,0.7)] backdrop-blur">
+        <header className="relative z-10 h-16 flex items-center justify-between px-4 md:px-8 bg-[#0B1226]/90 border-b border-[#1E2A44] shadow-[0_8px_20px_rgba(0,0,0,0.35)] backdrop-blur">
           <div className="flex items-center gap-3 min-w-0">
             <div className="hidden md:flex flex-col">
               <span className="text-[11px] font-semibold uppercase tracking-[0.25em] text-[#6E71DA]">
@@ -301,10 +310,10 @@ const AppContent: React.FC = () => {
             <div className="relative">
               <button
                 onClick={() => setProfileOpen((v) => !v)}
-                className="group flex items-center gap-3 rounded-full bg-[#0F103A] border border-[#1A1B62] px-3 pl-1 py-1 shadow-[0_0_18px_rgba(0,0,0,0.6)] hover:border-[#EC1B23] hover:shadow-[0_0_25px_rgba(236,27,35,0.55)] transition-all"
+                className="group flex items-center gap-3 rounded-full bg-[#101A33] border border-[#233456] px-3 pl-1 py-1 shadow-[0_6px_16px_rgba(0,0,0,0.35)] hover:border-[#38598A] transition-all"
               >
                 <div className="relative">
-                  <div className="h-8 w-8 rounded-full bg-gradient-to-br from-[#EC1B23] to-[#FF4D4D] flex items-center justify-center text-xs font-black text-white shadow-[0_0_20px_rgba(236,27,35,0.75)]">
+                  <div className="h-8 w-8 rounded-full bg-gradient-to-br from-[#304B7A] to-[#22385C] flex items-center justify-center text-xs font-black text-white">
                     {user.username[0]?.toUpperCase?.() || <CircleDot size={14} />}
                   </div>
                 </div>
@@ -321,15 +330,15 @@ const AppContent: React.FC = () => {
               </button>
 
               {profileOpen && (
-                <div className="absolute right-0 mt-2 w-60 rounded-2xl bg-[#050511] border border-[#151745] shadow-[0_18px_45px_rgba(0,0,0,0.9)] overflow-hidden">
-                  <div className="px-4 py-3 border-b border-[#151745] bg-gradient-to-r from-[#080816] via-[#080816] to-[#131437]">
+                <div className="absolute right-0 mt-2 w-60 rounded-2xl bg-[#0A1021] border border-[#1F2D49] shadow-[0_16px_32px_rgba(0,0,0,0.45)] overflow-hidden">
+                  <div className="px-4 py-3 border-b border-[#1F2D49] bg-[#101A33]">
                     <p className="text-xs font-semibold text-gray-300">Conectado como</p>
                     <p className="text-sm font-bold text-white truncate">{user.username}</p>
                   </div>
                   <div className="py-2">
                     <button
                       type="button"
-                      className="w-full flex items-center gap-3 px-4 py-2.5 text-xs text-gray-200 hover:bg-[#0F103A] transition-colors"
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-xs text-gray-200 hover:bg-[#121D39] transition-colors"
                       onClick={() => setProfileOpen(false)}
                     >
                       <UserIcon size={16} className="text-[#6E71DA]" />
@@ -337,7 +346,7 @@ const AppContent: React.FC = () => {
                     </button>
                     <button
                       type="button"
-                      className="w-full flex items-center gap-3 px-4 py-2.5 text-xs text-gray-200 hover:bg-[#0F103A] transition-colors"
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-xs text-gray-200 hover:bg-[#121D39] transition-colors"
                       onClick={() => {
                         setCurrentPage(Page.MUDAR_SENHA);
                         setProfileOpen(false);
@@ -347,7 +356,7 @@ const AppContent: React.FC = () => {
                       <span>Alterar Senha</span>
                     </button>
                   </div>
-                  <div className="border-t border-[#151745]">
+                  <div className="border-t border-[#1F2D49]">
                     <button
                       type="button"
                       className="w-full flex items-center gap-3 px-4 py-2.5 text-xs text-red-300 hover:bg-[#220911] hover:text-red-100 transition-colors"
@@ -366,9 +375,36 @@ const AppContent: React.FC = () => {
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-4 md:p-6 scroll-smooth bg-gradient-to-br from-[#050511] via-[#050511] to-[#080816]">
-          <div className="max-w-7xl mx-auto w-full">
+        <div className={isCrmPage ? "flex-1 overflow-hidden p-4 md:p-6 bg-gradient-to-br from-[#070B1A] via-[#0A1124] to-[#0B1328]" : "flex-1 overflow-y-auto p-4 md:p-6 scroll-smooth bg-gradient-to-br from-[#070B1A] via-[#0A1124] to-[#0B1328]"}>
+          <div className={isCrmPage ? "max-w-7xl mx-auto w-full h-full min-h-0" : "max-w-7xl mx-auto w-full"}>
             {renderPage()}
+            {hasPermission('VIEW_CRM_FUNIL') && hasPermission('VIEW_CRM_CHAT') && (
+              <div className={isCrmPage ? "h-full min-h-0" : "hidden"}>
+                <div className={currentPage === Page.CRM_FUNIL ? "h-full min-h-0" : "hidden"}>
+                  <CrmFunnel
+                    onGoToChat={(leadId: string) => {
+                      setSelectedCrmLeadId(leadId);
+                      setCurrentPage(Page.CRM_CHAT);
+                    }}
+                    onOpenTracking={(cte: string, serie?: string) => {
+                      setSelectedTrackingCte(cte);
+                      setSelectedTrackingSerie(serie || null);
+                      setCurrentPage(Page.RASTREIO_OPERACIONAL);
+                    }}
+                  />
+                </div>
+                <div className={currentPage === Page.CRM_CHAT ? "h-full min-h-0" : "hidden"}>
+                  <CrmChat
+                    leadId={selectedCrmLeadId}
+                    onOpenTracking={(cte: string, serie?: string) => {
+                      setSelectedTrackingCte(cte);
+                      setSelectedTrackingSerie(serie || null);
+                      setCurrentPage(Page.RASTREIO_OPERACIONAL);
+                    }}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </main>

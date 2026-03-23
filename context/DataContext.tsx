@@ -303,7 +303,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     countKey: keyof KPICounts
   ) => {
     if (!user) return;
-    setLoading(true);
     try {
       const resp = await authClient.getCtesView(view, page, limit);
       const pageData = normalizeCtes(resp.data || []);
@@ -311,8 +310,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setCounts(prev => ({ ...prev, [countKey]: resp.total || 0 }));
     } catch (error) {
       console.error(`Erro ao carregar paginação (${view}):`, error);
-    } finally {
-      setLoading(false);
     }
   };
 

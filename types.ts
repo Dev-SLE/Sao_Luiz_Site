@@ -72,6 +72,7 @@ export enum Page {
   CRITICOS = 'criticos',
   EM_BUSCA = 'em_busca',
   TAD = 'tad',
+  RASTREIO_OPERACIONAL = 'rastreio_operacional',
   CONCLUIDOS = 'concluidos',
   CRM_DASHBOARD = 'crm_dashboard',
   CRM_FUNIL = 'crm_funil',

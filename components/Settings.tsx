@@ -4,6 +4,7 @@ import { Page, UserData, ProfileData } from '../types';
 import { Trash2, UserPlus, Save, Copy, Shield, Users, CheckSquare, Square, X, Activity, Search } from 'lucide-react';
 import clsx from 'clsx';
 import { authClient } from '../lib/auth';
+import CrmOpsAdmin from './CrmOpsAdmin';
 
 const excludedViewPages = new Set<Page>([
   Page.CONFIGURACOES,
@@ -51,15 +52,20 @@ const PERMISSIONS: Array<{ key: string; label: string; description: string }> = 
   // Ações (funções)
   { key: 'EDIT_NOTES', label: 'Ação: Criar/editar anotações', description: 'Permite registrar notas e marcar status (Em Busca/TAD/Resolvido).' },
   { key: 'EXPORT_DATA', label: 'Ação: Exportar dados', description: 'Permite exportar Excel nas tabelas.' },
+  { key: 'MANAGE_RASTREIO_OPERACIONAL', label: 'Ação: Atualizar rastreio operacional', description: 'Permite registrar atualizações manuais do rastreio (paradas, ônibus, fotos e status de descarga).' },
   // Administração
   { key: 'MANAGE_SETTINGS', label: 'Admin: Configurações', description: 'Acessar a área de configurações.' },
   { key: 'MANAGE_USERS', label: 'Admin: Usuários', description: 'Criar/remover usuários.' },
   { key: 'MANAGE_SOFIA', label: 'Admin: Sofia', description: 'Acessar configurações da Sofia.' },
+  { key: 'MANAGE_CRM_OPS', label: 'Admin: Operação CRM', description: 'Gerenciar times, membros, regras e roteamento do CRM.' },
+  { key: 'CRM_SCOPE_SELF', label: 'CRM Escopo: Somente próprio', description: 'Atendente vê apenas conversas atribuídas a ele.' },
+  { key: 'CRM_SCOPE_TEAM', label: 'CRM Escopo: Equipe', description: 'Supervisor vê conversas da equipe e não atribuídas.' },
+  { key: 'CRM_SCOPE_ALL', label: 'CRM Escopo: Global', description: 'Gestor vê todas as conversas.' },
 ];
 
 const Settings: React.FC = () => {
   const { users, profiles, baseData, addUser, deleteUser, saveProfile, deleteProfile, hasPermission } = useData();
-  const [activeTab, setActiveTab] = useState<'USERS' | 'PROFILES' | 'LOGS'>('USERS');
+  const [activeTab, setActiveTab] = useState<'USERS' | 'PROFILES' | 'LOGS' | 'CRM_OPS'>('USERS');
 
   // --- Logs Tab State ---
   const [logs, setLogs] = useState<any[]>([]);
@@ -186,6 +192,17 @@ const Settings: React.FC = () => {
             )}
           >
             <Activity size={18} /> Logs do Sistema
+          </button>
+          <button
+            onClick={() => setActiveTab('CRM_OPS')}
+            className={clsx(
+              "py-3 px-6 font-bold text-sm border-b-2 transition-colors flex items-center gap-2",
+              activeTab === 'CRM_OPS'
+                ? "border-primary-500 text-primary-300"
+                : "border-transparent text-gray-400 hover:text-gray-200"
+            )}
+          >
+            <Shield size={18} /> Operação CRM
           </button>
       </div>
 
@@ -604,6 +621,21 @@ const Settings: React.FC = () => {
                 </div>
               </div>
             </>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'CRM_OPS' && (
+        <div className="space-y-4">
+          {!hasPermission('MANAGE_CRM_OPS') && !hasPermission('MANAGE_SETTINGS') ? (
+            <div className="bg-[#070A20] border border-[#1E226F] rounded-xl p-6 shadow-sm">
+              <h3 className="text-lg font-bold text-white">Sem permissão</h3>
+              <p className="text-sm text-gray-400 mt-1">
+                Seu perfil não possui acesso à operação avançada do CRM.
+              </p>
+            </div>
+          ) : (
+            <CrmOpsAdmin />
           )}
         </div>
       )}

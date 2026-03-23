@@ -245,16 +245,16 @@ const Dashboard: React.FC = () => {
       const fullName = payload[0]?.payload?.fullName || label;
 
       return (
-        <div className="bg-white p-3 border border-gray-100 shadow-xl rounded-lg z-50">
-          <p className="text-sm font-bold text-gray-800 mb-2 border-b pb-1">{fullName}</p>
+        <div className="bg-[#0B0F2A] p-3 border border-[#2B2F8F] shadow-[0_0_24px_rgba(0,0,0,0.85)] rounded-lg z-50 text-gray-100">
+          <p className="text-sm font-bold text-white mb-2 border-b border-[#1A1B62] pb-1">{fullName}</p>
           <div className="space-y-1">
             {visibleData.map((p: any, idx: number) => (
               <div key={idx} className="flex justify-between items-center gap-6">
                 <div className="flex items-center gap-2">
                   <div className="w-2 h-2 rounded-full" style={{ backgroundColor: p.fill }} />
-                  <span className="text-[11px] font-bold text-gray-500 uppercase">{p.name}:</span>
+                  <span className="text-[11px] font-bold text-gray-300 uppercase">{p.name}:</span>
                 </div>
-                <span className="text-xs font-mono font-black text-gray-700">
+                <span className="text-xs font-mono font-black text-white">
                   {viewMode === 'value' ? formatCurrency(p.value) : formatNumber(p.value)}
                 </span>
               </div>
@@ -309,13 +309,13 @@ const Dashboard: React.FC = () => {
       if (active && payload && payload.length) {
         const data = payload[0].payload;
         return (
-          <div className="bg-white p-3 border border-gray-100 shadow-xl rounded-lg z-50">
-            <p className="text-sm font-bold text-gray-800 mb-1">{data.name}</p>
-            <p className="text-xs text-gray-500 flex justify-between gap-4">
-                <span>Qtd:</span> <span className="font-mono text-gray-700 font-bold">{viewMode === 'qty' ? formatNumber(data.value) : '-'}</span>
+          <div className="bg-[#0B0F2A] p-3 border border-[#2B2F8F] shadow-[0_0_24px_rgba(0,0,0,0.85)] rounded-lg z-50">
+            <p className="text-sm font-bold text-white mb-1">{data.name}</p>
+            <p className="text-xs text-gray-300 flex justify-between gap-4">
+                <span>Qtd:</span> <span className="font-mono text-white font-bold">{viewMode === 'qty' ? formatNumber(data.value) : '-'}</span>
             </p>
-            <p className="text-xs text-gray-500 flex justify-between gap-4">
-                <span>Valor:</span> <span className="font-mono text-primary-600 font-bold">{formatCurrency(data.monetary)}</span>
+            <p className="text-xs text-gray-300 flex justify-between gap-4">
+                <span>Valor:</span> <span className="font-mono text-emerald-300 font-bold">{formatCurrency(data.monetary)}</span>
             </p>
           </div>
         );
@@ -342,14 +342,14 @@ const Dashboard: React.FC = () => {
             {(statusFilters.length > 0 || paymentFilters.length > 0) && (
                 <button 
                     onClick={() => { setStatusFilters([]); setPaymentFilters([]); }}
-                    className="text-xs text-red-500 hover:text-red-700 font-bold flex items-center justify-center gap-1 px-3 py-2 bg-red-50 rounded-lg border border-red-100 transition-colors w-full md:w-auto"
+                    className="text-xs text-red-300 hover:text-red-100 font-bold flex items-center justify-center gap-1 px-3 py-2 bg-red-950/30 rounded-lg border border-red-500/40 transition-colors w-full md:w-auto"
                 >
                     <X size={14} /> Limpar Filtros
                 </button>
             )}
            {isUserUnitBound ? (
-             <div className="flex items-center gap-2 bg-gray-50 px-4 py-2 rounded-xl border border-gray-200 text-gray-600 cursor-not-allowed w-full lg:w-auto shadow-sm">
-               <Package size={16} />
+             <div className="flex items-center gap-2 bg-[#080816] px-4 py-2 rounded-xl border border-[#1A1B62] text-gray-200 cursor-not-allowed w-full lg:w-auto shadow-sm">
+               <Package size={16} className="text-[#6E71DA]" />
                <span className="font-bold text-sm">{user.linkedDestUnit}</span>
              </div>
            ) : (
@@ -372,7 +372,7 @@ const Dashboard: React.FC = () => {
 
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 shrink-0">
          <div className="xl:col-span-2 grid grid-cols-2 xl:grid-cols-1 gap-3 h-full">
-             <div className="bg-gradient-to-br from-[#101143] via-[#1A1B62] to-[#EC1B23] rounded-xl p-4 shadow-[0_0_28px_rgba(0,0,0,0.8)] text-white flex flex-col justify-center relative overflow-hidden group">
+             <div className="bg-gradient-to-br from-[#1A2742] via-[#1E3150] to-[#223A5E] rounded-xl p-4 shadow-[0_10px_24px_rgba(0,0,0,0.35)] text-white flex flex-col justify-center relative overflow-hidden group border border-[#2E456E]">
                 <div className="absolute right-[-15px] top-[-15px] opacity-10 group-hover:opacity-20 transition-all">
                     <Package size={80} />
                 </div>
@@ -381,7 +381,7 @@ const Dashboard: React.FC = () => {
                   {formatNumber(mainKPIs.qty)}
                 </h2>
              </div>
-             <div className="rounded-xl p-4 shadow-[0_0_24px_rgba(0,0,0,0.7)] border border-[#2B2F8F] flex flex-col justify-center relative overflow-hidden bg-[#0B0F2A]">
+             <div className="rounded-xl p-4 shadow-[0_10px_24px_rgba(0,0,0,0.35)] border border-[#2E456E] flex flex-col justify-center relative overflow-hidden bg-[#0F1A30]">
                 <p className="text-gray-400 text-[10px] font-bold uppercase tracking-wider mb-0.5">Valor em Risco</p>
                 <h2 className="text-2xl font-black text-white tracking-tight leading-none">{formatCurrency(mainKPIs.val)}</h2>
                 <div className="absolute right-2 top-2 bg-emerald-900/70 p-1.5 rounded-full text-emerald-300 shadow-[0_0_12px_rgba(16,185,129,0.6)]">
@@ -391,7 +391,7 @@ const Dashboard: React.FC = () => {
          </div>
 
          <div className="xl:col-span-10 flex flex-col gap-2">
-            <div className="bg-[#070A20] p-3 rounded-xl border border-[#1E226F] flex-1 shadow-[0_0_24px_rgba(0,0,0,0.7)]">
+            <div className="bg-[#0E172D] p-3 rounded-xl border border-[#243757] flex-1 shadow-[0_8px_20px_rgba(0,0,0,0.28)]">
                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 h-full">
                     {['FORA DO PRAZO', 'CRÍTICO', 'PRIORIDADE', 'VENCE AMANHÃ', 'NO PRAZO'].map(status => (
                         <FilterCard 
@@ -408,7 +408,7 @@ const Dashboard: React.FC = () => {
                  </div>
             </div>
             
-            <div className="bg-[#070A20] p-3 rounded-xl border border-[#1E226F] shadow-[0_0_24px_rgba(0,0,0,0.7)]">
+            <div className="bg-[#0E172D] p-3 rounded-xl border border-[#243757] shadow-[0_8px_20px_rgba(0,0,0,0.28)]">
                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 h-full">
                     {Object.keys(PAYMENT_COLORS).map(type => (
                         <FilterCard 
@@ -428,7 +428,7 @@ const Dashboard: React.FC = () => {
       </div>
 
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-4 min-h-0">
-        <div className="lg:col-span-2 bg-[#070A20] p-4 rounded-xl shadow-[0_0_28px_rgba(0,0,0,0.85)] border border-[#1E226F] flex flex-col h-full min-h-[450px]">
+        <div className="lg:col-span-2 bg-[#0E172D] p-4 rounded-xl shadow-[0_10px_22px_rgba(0,0,0,0.3)] border border-[#243757] flex flex-col h-full min-h-[450px]">
            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 shrink-0 gap-2 text-white">
               <div className="flex flex-wrap items-center gap-2">
                   <h3 className="font-bold text-white flex items-center gap-2 text-sm">
@@ -450,13 +450,13 @@ const Dashboard: React.FC = () => {
               <div className="flex bg-[#0F103A] p-0.5 rounded-lg self-end sm:self-auto border border-[#1A1B62]">
                  <button 
                    onClick={() => setViewMode('qty')}
-                   className={clsx("px-2 py-1 text-[10px] font-bold rounded-md transition-all", viewMode === 'qty' ? "bg-white text-[#1A1B62]" : "text-gray-300")}
+                   className={clsx("px-2 py-1 text-[10px] font-bold rounded-md transition-all", viewMode === 'qty' ? "bg-[#2B2F8F] text-white shadow-[0_0_12px_rgba(43,47,143,0.7)]" : "text-gray-300")}
                  >
                    QTD
                  </button>
                  <button 
                    onClick={() => setViewMode('value')}
-                   className={clsx("px-2 py-1 text-[10px] font-bold rounded-md transition-all", viewMode === 'value' ? "bg-white text-[#1A1B62]" : "text-gray-300")}
+                   className={clsx("px-2 py-1 text-[10px] font-bold rounded-md transition-all", viewMode === 'value' ? "bg-[#2B2F8F] text-white shadow-[0_0_12px_rgba(43,47,143,0.7)]" : "text-gray-300")}
                  >
                    R$
                  </button>
@@ -519,7 +519,7 @@ const Dashboard: React.FC = () => {
            </div>
         </div>
 
-        <div className="bg-[#070A20] p-4 rounded-xl shadow-[0_0_28px_rgba(0,0,0,0.85)] border border-[#1E226F] flex flex-col h-full min-h-[400px] text-white">
+        <div className="bg-[#0E172D] p-4 rounded-xl shadow-[0_10px_22px_rgba(0,0,0,0.3)] border border-[#243757] flex flex-col h-full min-h-[400px] text-white">
            <div className="flex justify-between items-center mb-4 shrink-0">
               <h3 className="font-bold text-white flex items-center gap-2 text-sm">
                 <PieChartIcon size={18} className="text-[#EC1B23]" />
@@ -528,13 +528,13 @@ const Dashboard: React.FC = () => {
               <div className="flex bg-[#0F103A] p-0.5 rounded-lg border border-[#1A1B62]">
                  <button 
                    onClick={() => setPieMode('status')}
-                   className={clsx("px-2 py-0.5 text-[10px] font-bold rounded-md transition-all uppercase", pieMode === 'status' ? "bg-white text-[#1A1B62]" : "text-gray-300")}
+                   className={clsx("px-2 py-0.5 text-[10px] font-bold rounded-md transition-all uppercase", pieMode === 'status' ? "bg-[#2B2F8F] text-white shadow-[0_0_12px_rgba(43,47,143,0.7)]" : "text-gray-300")}
                  >
                    Status
                  </button>
                  <button 
                    onClick={() => setPieMode('payment')}
-                   className={clsx("px-2 py-0.5 text-[10px] font-bold rounded-md transition-all uppercase", pieMode === 'payment' ? "bg-white text-[#1A1B62]" : "text-gray-300")}
+                   className={clsx("px-2 py-0.5 text-[10px] font-bold rounded-md transition-all uppercase", pieMode === 'payment' ? "bg-[#2B2F8F] text-white shadow-[0_0_12px_rgba(43,47,143,0.7)]" : "text-gray-300")}
                  >
                    Pgto
                  </button>
@@ -561,8 +561,8 @@ const Dashboard: React.FC = () => {
                         <Cell
                           key={`cell-${index}`}
                           fill={color}
-                          stroke="white"
-                          strokeWidth={2}
+                          stroke="transparent"
+                          strokeWidth={0}
                           onMouseEnter={() => setActivePieKey(entry.name)}
                           onMouseLeave={() => setActivePieKey(null)}
                         />

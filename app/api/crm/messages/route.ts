@@ -25,6 +25,129 @@ function formatTime(d: Date | null | undefined) {
   return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 }
 
+function safeJsonParse(value: any) {
+  if (value == null) return {};
+  if (typeof value === "object") return value;
+  if (typeof value === "string") {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
+function normalizePhoneToE164(phoneRaw: string | null | undefined) {
+  const digits = String(phoneRaw || "").replace(/\D/g, "");
+  if (!digits) return null;
+  // Regras simples BR para início de operação:
+  // - se já vier com DDI 55, mantém
+  // - caso contrário, prefixa 55
+  if (digits.startsWith("55")) return digits;
+  return `55${digits}`;
+}
+
+async function sendWhatsAppText(args: { toE164: string; body: string }) {
+  const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
+  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+
+  if (!accessToken || !phoneNumberId) {
+    return {
+      ok: false,
+      error: "WHATSAPP_ACCESS_TOKEN ou WHATSAPP_PHONE_NUMBER_ID não configurado",
+      response: null as any,
+    };
+  }
+
+  const url = `https://graph.facebook.com/v23.0/${encodeURIComponent(phoneNumberId)}/messages`;
+  const payload = {
+    messaging_product: "whatsapp",
+    recipient_type: "individual",
+    to: args.toE164,
+    type: "text",
+    text: { preview_url: false, body: args.body },
+  };
+
+  try {
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify(payload),
+    });
+    const json = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      return {
+        ok: false,
+        error: (json as any)?.error?.message || `Erro HTTP ${resp.status}`,
+        response: json,
+      };
+    }
+    return { ok: true, error: null as string | null, response: json };
+  } catch (err: any) {
+    return { ok: false, error: err?.message || String(err), response: null as any };
+  }
+}
+
+function toDirectDownloadUrl(rawUrl: string) {
+  const url = String(rawUrl || "");
+  const m = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  if (m?.[1]) return `https://drive.google.com/uc?export=download&id=${m[1]}`;
+  return url;
+}
+
+async function sendWhatsAppAttachment(args: {
+  toE164: string;
+  attachment: { type?: string; filename?: string; url?: string };
+  caption?: string;
+}) {
+  const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
+  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+  if (!accessToken || !phoneNumberId) {
+    return { ok: false, error: "WHATSAPP_ACCESS_TOKEN ou WHATSAPP_PHONE_NUMBER_ID não configurado", response: null as any };
+  }
+  const mediaUrl = toDirectDownloadUrl(String(args.attachment?.url || ""));
+  if (!mediaUrl) return { ok: false, error: "attachment url obrigatório", response: null as any };
+  const typeRaw = String(args.attachment?.type || "").toLowerCase();
+  const isImage = typeRaw.includes("image");
+  const payload: any = {
+    messaging_product: "whatsapp",
+    recipient_type: "individual",
+    to: args.toE164,
+    type: isImage ? "image" : "document",
+  };
+  if (isImage) {
+    payload.image = {
+      link: mediaUrl,
+      caption: args.caption || undefined,
+    };
+  } else {
+    payload.document = {
+      link: mediaUrl,
+      filename: args.attachment?.filename || "arquivo",
+      caption: args.caption || undefined,
+    };
+  }
+  try {
+    const resp = await fetch(`https://graph.facebook.com/v23.0/${encodeURIComponent(phoneNumberId)}/messages`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify(payload),
+    });
+    const json = await resp.json().catch(() => ({}));
+    if (!resp.ok) return { ok: false, error: (json as any)?.error?.message || `Erro HTTP ${resp.status}`, response: json };
+    return { ok: true, error: null, response: json };
+  } catch (err: any) {
+    return { ok: false, error: err?.message || String(err), response: null };
+  }
+}
+
 export async function GET(req: Request) {
   try {
     await ensureCrmSchemaTables();
@@ -42,6 +165,7 @@ export async function GET(req: Request) {
           m.id,
           m.sender_type,
           m.body,
+          m.metadata,
           m.created_at,
           c.channel
         FROM pendencias.crm_messages m
@@ -53,13 +177,28 @@ export async function GET(req: Request) {
       [conversationId]
     );
 
-    const messages = (result.rows || []).map((r: any) => ({
+    const messages = (result.rows || []).map((r: any) => {
+      const meta = safeJsonParse(r.metadata);
+      const outbound = meta?.outbound_whatsapp;
+      const senderUpper = String(r.sender_type || "").toUpperCase();
+      const statusForUi =
+        outbound?.status ||
+        (senderUpper === "CLIENT"
+          ? "received"
+          : outbound?.delivered
+            ? "delivered"
+            : "pending");
+      return {
+      metadata: meta,
       id: r.id as string,
       from: mapSenderFromDb(r.sender_type),
       text: String(r.body || ""),
       time: formatTime(r.created_at ? new Date(r.created_at) : null),
       channel: String(r.channel || "WHATSAPP") as any,
-    }));
+      status: statusForUi,
+      attachments: Array.isArray(meta?.attachments) ? meta.attachments : [],
+    };
+    });
 
     return NextResponse.json({ messages });
   } catch (error) {
@@ -76,7 +215,10 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}));
     const senderType = String(body?.senderType || "AGENTE");
     const text = String(body?.body || "").trim();
-    if (!text) return NextResponse.json({ error: "body obrigatório" }, { status: 400 });
+    const attachments = Array.isArray(body?.attachments) ? body.attachments : [];
+    if (!text && attachments.length === 0) {
+      return NextResponse.json({ error: "body ou attachments obrigatório" }, { status: 400 });
+    }
 
     const conversationId = body?.conversationId ? String(body.conversationId) : null;
     const leadId = body?.leadId ? String(body.leadId) : null;
@@ -110,11 +252,20 @@ export async function POST(req: Request) {
     const messageInsert = await pool.query(
       `
         INSERT INTO pendencias.crm_messages (conversation_id, sender_type, body, has_attachments, metadata, created_at)
-        VALUES ($1, $2, $3, false, '{}'::jsonb, NOW())
+        VALUES ($1, $2, $3, $4, $5::jsonb, NOW())
         RETURNING id, created_at
       `,
-      [activeConversationId, dbSender, text]
+      [
+        activeConversationId,
+        dbSender,
+        text || "[Anexo]",
+        attachments.length > 0,
+        JSON.stringify({
+          attachments,
+        }),
+      ]
     );
+    const createdMessageId = messageInsert.rows?.[0]?.id as string;
 
     await pool.query(
       `
@@ -124,6 +275,110 @@ export async function POST(req: Request) {
       `,
       [activeConversationId]
     );
+
+    let outboundWhatsApp: {
+      attempted: boolean;
+      delivered: boolean;
+      error?: string | null;
+      response?: any;
+    } = {
+      attempted: false,
+      delivered: false,
+      error: null,
+      response: null,
+    };
+
+    // Canal WHATSAPP: atendente OU Sofia (IA) disparam envio real pela Cloud API.
+    const shouldSendWhatsApp =
+      String(activeChannel).toUpperCase() === "WHATSAPP" &&
+      (dbSender === "AGENT" || dbSender === "IA");
+    if (shouldSendWhatsApp) {
+      outboundWhatsApp.attempted = true;
+      const leadInfo = await pool.query(
+        `
+          SELECT l.contact_phone
+          FROM pendencias.crm_conversations c
+          JOIN pendencias.crm_leads l ON l.id = c.lead_id
+          WHERE c.id = $1
+          LIMIT 1
+        `,
+        [activeConversationId]
+      );
+      const contactPhone = leadInfo.rows?.[0]?.contact_phone as string | null | undefined;
+      const toE164 = normalizePhoneToE164(contactPhone);
+
+      if (!toE164) {
+        outboundWhatsApp.delivered = false;
+        outboundWhatsApp.error = "Lead sem telefone válido para envio WhatsApp";
+      } else {
+        let finalResp: any = null;
+        let finalOk = true;
+        if (text) {
+          const waResp = await sendWhatsAppText({ toE164, body: text });
+          finalResp = waResp.response;
+          finalOk = waResp.ok;
+          if (!waResp.ok) outboundWhatsApp.error = waResp.error;
+        }
+        if (attachments.length > 0) {
+          const first = attachments[0];
+          const waAttResp = await sendWhatsAppAttachment({
+            toE164,
+            attachment: first,
+            caption: text || undefined,
+          });
+          finalResp = waAttResp.response || finalResp;
+          finalOk = finalOk && waAttResp.ok;
+          if (!waAttResp.ok) outboundWhatsApp.error = waAttResp.error;
+        }
+        outboundWhatsApp.delivered = finalOk;
+        outboundWhatsApp.response = finalResp;
+      }
+
+      // Mescla outbound_whatsapp no metadata (preserva attachments etc.)
+      const waMessageId = outboundWhatsApp.response?.messages?.[0]?.id || null;
+      await pool.query(
+        `
+          UPDATE pendencias.crm_messages
+          SET metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb
+          WHERE id = $1
+        `,
+        [
+          createdMessageId,
+          JSON.stringify({
+            outbound_whatsapp: {
+              attempted: outboundWhatsApp.attempted,
+              delivered: outboundWhatsApp.delivered,
+              status: outboundWhatsApp.delivered ? "sent" : "failed",
+              message_id: waMessageId,
+              error: outboundWhatsApp.error || null,
+            },
+          }),
+        ]
+      );
+
+      // Fallback de fila: se falhou, enfileira para retry posterior
+      if (!outboundWhatsApp.delivered) {
+        await pool.query(
+          `
+            INSERT INTO pendencias.crm_outbox (
+              message_id, conversation_id, channel, payload, status, attempts, last_error, next_attempt_at, created_at, updated_at
+            )
+            VALUES (
+              $1, $2, 'WHATSAPP', $3::jsonb, 'PENDING', 1, $4, NOW() + INTERVAL '30 seconds', NOW(), NOW()
+            )
+          `,
+          [
+            createdMessageId,
+            activeConversationId,
+            JSON.stringify({
+              body: text,
+              senderType: dbSender,
+            }),
+            outboundWhatsApp.error || "Falha no envio WhatsApp",
+          ]
+        );
+      }
+    }
 
     // Log de atividade (para aparecer no drawer quando abrirmos fase 2)
     try {
@@ -141,7 +396,7 @@ export async function POST(req: Request) {
           [
             lead_id,
             body?.senderUsername != null ? String(body.senderUsername) : null,
-            `Mensagem enviada: ${text.slice(0, 120)}${text.length > 120 ? "..." : ""}`,
+            `Mensagem enviada: ${(text || "[Anexo]").slice(0, 120)}${(text || "").length > 120 ? "..." : ""}`,
           ]
         );
       }
@@ -153,10 +408,11 @@ export async function POST(req: Request) {
       success: true,
       conversationId: activeConversationId,
       channel: activeChannel,
+      outboundWhatsApp,
       message: {
-        id: messageInsert.rows?.[0]?.id as string,
+        id: createdMessageId,
         from: mapSenderFromDb(dbSender),
-        text,
+        text: text || "[Anexo]",
         time: formatTime(new Date()),
       },
     });
