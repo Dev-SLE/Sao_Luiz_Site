@@ -15,6 +15,7 @@ import {
   MessagesSquare,
   FileSpreadsheet,
   MapPin,
+  LineChart,
 } from 'lucide-react';
 import { Page } from '../types';
 import clsx from 'clsx';
@@ -82,6 +83,12 @@ const Sidebar: React.FC<Props> = ({ currentPage, setPage, logout }) => {
           icon: MapPin,
           count: counts.emBusca,
         },
+        hasPermission('VIEW_CONCLUIDOS') && {
+          id: Page.CONCLUIDOS,
+          label: 'Concluídos / Resolvidos',
+          icon: Archive,
+          count: counts.concluidos,
+        },
       ].filter(Boolean) as any[],
     },
     {
@@ -110,13 +117,19 @@ const Sidebar: React.FC<Props> = ({ currentPage, setPage, logout }) => {
     },
     {
       id: 'auditoria',
-      label: 'Auditoria',
+      label: 'Comercial',
       items: [
-        hasPermission('VIEW_CONCLUIDOS') && {
-          id: Page.CONCLUIDOS,
-          label: 'Concluídos / Resolvidos',
-          icon: Archive,
-          count: counts.concluidos,
+        (hasPermission('VIEW_RELATORIOS') || hasPermission('MANAGE_SETTINGS')) && {
+          id: Page.COMERCIAL_AUDITORIA,
+          label: 'Comercial - Metas',
+          icon: LineChart,
+          count: 0,
+        },
+        (hasPermission('VIEW_RELATORIOS') || hasPermission('MANAGE_SETTINGS')) && {
+          id: Page.COMERCIAL_ROBO_SUPREMO,
+          label: 'Comercial - Robô Supremo',
+          icon: Settings,
+          count: 0,
         },
       ].filter(Boolean) as any[],
     },

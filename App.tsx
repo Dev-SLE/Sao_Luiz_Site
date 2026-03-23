@@ -14,6 +14,8 @@ import CrmDashboard from './components/CrmDashboard';
 import CrmFunnel from './components/CrmFunnel.tsx';
 import CrmChat from './components/CrmChat.tsx';
 import Reports from './components/Reports';
+import ComercialAuditoria from './components/ComercialAuditoria';
+import ComercialRoboSupremo from './components/ComercialRoboSupremo';
 import { Page, CteData } from './types';
 import OperationalTracking from './components/OperationalTracking';
 import { ChevronDown, CircleDot, LogOut, KeyRound, User as UserIcon } from 'lucide-react';
@@ -281,6 +283,30 @@ const AppContent: React.FC = () => {
           );
         }
         return <Reports />;
+      case Page.COMERCIAL_AUDITORIA:
+        if (!hasPermission('VIEW_RELATORIOS') && !hasPermission('MANAGE_SETTINGS')) {
+          return (
+            <div className="bg-[#070A20] border border-[#1E226F] rounded-xl p-6 shadow-sm">
+              <h3 className="text-lg font-bold text-white">Sem permissão</h3>
+              <p className="text-sm text-gray-400 mt-1">
+                Seu perfil não possui acesso ao módulo Comercial.
+              </p>
+            </div>
+          );
+        }
+        return <ComercialAuditoria />;
+      case Page.COMERCIAL_ROBO_SUPREMO:
+        if (!hasPermission('VIEW_RELATORIOS') && !hasPermission('MANAGE_SETTINGS')) {
+          return (
+            <div className="bg-[#070A20] border border-[#1E226F] rounded-xl p-6 shadow-sm">
+              <h3 className="text-lg font-bold text-white">Sem permissão</h3>
+              <p className="text-sm text-gray-400 mt-1">
+                Seu perfil não possui acesso ao Robô Supremo.
+              </p>
+            </div>
+          );
+        }
+        return <ComercialRoboSupremo />;
       case Page.MUDAR_SENHA:
         return <ChangePassword onClose={() => setCurrentPage(Page.DASHBOARD)} />;
       default:

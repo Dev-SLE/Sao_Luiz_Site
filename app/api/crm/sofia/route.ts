@@ -17,6 +17,8 @@ export async function GET() {
           business_hours_start, business_hours_end,
           blocked_topics, blocked_statuses,
           require_human_if_sla_breached, require_human_after_customer_messages,
+          system_instructions, fallback_message, handoff_message,
+          response_tone, max_response_chars, welcome_enabled,
           updated_at
         FROM pendencias.crm_sofia_settings
         ORDER BY updated_at DESC
@@ -44,6 +46,12 @@ export async function GET() {
             blockedStatuses: Array.isArray(row.blocked_statuses) ? row.blocked_statuses : [],
             requireHumanIfSlaBreached: !!row.require_human_if_sla_breached,
             requireHumanAfterCustomerMessages: Number(row.require_human_after_customer_messages || 4),
+            systemInstructions: row.system_instructions ? String(row.system_instructions) : "",
+            fallbackMessage: row.fallback_message ? String(row.fallback_message) : "",
+            handoffMessage: row.handoff_message ? String(row.handoff_message) : "",
+            responseTone: String(row.response_tone || "PROFISSIONAL"),
+            maxResponseChars: Number(row.max_response_chars || 480),
+            welcomeEnabled: row.welcome_enabled === undefined ? true : !!row.welcome_enabled,
           }
         : null,
     });
@@ -75,6 +83,12 @@ export async function POST(req: Request) {
       blockedStatuses: Array.isArray(body?.blockedStatuses) ? body.blockedStatuses : [],
       requireHumanIfSlaBreached: body?.requireHumanIfSlaBreached === undefined ? true : !!body.requireHumanIfSlaBreached,
       requireHumanAfterCustomerMessages: Number(body?.requireHumanAfterCustomerMessages ?? 4),
+      systemInstructions: body?.systemInstructions != null ? String(body.systemInstructions) : "",
+      fallbackMessage: body?.fallbackMessage != null ? String(body.fallbackMessage) : "",
+      handoffMessage: body?.handoffMessage != null ? String(body.handoffMessage) : "",
+      responseTone: body?.responseTone ? String(body.responseTone).toUpperCase() : "PROFISSIONAL",
+      maxResponseChars: Number(body?.maxResponseChars ?? 480),
+      welcomeEnabled: body?.welcomeEnabled === undefined ? true : !!body.welcomeEnabled,
     };
 
     const existing = await pool.query("SELECT id FROM pendencias.crm_sofia_settings ORDER BY updated_at DESC LIMIT 1");
@@ -88,9 +102,11 @@ export async function POST(req: Request) {
             auto_mode, min_confidence, max_auto_replies_per_conversation,
             business_hours_start, business_hours_end, blocked_topics, blocked_statuses,
             require_human_if_sla_breached, require_human_after_customer_messages,
+            system_instructions, fallback_message, handoff_message,
+            response_tone, max_response_chars, welcome_enabled,
             updated_at
           )
-          VALUES ($1, $2, $3, $4::jsonb, $5, $6::jsonb, $7, $8, $9, $10, $11, $12, $13::jsonb, $14::jsonb, $15, $16, NOW())
+          VALUES ($1, $2, $3, $4::jsonb, $5, $6::jsonb, $7, $8, $9, $10, $11, $12, $13::jsonb, $14::jsonb, $15, $16, $17, $18, $19, $20, $21, $22, NOW())
           RETURNING id
         `,
         [
@@ -110,6 +126,12 @@ export async function POST(req: Request) {
           JSON.stringify(payload.blockedStatuses),
           payload.requireHumanIfSlaBreached,
           payload.requireHumanAfterCustomerMessages,
+          payload.systemInstructions,
+          payload.fallbackMessage,
+          payload.handoffMessage,
+          payload.responseTone,
+          payload.maxResponseChars,
+          payload.welcomeEnabled,
         ]
       );
       return NextResponse.json({ id: created.rows?.[0]?.id, success: true });
@@ -135,6 +157,12 @@ export async function POST(req: Request) {
           blocked_statuses = $15::jsonb,
           require_human_if_sla_breached = $16,
           require_human_after_customer_messages = $17,
+          system_instructions = $18,
+          fallback_message = $19,
+          handoff_message = $20,
+          response_tone = $21,
+          max_response_chars = $22,
+          welcome_enabled = $23,
           updated_at = NOW()
         WHERE id = $1
       `,
@@ -156,6 +184,12 @@ export async function POST(req: Request) {
         JSON.stringify(payload.blockedStatuses),
         payload.requireHumanIfSlaBreached,
         payload.requireHumanAfterCustomerMessages,
+        payload.systemInstructions,
+        payload.fallbackMessage,
+        payload.handoffMessage,
+        payload.responseTone,
+        payload.maxResponseChars,
+        payload.welcomeEnabled,
       ]
     );
 

@@ -610,6 +610,78 @@ export class NeonDataClient {
   async getSofiaReplySuggestion(payload: { conversationId: string; text: string }): Promise<any> {
     return this.postJson("/crm/sofia/respond", payload);
   }
+
+  async getComercialAuditorias(params?: { status?: string; limit?: number }): Promise<any> {
+    const usp = new URLSearchParams();
+    if (params?.status) usp.set("status", params.status);
+    if (params?.limit) usp.set("limit", String(params.limit));
+    const qs = usp.toString();
+    const endpoint = `/comercial/auditoria${qs ? `?${qs}` : ""}`;
+    const url = this.makeApiUrl(endpoint);
+    const resp = await fetch(url);
+    if (!resp.ok) throw await this.buildHttpError("Erro ao buscar auditorias comerciais", resp);
+    return resp.json();
+  }
+
+  async saveComercialAuditoria(payload: {
+    id: number;
+    statusAuditoria: string;
+    motivoQueda: string;
+    resumoResposta: string;
+    planoAcao: string;
+    prioridade?: string;
+    responsavel?: string;
+    dataRetornoPrevista?: string;
+    retornoResponsavel?: string;
+    conclusao?: string;
+    resultadoEvolucao?: string;
+    concluido?: boolean;
+    actor?: string;
+  }): Promise<any> {
+    return this.postJson("/comercial/auditoria", payload);
+  }
+
+  async suggestComercialPlano(payload: {
+    agencia: string;
+    percProjetado: number;
+    motivoQueda: string;
+    resumoResposta: string;
+  }): Promise<any> {
+    return this.postJson("/comercial/auditoria/ai", payload);
+  }
+
+  async getComercialAuditoriaHistory(auditoriaId: number): Promise<any> {
+    const endpoint = `/comercial/auditoria/history?auditoriaId=${encodeURIComponent(String(auditoriaId))}`;
+    const url = this.makeApiUrl(endpoint);
+    const resp = await fetch(url);
+    if (!resp.ok) throw await this.buildHttpError("Erro ao buscar histórico da auditoria comercial", resp);
+    return resp.json();
+  }
+
+  async addComercialAuditoriaHistory(payload: {
+    auditoriaId: number;
+    acao: string;
+    actor?: string;
+    note: string;
+  }): Promise<any> {
+    return this.postJson("/comercial/auditoria/history", payload);
+  }
+
+  async getRoboSupremoStatus(): Promise<any> {
+    const endpoint = `/comercial/robo-supremo/status`;
+    const url = this.makeApiUrl(endpoint);
+    const resp = await fetch(url);
+    if (!resp.ok) throw await this.buildHttpError("Erro ao buscar status do Robô Supremo", resp);
+    return resp.json();
+  }
+
+  async runRoboSupremo(payload?: { mode?: string; createdBy?: string }): Promise<any> {
+    return this.postJson("/comercial/robo-supremo/run", payload || {});
+  }
+
+  async applySofiaTemplate(): Promise<any> {
+    return this.postJson("/crm/sofia/template", {});
+  }
 }
 
 export const authClient = new NeonDataClient();

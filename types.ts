@@ -89,6 +89,8 @@ export enum Page {
   CRM_CHAT = 'crm_chat',
   CONFIGURACOES = 'configuracoes',
   SOFIA_CONFIG = 'sofia_config',
+  COMERCIAL_AUDITORIA = 'comercial_auditoria',
+  COMERCIAL_ROBO_SUPREMO = 'comercial_robo_supremo',
   RELATORIOS = 'relatorios',
   MUDAR_SENHA = 'mudar_senha',
 }

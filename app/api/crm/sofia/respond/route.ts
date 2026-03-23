@@ -5,7 +5,10 @@ import { countTrailingClientStreak } from "../../../../../lib/server/sofiaStreak
 
 export const runtime = "nodejs";
 
-function fallbackReply(input: { customerName?: string; cte?: string; text?: string }) {
+function fallbackReply(input: { customerName?: string; cte?: string; text?: string; customFallback?: string | null }) {
+  if (input.customFallback && String(input.customFallback).trim()) {
+    return String(input.customFallback).trim();
+  }
   const lower = String(input.text || "").toLowerCase();
   if (lower.includes("prazo") || lower.includes("entrega")) {
     return `Recebi sua dúvida sobre prazo. Vou conferir o status e já te atualizo com a previsão mais precisa.`;
@@ -60,6 +63,13 @@ async function callOpenAi(prompt: string, modelOverride?: string | null) {
   return json?.choices?.[0]?.message?.content ? String(json.choices[0].message.content) : null;
 }
 
+function normalizeAiText(input: string, maxChars: number) {
+  const clean = String(input || "").replace(/\s+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+  if (!maxChars || maxChars <= 0) return clean;
+  if (clean.length <= maxChars) return clean;
+  return `${clean.slice(0, Math.max(1, maxChars - 1)).trimEnd()}…`;
+}
+
 export async function POST(req: Request) {
   try {
     await ensureCrmSchemaTables();
@@ -89,7 +99,8 @@ export async function POST(req: Request) {
             active_days, auto_mode, min_confidence, max_auto_replies_per_conversation,
             business_hours_start, business_hours_end, blocked_topics, blocked_statuses,
             require_human_if_sla_breached, require_human_after_customer_messages,
-            model_name
+            model_name, system_instructions, fallback_message, handoff_message,
+            response_tone, max_response_chars
           FROM pendencias.crm_sofia_settings
           ORDER BY updated_at DESC
           LIMIT 1
@@ -139,11 +150,15 @@ export async function POST(req: Request) {
     const requireHumanIfSlaBreached = settings.require_human_if_sla_breached === undefined ? true : !!settings.require_human_if_sla_breached;
     const requireHumanAfterCustomerMessages = Number(settings.require_human_after_customer_messages || 4);
     const autoMode = String(settings.auto_mode || "ASSISTIDO").toUpperCase(); // ASSISTIDO | SEMI_AUTO | AUTO_TOTAL
+    const responseTone = String(settings.response_tone || "PROFISSIONAL");
+    const maxResponseChars = Number(settings.max_response_chars || 480);
 
     const prompt = [
       `Nome cliente: ${String(conv.title || "")}`,
       `CTE: ${String(conv.cte_number || "")}`,
       `Tópico: ${String(conv.topic || "")}`,
+      `Tom de resposta: ${responseTone}`,
+      `Instruções do supervisor: ${String(settings.system_instructions || "")}`,
       `Conhecimento: ${String(settings.knowledge_base || "")}`,
       `Histórico:\n${transcript}`,
       `Mensagem atual: ${text}`,
@@ -157,8 +172,10 @@ export async function POST(req: Request) {
         customerName: String(conv.title || ""),
         cte: String(conv.cte_number || ""),
         text,
+        customFallback: settings.fallback_message,
       });
     }
+    suggestion = normalizeAiText(suggestion, maxResponseChars);
 
     const confidence = shouldEscalate
       ? 15
@@ -230,6 +247,10 @@ export async function POST(req: Request) {
     if (shouldEscalate) {
       allowAutoSend = false;
       governanceReason = "keyword_detected";
+    }
+    if (!allowAutoSend && String(settings.handoff_message || "").trim()) {
+      suggestion = String(settings.handoff_message).trim();
+      suggestion = normalizeAiText(suggestion, maxResponseChars);
     }
 
     return NextResponse.json({

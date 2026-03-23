@@ -18,6 +18,12 @@ interface SofiaSettingsState {
   blockedStatuses: string;
   requireHumanIfSlaBreached: boolean;
   requireHumanAfterCustomerMessages: number;
+  systemInstructions: string;
+  fallbackMessage: string;
+  handoffMessage: string;
+  responseTone: 'PROFISSIONAL' | 'EMPATICO' | 'DIRETO';
+  maxResponseChars: number;
+  welcomeEnabled: boolean;
 }
 
 const defaultState: SofiaSettingsState = {
@@ -45,6 +51,12 @@ const defaultState: SofiaSettingsState = {
   blockedStatuses: 'PERDIDO, AGUARDANDO_RETORNO_AGENCIA',
   requireHumanIfSlaBreached: true,
   requireHumanAfterCustomerMessages: 4,
+  systemInstructions: 'Sempre confirme dados críticos antes de afirmar prazo final. Em caso de incerteza, escale para humano.',
+  fallbackMessage: 'Recebi sua mensagem e já estou validando os detalhes para te responder com segurança.',
+  handoffMessage: 'Vou encaminhar seu atendimento para nossa equipe humana agora para seguirmos com prioridade.',
+  responseTone: 'PROFISSIONAL',
+  maxResponseChars: 480,
+  welcomeEnabled: true,
 };
 
 const SofiaSettings: React.FC = () => {
@@ -80,6 +92,12 @@ const SofiaSettings: React.FC = () => {
             blockedStatuses: Array.isArray(s.blockedStatuses) ? s.blockedStatuses.join(', ') : prev.blockedStatuses,
             requireHumanIfSlaBreached: s.requireHumanIfSlaBreached === undefined ? prev.requireHumanIfSlaBreached : !!s.requireHumanIfSlaBreached,
             requireHumanAfterCustomerMessages: Number(s.requireHumanAfterCustomerMessages ?? prev.requireHumanAfterCustomerMessages),
+            systemInstructions: s.systemInstructions || prev.systemInstructions,
+            fallbackMessage: s.fallbackMessage || prev.fallbackMessage,
+            handoffMessage: s.handoffMessage || prev.handoffMessage,
+            responseTone: (s.responseTone || prev.responseTone) as SofiaSettingsState['responseTone'],
+            maxResponseChars: Number(s.maxResponseChars ?? prev.maxResponseChars),
+            welcomeEnabled: s.welcomeEnabled === undefined ? prev.welcomeEnabled : !!s.welcomeEnabled,
           }));
         }
       } catch (err) {
@@ -113,10 +131,59 @@ const SofiaSettings: React.FC = () => {
         blockedStatuses: state.blockedStatuses.split(',').map((x) => x.trim()).filter(Boolean),
         requireHumanIfSlaBreached: state.requireHumanIfSlaBreached,
         requireHumanAfterCustomerMessages: state.requireHumanAfterCustomerMessages,
+        systemInstructions: state.systemInstructions,
+        fallbackMessage: state.fallbackMessage,
+        handoffMessage: state.handoffMessage,
+        responseTone: state.responseTone,
+        maxResponseChars: state.maxResponseChars,
+        welcomeEnabled: state.welcomeEnabled,
       });
       setSuccessText('Configurações salvas com sucesso no servidor.');
     } catch (err) {
       setErrorText(err instanceof Error ? err.message : 'Erro ao salvar configurações da Sofia.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const applyOfficialTemplate = async () => {
+    setSaving(true);
+    setErrorText(null);
+    setSuccessText(null);
+    try {
+      await authClient.applySofiaTemplate();
+      const api = await authClient.getSofiaSettings();
+      const s = api?.settings;
+      if (s) {
+        setState((prev) => ({
+          ...prev,
+          name: s.name || prev.name,
+          welcome: s.welcome || prev.welcome,
+          knowledgeBase: s.knowledgeBase || prev.knowledgeBase,
+          days: { ...prev.days, ...(s.activeDays || {}) },
+          autoReplyEnabled: !!s.autoReplyEnabled,
+          modelName: s.modelName || prev.modelName,
+          escalationKeywords: Array.isArray(s.escalationKeywords) ? s.escalationKeywords.join(', ') : prev.escalationKeywords,
+          autoMode: (s.autoMode || prev.autoMode) as SofiaSettingsState['autoMode'],
+          minConfidence: Number(s.minConfidence ?? prev.minConfidence),
+          maxAutoRepliesPerConversation: Number(s.maxAutoRepliesPerConversation ?? prev.maxAutoRepliesPerConversation),
+          businessHoursStart: s.businessHoursStart || prev.businessHoursStart,
+          businessHoursEnd: s.businessHoursEnd || prev.businessHoursEnd,
+          blockedTopics: Array.isArray(s.blockedTopics) ? s.blockedTopics.join(', ') : prev.blockedTopics,
+          blockedStatuses: Array.isArray(s.blockedStatuses) ? s.blockedStatuses.join(', ') : prev.blockedStatuses,
+          requireHumanIfSlaBreached: s.requireHumanIfSlaBreached === undefined ? prev.requireHumanIfSlaBreached : !!s.requireHumanIfSlaBreached,
+          requireHumanAfterCustomerMessages: Number(s.requireHumanAfterCustomerMessages ?? prev.requireHumanAfterCustomerMessages),
+          systemInstructions: s.systemInstructions || prev.systemInstructions,
+          fallbackMessage: s.fallbackMessage || prev.fallbackMessage,
+          handoffMessage: s.handoffMessage || prev.handoffMessage,
+          responseTone: (s.responseTone || prev.responseTone) as SofiaSettingsState['responseTone'],
+          maxResponseChars: Number(s.maxResponseChars ?? prev.maxResponseChars),
+          welcomeEnabled: s.welcomeEnabled === undefined ? prev.welcomeEnabled : !!s.welcomeEnabled,
+        }));
+      }
+      setSuccessText('Template oficial da Sofia aplicado e salvo no banco.');
+    } catch (err) {
+      setErrorText(err instanceof Error ? err.message : 'Erro ao aplicar template oficial da Sofia.');
     } finally {
       setSaving(false);
     }
@@ -178,6 +245,14 @@ const SofiaSettings: React.FC = () => {
             <div>
               <label className="text-[11px] text-gray-300 uppercase tracking-wide">Mensagem de Boas-vindas</label>
               <p className="text-[11px] text-gray-400">Mensagem inicial enviada ao iniciar uma conversa.</p>
+              <select
+                className="mt-1 mb-2 w-full rounded-lg bg-[#080816] border border-[#1A1B62] px-3 py-2 text-xs text-gray-100 outline-none"
+                value={state.welcomeEnabled ? 'SIM' : 'NAO'}
+                onChange={(e) => setState((s) => ({ ...s, welcomeEnabled: e.target.value === 'SIM' }))}
+              >
+                <option value="SIM">Boas-vindas ativas</option>
+                <option value="NAO">Boas-vindas desativadas</option>
+              </select>
               <textarea
                 className="mt-1 w-full rounded-lg bg-[#080816] border border-[#1A1B62] px-3 py-2 text-xs text-gray-100 outline-none min-h-[80px] resize-none focus:ring-1 focus:ring-[#EC1B23]"
                 value={state.welcome}
@@ -267,6 +342,32 @@ const SofiaSettings: React.FC = () => {
               <option value="gpt-4.1">gpt-4.1 (mais preciso)</option>
               <option value="gpt-4.1-mini">gpt-4.1-mini (equilibrado)</option>
             </select>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              <div>
+                <label className="text-[11px] text-gray-300 uppercase tracking-wide">Tom de Resposta</label>
+                <p className="text-[11px] text-gray-400">Estilo padrão de escrita da Sofia.</p>
+                <select
+                  className="w-full rounded-lg bg-[#080816] border border-[#1A1B62] px-3 py-2 text-xs text-gray-100 outline-none"
+                  value={state.responseTone}
+                  onChange={(e) => setState((s) => ({ ...s, responseTone: e.target.value as SofiaSettingsState['responseTone'] }))}
+                >
+                  <option value="PROFISSIONAL">Profissional</option>
+                  <option value="EMPATICO">Empático</option>
+                  <option value="DIRETO">Direto</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-[11px] text-gray-300 uppercase tracking-wide">Máx. caracteres por resposta</label>
+                <p className="text-[11px] text-gray-400">Evita respostas longas demais no WhatsApp.</p>
+                <input
+                  type="number"
+                  className="w-full rounded-lg bg-[#080816] border border-[#1A1B62] px-3 py-2 text-xs text-gray-100 outline-none"
+                  value={state.maxResponseChars}
+                  onChange={(e) => setState((s) => ({ ...s, maxResponseChars: Number(e.target.value) || 480 }))}
+                  placeholder="Ex: 480"
+                />
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
@@ -361,9 +462,45 @@ const SofiaSettings: React.FC = () => {
         <p className="text-[11px] text-gray-400">
           Dica: mantenha <strong>AGUARDANDO_RETORNO_AGENCIA</strong> bloqueado para a Sofia não responder em fluxos que dependem de retorno da agência.
         </p>
+        <div>
+          <label className="text-[11px] text-gray-300 uppercase tracking-wide">Instruções do Supervisor (Prompt Base)</label>
+          <p className="text-[11px] text-gray-400">Regras fixas de linguagem, compliance e conduta da Sofia.</p>
+          <textarea
+            className="w-full rounded-lg bg-[#080816] border border-[#1A1B62] px-3 py-2 text-xs text-gray-100 outline-none min-h-[100px] resize-y focus:ring-1 focus:ring-[#EC1B23]"
+            value={state.systemInstructions}
+            onChange={(e) => setState((s) => ({ ...s, systemInstructions: e.target.value }))}
+            placeholder="Ex: Nunca informar prazo final sem confirmar status atual do CTE no histórico."
+          />
+        </div>
+        <div>
+          <label className="text-[11px] text-gray-300 uppercase tracking-wide">Mensagem de fallback</label>
+          <p className="text-[11px] text-gray-400">Usada quando a OpenAI não responder a tempo ou vier vazia.</p>
+          <textarea
+            className="w-full rounded-lg bg-[#080816] border border-[#1A1B62] px-3 py-2 text-xs text-gray-100 outline-none min-h-[70px] resize-y focus:ring-1 focus:ring-[#EC1B23]"
+            value={state.fallbackMessage}
+            onChange={(e) => setState((s) => ({ ...s, fallbackMessage: e.target.value }))}
+          />
+        </div>
+        <div>
+          <label className="text-[11px] text-gray-300 uppercase tracking-wide">Mensagem de handoff (escalonamento)</label>
+          <p className="text-[11px] text-gray-400">Mensagem padrão quando a governança bloquear autoenvio e passar para humano.</p>
+          <textarea
+            className="w-full rounded-lg bg-[#080816] border border-[#1A1B62] px-3 py-2 text-xs text-gray-100 outline-none min-h-[70px] resize-y focus:ring-1 focus:ring-[#EC1B23]"
+            value={state.handoffMessage}
+            onChange={(e) => setState((s) => ({ ...s, handoffMessage: e.target.value }))}
+          />
+        </div>
       </div>
 
       <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={applyOfficialTemplate}
+          disabled={saving}
+          className="mr-2 px-4 py-2 rounded-lg border border-[#2B2F8F] bg-[#080A2A] text-white text-xs font-semibold hover:border-[#EC1B23]"
+        >
+          {saving ? 'Aplicando...' : 'Aplicar manual oficial'}
+        </button>
         <button
           type="button"
           onClick={handleSaveServer}

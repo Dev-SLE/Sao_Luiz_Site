@@ -218,7 +218,8 @@ async function runWebhookSofiaAutoReply(
           business_hours_start, business_hours_end,
           escalation_keywords, blocked_topics, blocked_statuses,
           require_human_if_sla_breached, require_human_after_customer_messages,
-          model_name
+          model_name, system_instructions, fallback_message,
+          response_tone, max_response_chars
         FROM pendencias.crm_sofia_settings
         ORDER BY updated_at DESC
         LIMIT 1
@@ -292,10 +293,13 @@ async function runWebhookSofiaAutoReply(
       .reverse()
       .map((m: any) => `${String(m.sender_type)}: ${String(m.body)}`)
       .join("\n");
+    const maxResponseChars = Number(s.max_response_chars || 480);
     const prompt = [
       `Cliente: ${String(convInfo.title || "")}`,
       `CTE: ${String(convInfo.cte_number || "")}`,
       `Tópico: ${String(convInfo.topic || "")}`,
+      `Tom de resposta: ${String(s.response_tone || "PROFISSIONAL")}`,
+      `Instruções do supervisor: ${String(s.system_instructions || "")}`,
       `Base: ${String(s.knowledge_base || "")}`,
       `Histórico:\n${transcript}`,
       `Mensagem atual: ${text}`,
@@ -303,11 +307,18 @@ async function runWebhookSofiaAutoReply(
     ].join("\n\n");
 
     const aiReply = await callOpenAi(prompt, s.model_name);
-    if (!aiReply?.trim()) return;
+    const normalizedReply = String(aiReply || "").trim();
+    const finalReply =
+      normalizedReply.length > 0
+        ? normalizedReply.length > maxResponseChars && maxResponseChars > 0
+          ? `${normalizedReply.slice(0, Math.max(1, maxResponseChars - 1)).trimEnd()}…`
+          : normalizedReply
+        : String(s.fallback_message || "").trim();
+    if (!finalReply) return;
     const minConf = Number(s.min_confidence || 70);
     const confidence = Math.max(minConf, 82);
 
-    const waSend = await sendWhatsAppText(from, aiReply);
+    const waSend = await sendWhatsAppText(from, finalReply);
     if (!waSend.ok) return;
 
     await pool.query(
@@ -320,7 +331,7 @@ async function runWebhookSofiaAutoReply(
       [
         conversationId,
         String(s.name || "Sofia"),
-        aiReply,
+        finalReply,
         JSON.stringify({
           outbound_whatsapp: {
             attempted: true,

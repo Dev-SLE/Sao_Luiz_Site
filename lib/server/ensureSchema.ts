@@ -1,4 +1,4 @@
-import { getPool } from "./db";
+import { getCommercialPool, getPool } from "./db";
 
 export async function ensureUserTokensTable() {
   const pool = getPool();
@@ -287,6 +287,12 @@ export async function ensureCrmSchemaTables() {
   await pool.query(`ALTER TABLE pendencias.crm_sofia_settings ADD COLUMN IF NOT EXISTS blocked_statuses jsonb NOT NULL DEFAULT '[]'::jsonb`);
   await pool.query(`ALTER TABLE pendencias.crm_sofia_settings ADD COLUMN IF NOT EXISTS require_human_if_sla_breached boolean NOT NULL DEFAULT true`);
   await pool.query(`ALTER TABLE pendencias.crm_sofia_settings ADD COLUMN IF NOT EXISTS require_human_after_customer_messages int NOT NULL DEFAULT 4`);
+  await pool.query(`ALTER TABLE pendencias.crm_sofia_settings ADD COLUMN IF NOT EXISTS system_instructions text`);
+  await pool.query(`ALTER TABLE pendencias.crm_sofia_settings ADD COLUMN IF NOT EXISTS fallback_message text`);
+  await pool.query(`ALTER TABLE pendencias.crm_sofia_settings ADD COLUMN IF NOT EXISTS handoff_message text`);
+  await pool.query(`ALTER TABLE pendencias.crm_sofia_settings ADD COLUMN IF NOT EXISTS response_tone text NOT NULL DEFAULT 'PROFISSIONAL'`);
+  await pool.query(`ALTER TABLE pendencias.crm_sofia_settings ADD COLUMN IF NOT EXISTS max_response_chars int NOT NULL DEFAULT 480`);
+  await pool.query(`ALTER TABLE pendencias.crm_sofia_settings ADD COLUMN IF NOT EXISTS welcome_enabled boolean NOT NULL DEFAULT true`);
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS pendencias.crm_whatsapp_inboxes (
@@ -342,6 +348,41 @@ export async function ensureCrmSchemaTables() {
       created_by text,
       created_at timestamptz NOT NULL DEFAULT now(),
       updated_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+  await pool.query(`
+    INSERT INTO pendencias.crm_routing_rules (name, priority, is_active, match_type, match_value, target_type, created_at, updated_at)
+    SELECT 'SLE | Rastreio', 10, true, 'REGEX', '(rastrear|rastreio|acompanhar|status|onde está|entrega|encomenda|cte)', 'NONE', NOW(), NOW()
+    WHERE NOT EXISTS (
+      SELECT 1 FROM pendencias.crm_routing_rules WHERE name = 'SLE | Rastreio'
+    )
+  `);
+  await pool.query(`
+    INSERT INTO pendencias.crm_routing_rules (name, priority, is_active, match_type, match_value, target_type, created_at, updated_at)
+    SELECT 'SLE | Cotação', 20, true, 'REGEX', '(cotação|cotacao|orçamento|orcamento|preço|preco|valor do frete|coleta)', 'NONE', NOW(), NOW()
+    WHERE NOT EXISTS (
+      SELECT 1 FROM pendencias.crm_routing_rules WHERE name = 'SLE | Cotação'
+    )
+  `);
+  await pool.query(`
+    INSERT INTO pendencias.crm_routing_rules (name, priority, is_active, match_type, match_value, target_type, created_at, updated_at)
+    SELECT 'SLE | Financeiro', 30, true, 'REGEX', '(boleto|cobrança|cobranca|pagamento|fatura|vencimento|segunda via)', 'NONE', NOW(), NOW()
+    WHERE NOT EXISTS (
+      SELECT 1 FROM pendencias.crm_routing_rules WHERE name = 'SLE | Financeiro'
+    )
+  `);
+  await pool.query(`
+    INSERT INTO pendencias.crm_routing_rules (name, priority, is_active, match_type, match_value, target_type, created_at, updated_at)
+    SELECT 'SLE | Ocorrência', 40, true, 'REGEX', '(atraso|avaria|extravio|problema|reclamação|reclamacao|danificada|não chegou|nao chegou)', 'NONE', NOW(), NOW()
+    WHERE NOT EXISTS (
+      SELECT 1 FROM pendencias.crm_routing_rules WHERE name = 'SLE | Ocorrência'
+    )
+  `);
+  await pool.query(`
+    INSERT INTO pendencias.crm_routing_rules (name, priority, is_active, match_type, match_value, target_type, created_at, updated_at)
+    SELECT 'SLE | Atendimento Humano', 50, true, 'REGEX', '(atendente|humano|pessoa|supervisor|gerente)', 'NONE', NOW(), NOW()
+    WHERE NOT EXISTS (
+      SELECT 1 FROM pendencias.crm_routing_rules WHERE name = 'SLE | Atendimento Humano'
     )
   `);
 
@@ -423,5 +464,64 @@ export async function ensureOperationalTrackingTables() {
     CREATE INDEX IF NOT EXISTS idx_operacional_tracking_events_cte_serie_time
     ON pendencias.operacional_tracking_events(cte, serie, event_time DESC)
   `);
+}
+
+export async function ensureCommercialTables() {
+  const pool = getCommercialPool();
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS public.tb_auditoria_metas (
+      id bigserial PRIMARY KEY,
+      data_cobranca date NOT NULL DEFAULT CURRENT_DATE,
+      agencia text NOT NULL,
+      perc_projetado numeric(8,2) NOT NULL DEFAULT 0,
+      status_auditoria text NOT NULL DEFAULT 'Aguardando Retorno',
+      motivo_queda text,
+      resumo_resposta text,
+      plano_acao text,
+      data_atualizacao timestamptz NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(`ALTER TABLE public.tb_auditoria_metas ADD COLUMN IF NOT EXISTS prioridade text NOT NULL DEFAULT 'MEDIA'`);
+  await pool.query(`ALTER TABLE public.tb_auditoria_metas ADD COLUMN IF NOT EXISTS responsavel text`);
+  await pool.query(`ALTER TABLE public.tb_auditoria_metas ADD COLUMN IF NOT EXISTS data_retorno_prevista date`);
+  await pool.query(`ALTER TABLE public.tb_auditoria_metas ADD COLUMN IF NOT EXISTS retorno_responsavel text`);
+  await pool.query(`ALTER TABLE public.tb_auditoria_metas ADD COLUMN IF NOT EXISTS conclusao text`);
+  await pool.query(`ALTER TABLE public.tb_auditoria_metas ADD COLUMN IF NOT EXISTS resultado_evolucao text NOT NULL DEFAULT 'NAO_AVALIADO'`);
+  await pool.query(`ALTER TABLE public.tb_auditoria_metas ADD COLUMN IF NOT EXISTS concluido boolean NOT NULL DEFAULT false`);
+  await pool.query(`ALTER TABLE public.tb_auditoria_metas ADD COLUMN IF NOT EXISTS concluido_em timestamptz`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_tb_auditoria_metas_status ON public.tb_auditoria_metas(status_auditoria)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_tb_auditoria_metas_data ON public.tb_auditoria_metas(data_atualizacao DESC)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_tb_auditoria_metas_responsavel ON public.tb_auditoria_metas(responsavel)`);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS public.tb_auditoria_metas_historico (
+      id bigserial PRIMARY KEY,
+      auditoria_id bigint NOT NULL REFERENCES public.tb_auditoria_metas(id) ON DELETE CASCADE,
+      acao text NOT NULL,
+      actor text,
+      note text,
+      previous_status text,
+      next_status text,
+      created_at timestamptz NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_tb_auditoria_hist_auditoria ON public.tb_auditoria_metas_historico(auditoria_id, created_at DESC)`);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS public.tb_robo_supremo_runs (
+      id bigserial PRIMARY KEY,
+      mode text,
+      status text NOT NULL DEFAULT 'PENDING',
+      trigger_source text NOT NULL DEFAULT 'SITE',
+      started_at timestamptz NOT NULL DEFAULT NOW(),
+      finished_at timestamptz,
+      exit_code int,
+      pid int,
+      stdout_log text,
+      stderr_log text,
+      created_by text
+    )
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_tb_robo_supremo_runs_started ON public.tb_robo_supremo_runs(started_at DESC)`);
 }
 
