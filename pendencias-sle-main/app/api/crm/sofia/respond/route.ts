@@ -74,6 +74,17 @@ function normalizeAiText(input: string, maxChars: number) {
   return `${clean.slice(0, Math.max(1, maxChars - 1)).trimEnd()}…`;
 }
 
+function isGenericReply(text: string) {
+  const t = String(text || "").toLowerCase();
+  if (!t) return true;
+  return (
+    t.includes("vou validar internamente") ||
+    t.includes("setor responsável") ||
+    t.includes("te retornar com segurança") ||
+    t.includes("encaminhar ao time")
+  );
+}
+
 export async function POST(req: Request) {
   try {
     await ensureCrmSchemaTables();
@@ -137,6 +148,7 @@ export async function POST(req: Request) {
     const blockedStatuses: string[] = Array.isArray(settings.blocked_statuses) ? settings.blocked_statuses.map((x: any) => String(x).toUpperCase()) : [];
 
     const iaMsgCount = (lastMsgsRes.rows || []).filter((m: any) => String(m.sender_type || "").toUpperCase() === "IA").length;
+    const lastIaMessage = (lastMsgsRes.rows || []).find((m: any) => String(m.sender_type || "").toUpperCase() === "IA");
     /** Sequência atual de mensagens do cliente sem resposta (histórico DESC = mais novo primeiro). */
     const trailingClientStreak = countTrailingClientStreak(lastMsgsRes.rows || []);
 
@@ -182,6 +194,16 @@ export async function POST(req: Request) {
       });
     }
     suggestion = normalizeAiText(suggestion, maxResponseChars);
+    const prevIaBody = String(lastIaMessage?.body || "").trim();
+    if (!suggestion || (prevIaBody && suggestion === prevIaBody) || isGenericReply(suggestion)) {
+      suggestion = fallbackReply({
+        customerName: String(conv.title || ""),
+        cte: String(conv.cte_number || ""),
+        text,
+        customFallback: null,
+      });
+      suggestion = normalizeAiText(suggestion, maxResponseChars);
+    }
 
     const confidence = shouldEscalate
       ? 15

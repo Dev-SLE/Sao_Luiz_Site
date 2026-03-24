@@ -101,6 +101,17 @@ function buildGuidedFallback(input: {
   return next || custom || "Recebi sua solicitação e já estou organizando as informações para direcionar ao setor responsável.";
 }
 
+function isGenericReply(text: string) {
+  const t = String(text || "").toLowerCase();
+  if (!t) return true;
+  return (
+    t.includes("vou validar internamente") ||
+    t.includes("setor responsável") ||
+    t.includes("te retornar com segurança") ||
+    t.includes("encaminhar ao time")
+  );
+}
+
 async function callOpenAi(prompt: string, modelOverride?: string | null) {
   const apiKey = process.env.OPENAI_API_KEY;
   const model =
@@ -357,12 +368,20 @@ async function runWebhookSofiaAutoReply(
       customFallback: String(s.fallback_message || ""),
       lastIaBody: lastIaMessage?.body ? String(lastIaMessage.body) : null,
     });
-    const finalReply =
+    let finalReply =
       normalizedReply.length > 0
         ? normalizedReply.length > maxResponseChars && maxResponseChars > 0
           ? `${normalizedReply.slice(0, Math.max(1, maxResponseChars - 1)).trimEnd()}…`
           : normalizedReply
         : guidedFallback;
+    const previousIa = String(lastIaMessage?.body || "").trim();
+    if (
+      !finalReply ||
+      (previousIa && finalReply === previousIa) ||
+      isGenericReply(finalReply)
+    ) {
+      finalReply = guidedFallback;
+    }
     const welcomeEnabled = s.welcome_enabled === undefined ? true : !!s.welcome_enabled;
     const welcomeText = String(s.welcome_message || "").trim();
     const shouldSendWelcome = welcomeEnabled && iaCount === 0 && clientCount <= 1 && welcomeText.length > 0;
