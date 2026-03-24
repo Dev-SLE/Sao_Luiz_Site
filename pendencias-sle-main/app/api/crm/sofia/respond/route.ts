@@ -9,9 +9,15 @@ function fallbackReply(input: { customerName?: string; cte?: string; text?: stri
   const lower = String(input.text || "").toLowerCase();
   const cte = String(input.cte || "").trim();
   const custom = String(input.customFallback || "").trim();
+  const variantsNoCte = [
+    "Para eu te ajudar com precisão, me informe o número do CTE. Se não tiver, pode enviar NF, remetente, destinatário e cidade de destino.",
+    "Vamos agilizar: você consegue me informar o CTE? Se não tiver em mãos, me passe NF e cidade de destino.",
+    "Consigo avançar agora no seu atendimento. Me envie o CTE; sem ele, me passe NF + destino + nome/CNPJ do destinatário.",
+  ];
 
   if (!cte) {
-    return "Para eu te ajudar com precisão, me informe o número do CTE. Se não tiver, pode enviar NF, remetente, destinatário e cidade de destino.";
+    const idx = Math.abs(String(input.text || "").length + lower.length) % variantsNoCte.length;
+    return variantsNoCte[idx];
   }
   if (lower.includes("prazo") || lower.includes("entrega")) {
     return `Recebi sua dúvida sobre prazo. Vou validar internamente o CTE ${cte} e já te retorno. Se puder, me confirme também a cidade de destino.`;
@@ -55,9 +61,13 @@ async function callOpenAi(prompt: string, modelOverride?: string | null) {
     },
     body: JSON.stringify({
       model,
-      temperature: 0.2,
+      temperature: 0.55,
       messages: [
-        { role: "system", content: "Você é Sofia, assistente de CRM logístico. Seja objetiva e cordial." },
+        {
+          role: "system",
+          content:
+            "Você é Sofia, assistente de CRM logístico. Seja cordial, humana e objetiva. Não repita frases idênticas da última resposta. Sempre avance com uma pergunta útil quando faltar dado.",
+        },
         { role: "user", content: prompt },
       ],
     }),
@@ -77,12 +87,14 @@ function normalizeAiText(input: string, maxChars: number) {
 function isGenericReply(text: string) {
   const t = String(text || "").toLowerCase();
   if (!t) return true;
-  return (
+  const hasQuestion = t.includes("?") || t.includes("me confirme") || t.includes("me informe");
+  const hasCollection = t.includes("cte") || t.includes("nf") || t.includes("destino") || t.includes("destinat");
+  const hasGenericPattern =
     t.includes("vou validar internamente") ||
     t.includes("setor responsável") ||
     t.includes("te retornar com segurança") ||
-    t.includes("encaminhar ao time")
-  );
+    t.includes("encaminhar ao time");
+  return hasGenericPattern && !hasQuestion && !hasCollection;
 }
 
 export async function POST(req: Request) {
@@ -177,6 +189,7 @@ export async function POST(req: Request) {
       `Instruções do supervisor: ${String(settings.system_instructions || "")}`,
       `Objetivo operacional: qualificar a conversa para o atendente humano, coletando os dados mínimos (CTE, origem, destino, unidade, ocorrência, urgência).`,
       `Se não houver informação suficiente, faça pergunta curta e direta para avançar o diagnóstico.`,
+      `Não repita frase pronta já usada no histórico; varie a formulação mantendo o mesmo sentido.`,
       `Conhecimento: ${String(settings.knowledge_base || "")}`,
       `Histórico:\n${transcript}`,
       `Mensagem atual: ${text}`,

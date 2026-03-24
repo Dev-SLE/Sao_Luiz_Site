@@ -78,10 +78,15 @@ function buildGuidedFallback(input: {
   const detectedCte = extractCteFromText(input.text || "") || String(input.cteNumber || "").trim() || "";
   const custom = String(input.customFallback || "").trim();
 
+  const variantsNoCte = [
+    "Para eu te ajudar no rastreio com precisão, me informe o número do CTE. Se não tiver, pode me passar NF, remetente, destinatário e cidade de destino.",
+    "Vamos resolver isso juntos. Você consegue me enviar o número do CTE? Se não tiver agora, me passe NF e cidade de destino para eu seguir.",
+    "Consigo avançar para você agora: me informe o CTE. Sem CTE, me envie NF + destino + nome/CNPJ do destinatário.",
+  ];
   let next = "";
   if (!detectedCte) {
-    next =
-      "Para eu te ajudar no rastreio com precisão, me informe o número do CTE. Se não tiver, pode me passar NF, remetente, destinatário e cidade de destino.";
+    const idx = Math.abs(String(input.text || "").length + text.length) % variantsNoCte.length;
+    next = variantsNoCte[idx];
   } else if (text.includes("onde") || text.includes("status") || text.includes("rast")) {
     next = `Perfeito. Recebi o CTE ${detectedCte}. Vou validar o status na unidade responsável. Se puder, me confirme também a cidade de destino para agilizar.`;
   } else if (text.includes("prazo") || text.includes("entrega")) {
@@ -104,12 +109,14 @@ function buildGuidedFallback(input: {
 function isGenericReply(text: string) {
   const t = String(text || "").toLowerCase();
   if (!t) return true;
-  return (
+  const hasQuestion = t.includes("?") || t.includes("me confirme") || t.includes("me informe");
+  const hasCollection = t.includes("cte") || t.includes("nf") || t.includes("destino") || t.includes("destinat");
+  const hasGenericPattern =
     t.includes("vou validar internamente") ||
     t.includes("setor responsável") ||
     t.includes("te retornar com segurança") ||
-    t.includes("encaminhar ao time")
-  );
+    t.includes("encaminhar ao time");
+  return hasGenericPattern && !hasQuestion && !hasCollection;
 }
 
 async function callOpenAi(prompt: string, modelOverride?: string | null) {
@@ -126,9 +133,13 @@ async function callOpenAi(prompt: string, modelOverride?: string | null) {
       },
       body: JSON.stringify({
         model,
-        temperature: 0.2,
+        temperature: 0.55,
         messages: [
-          { role: "system", content: "Você é Sofia, assistente logística da São Luiz Express. Seja objetiva e cordial." },
+          {
+            role: "system",
+            content:
+              "Você é Sofia, assistente logística da São Luiz Express. Seja cordial, humana e objetiva. Nunca repita frases idênticas da última resposta. Sempre avance a conversa com 1 pergunta útil quando faltar dado.",
+          },
           { role: "user", content: prompt },
         ],
       }),
@@ -351,6 +362,7 @@ async function runWebhookSofiaAutoReply(
       `Instruções do supervisor: ${String(s.system_instructions || "")}`,
       `Objetivo: coletar dados essenciais para o atendente humano quando faltar contexto (CTE, origem, destino, unidade, problema e prazo).`,
       `Se faltar dado crítico, faça pergunta curta e objetiva antes de prometer solução.`,
+      `Não repita frase pronta já usada no histórico; varie a formulação mantendo o mesmo sentido.`,
       `Base: ${String(s.knowledge_base || "")}`,
       `Histórico:\n${transcript}`,
       `Mensagem atual: ${text}`,
