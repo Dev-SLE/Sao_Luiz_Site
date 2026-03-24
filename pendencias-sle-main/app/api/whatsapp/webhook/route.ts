@@ -75,6 +75,8 @@ function buildGuidedFallback(input: {
   lastIaBody?: string | null;
 }) {
   const text = String(input.text || "").toLowerCase();
+  const isGreeting =
+    /\b(oi|ola|olá|bom dia|boa tarde|boa noite|tudo bem|blz|beleza)\b/i.test(String(input.text || ""));
   const detectedCte = extractCteFromText(input.text || "") || String(input.cteNumber || "").trim() || "";
   const custom = String(input.customFallback || "").trim();
 
@@ -85,8 +87,13 @@ function buildGuidedFallback(input: {
   ];
   let next = "";
   if (!detectedCte) {
+    if (isGreeting) {
+      next =
+        "Olá! Eu sou a Sofia da São Luiz Express. Posso te ajudar no rastreio agora: me informe o CTE. Se não tiver, me envie NF e cidade de destino.";
+    } else {
     const idx = Math.abs(String(input.text || "").length + text.length) % variantsNoCte.length;
     next = variantsNoCte[idx];
+    }
   } else if (text.includes("onde") || text.includes("status") || text.includes("rast")) {
     next = `Perfeito. Recebi o CTE ${detectedCte}. Vou validar o status na unidade responsável. Se puder, me confirme também a cidade de destino para agilizar.`;
   } else if (text.includes("prazo") || text.includes("entrega")) {
@@ -150,6 +157,42 @@ async function callOpenAi(prompt: string, modelOverride?: string | null) {
   } catch {
     return null;
   }
+}
+
+async function callGemini(prompt: string, modelOverride?: string | null) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  const model =
+    (modelOverride && String(modelOverride).trim()) || process.env.GEMINI_MODEL || "gemini-1.5-flash";
+  if (!apiKey) return null;
+  try {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        generationConfig: { temperature: 0.55 },
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+      }),
+    });
+    if (!resp.ok) return null;
+    const json = await resp.json().catch(() => ({}));
+    const text = json?.candidates?.[0]?.content?.parts?.[0]?.text;
+    return text ? String(text) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function callAiProvider(opts: { provider?: string | null; prompt: string; modelOverride?: string | null }) {
+  const selected = String(opts.provider || process.env.AI_PROVIDER || "OPENAI").toUpperCase();
+  if (selected === "GEMINI") {
+    const gemini = await callGemini(opts.prompt, opts.modelOverride);
+    if (gemini) return gemini;
+    return callOpenAi(opts.prompt, process.env.OPENAI_MODEL || null);
+  }
+  const openai = await callOpenAi(opts.prompt, opts.modelOverride);
+  if (openai) return openai;
+  return callGemini(opts.prompt, process.env.GEMINI_MODEL || null);
 }
 
 async function sendWhatsAppText(toE164: string, body: string) {
@@ -273,7 +316,7 @@ async function runWebhookSofiaAutoReply(
           business_hours_start, business_hours_end,
           escalation_keywords, blocked_topics, blocked_statuses,
           require_human_if_sla_breached, require_human_after_customer_messages,
-          model_name, system_instructions, fallback_message, welcome_enabled, welcome_message,
+          model_name, ai_provider, system_instructions, fallback_message, welcome_enabled, welcome_message,
           response_tone, max_response_chars
         FROM pendencias.crm_sofia_settings
         ORDER BY updated_at DESC
@@ -369,7 +412,11 @@ async function runWebhookSofiaAutoReply(
       `Responda em pt-BR, curta e útil.`,
     ].join("\n\n");
 
-    const aiReply = await callOpenAi(prompt, s.model_name);
+    const aiReply = await callAiProvider({
+      provider: s.ai_provider,
+      prompt,
+      modelOverride: s.model_name,
+    });
     const normalizedReply = String(aiReply || "").trim();
     const lastIaMessage = (historyRes.rows || []).find(
       (m: any) => String(m.sender_type || "").toUpperCase() === "IA"
