@@ -227,7 +227,7 @@ const AppContent: React.FC = () => {
       <Sidebar currentPage={currentPage} setPage={setCurrentPage} logout={logout} />
 
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <header className="relative z-10 flex h-[4.25rem] shrink-0 items-stretch justify-between overflow-hidden px-4 backdrop-blur-md md:px-8 sle-header-shell">
+        <header className="relative z-20 flex h-[4.25rem] shrink-0 items-stretch justify-between overflow-visible px-4 backdrop-blur-md md:px-8 sle-header-shell">
           <div className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(920px_140px_at_50%_-50px,rgba(44,52,140,0.16),transparent_65%)]" />
           <div className="pointer-events-none absolute inset-x-0 bottom-0 z-0 h-px bg-gradient-to-r from-transparent via-[#e42424]/45 to-transparent" />
           <div className="pointer-events-none absolute right-[10%] top-[-55%] z-0 h-36 w-36 rounded-full bg-[#e42424]/22 blur-2xl fx-orbit-rev" />
@@ -245,7 +245,7 @@ const AppContent: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-4">
-            <div className="relative">
+            <div className="relative z-50">
               <button
                 type="button"
                 onClick={() => setProfileOpen((v) => !v)}
@@ -269,7 +269,7 @@ const AppContent: React.FC = () => {
               </button>
 
               {profileOpen && (
-                <div className="absolute right-0 mt-2 w-60 overflow-hidden rounded-2xl border border-[#2c348c]/20 bg-white shadow-xl shadow-slate-400/25">
+                <div className="absolute right-0 top-full z-50 mt-2 w-60 overflow-hidden rounded-2xl border border-[#2c348c]/20 bg-white shadow-xl shadow-slate-400/25">
                   <div className="border-b border-[#2c348c]/10 bg-gradient-to-r from-[#f8faff] to-[#eef3ff] px-4 py-3">
                     <p className="text-xs font-semibold text-slate-500">Conectado como</p>
                     <p className="truncate text-sm font-bold text-slate-900">{user.username}</p>

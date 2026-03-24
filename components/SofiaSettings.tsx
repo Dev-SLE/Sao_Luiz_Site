@@ -3,6 +3,7 @@ import { authClient } from '../lib/auth';
 
 interface SofiaSettingsState {
   name: string;
+  aiProvider: 'OPENAI' | 'GEMINI';
   welcome: string;
   knowledgeBase: string;
   days: Record<string, boolean>;
@@ -28,6 +29,7 @@ interface SofiaSettingsState {
 
 const defaultState: SofiaSettingsState = {
   name: 'Sofia',
+  aiProvider: 'OPENAI',
   welcome: 'Olá! Sou a Sofia, assistente virtual da São Luiz Express. Como posso te ajudar hoje?',
   knowledgeBase: '',
   days: {
@@ -77,6 +79,7 @@ const SofiaSettings: React.FC = () => {
           setState((prev) => ({
             ...prev,
             name: s.name || prev.name,
+            aiProvider: (s.aiProvider || prev.aiProvider) as SofiaSettingsState['aiProvider'],
             welcome: s.welcome || prev.welcome,
             knowledgeBase: s.knowledgeBase || prev.knowledgeBase,
             days: { ...prev.days, ...(s.activeDays || {}) },
@@ -116,6 +119,7 @@ const SofiaSettings: React.FC = () => {
     try {
       await authClient.saveSofiaSettings({
         name: state.name,
+        aiProvider: state.aiProvider,
         welcome: state.welcome,
         knowledgeBase: state.knowledgeBase,
         activeDays: state.days,
@@ -158,6 +162,7 @@ const SofiaSettings: React.FC = () => {
         setState((prev) => ({
           ...prev,
           name: s.name || prev.name,
+          aiProvider: (s.aiProvider || prev.aiProvider) as SofiaSettingsState['aiProvider'],
           welcome: s.welcome || prev.welcome,
           knowledgeBase: s.knowledgeBase || prev.knowledgeBase,
           days: { ...prev.days, ...(s.activeDays || {}) },
@@ -331,16 +336,41 @@ const SofiaSettings: React.FC = () => {
               </select>
             </div>
             <div>
+              <label className="text-ui-label">Provedor de IA</label>
+              <p className="text-[11px] text-slate-600">Escolha qual API a Sofia usará (OpenAI ou Gemini).</p>
+              <select
+                className="field-ui w-full"
+                value={state.aiProvider}
+                onChange={(e) => setState((s) => ({ ...s, aiProvider: e.target.value as SofiaSettingsState['aiProvider'] }))}
+              >
+                <option value="OPENAI">OpenAI</option>
+                <option value="GEMINI">Google Gemini</option>
+              </select>
+            </div>
+            <div>
               <label className="text-ui-label">Modelo da IA</label>
-              <p className="text-[11px] text-slate-600">Escolha o modelo da OpenAI utilizado na geração de respostas.</p>
+              <p className="text-[11px] text-slate-600">
+                {state.aiProvider === 'GEMINI'
+                  ? 'Escolha o modelo Gemini utilizado na geração de respostas.'
+                  : 'Escolha o modelo OpenAI utilizado na geração de respostas.'}
+              </p>
               <select
               className="field-ui w-full"
               value={state.modelName}
               onChange={(e) => setState((s) => ({ ...s, modelName: e.target.value }))}
             >
-              <option value="gpt-4o-mini">gpt-4o-mini (rápido e econômico)</option>
-              <option value="gpt-4.1">gpt-4.1 (mais preciso)</option>
-              <option value="gpt-4.1-mini">gpt-4.1-mini (equilibrado)</option>
+              {state.aiProvider === 'GEMINI' ? (
+                <>
+                  <option value="gemini-1.5-flash">gemini-1.5-flash (rápido e econômico)</option>
+                  <option value="gemini-1.5-pro">gemini-1.5-pro (mais preciso)</option>
+                </>
+              ) : (
+                <>
+                  <option value="gpt-4o-mini">gpt-4o-mini (rápido e econômico)</option>
+                  <option value="gpt-4.1">gpt-4.1 (mais preciso)</option>
+                  <option value="gpt-4.1-mini">gpt-4.1-mini (equilibrado)</option>
+                </>
+              )}
             </select>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
@@ -433,7 +463,7 @@ const SofiaSettings: React.FC = () => {
           atendimento e qualquer contexto que a Sofia deve seguir.
         </p>
         <p className="mb-2 text-[11px] text-slate-600">
-          Chave da IA (OpenAI) é controlada no ambiente do servidor (`.env`) por segurança e não é salva nesta tela.
+          Chaves de IA (OpenAI/Gemini) são controladas no ambiente do servidor (`.env`) por segurança e não são salvas nesta tela.
         </p>
         <textarea
           className="field-ui min-h-[180px] w-full resize-y"

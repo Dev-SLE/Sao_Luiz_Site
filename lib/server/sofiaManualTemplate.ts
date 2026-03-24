@@ -1,5 +1,6 @@
 export type SofiaTemplatePayload = {
   name: string;
+  aiProvider: "OPENAI" | "GEMINI";
   welcome: string;
   knowledgeBase: string;
   activeDays: Record<string, boolean>;
@@ -26,6 +27,7 @@ export type SofiaTemplatePayload = {
 export function getSofiaManualTemplate(): SofiaTemplatePayload {
   return {
     name: "Sofia",
+    aiProvider: "OPENAI",
     welcome:
       "Olá! Sou a Sofia, assistente virtual da São Luiz Express. Para agilizar seu atendimento, me informe o número do CTE. Se não tiver, posso seguir com o número da nota fiscal e dados básicos do envio.",
     knowledgeBase: [

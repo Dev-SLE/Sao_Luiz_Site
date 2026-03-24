@@ -278,6 +278,7 @@ export async function ensureCrmSchemaTables() {
   await pool.query(`ALTER TABLE pendencias.crm_sofia_settings ADD COLUMN IF NOT EXISTS auto_reply_enabled boolean NOT NULL DEFAULT false`);
   await pool.query(`ALTER TABLE pendencias.crm_sofia_settings ADD COLUMN IF NOT EXISTS escalation_keywords jsonb NOT NULL DEFAULT '[]'::jsonb`);
   await pool.query(`ALTER TABLE pendencias.crm_sofia_settings ADD COLUMN IF NOT EXISTS model_name text`);
+  await pool.query(`ALTER TABLE pendencias.crm_sofia_settings ADD COLUMN IF NOT EXISTS ai_provider text NOT NULL DEFAULT 'OPENAI'`);
   await pool.query(`ALTER TABLE pendencias.crm_sofia_settings ADD COLUMN IF NOT EXISTS auto_mode text NOT NULL DEFAULT 'ASSISTIDO'`);
   await pool.query(`ALTER TABLE pendencias.crm_sofia_settings ADD COLUMN IF NOT EXISTS min_confidence int NOT NULL DEFAULT 70`);
   await pool.query(`ALTER TABLE pendencias.crm_sofia_settings ADD COLUMN IF NOT EXISTS max_auto_replies_per_conversation int NOT NULL DEFAULT 2`);

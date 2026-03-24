@@ -235,14 +235,37 @@ export async function applyInboundRouting(input: {
     [topic, routing.source === "RULE" ? "RULE" : "TOPIC", input.conversationId]
   );
 
-  if (routing.targetStageId) {
+  let stageToApply: string | null = routing.targetStageId || null;
+  if (!stageToApply) {
+    const stageNameByTopic: Record<string, string> = {
+      RASTREIO: "Em busca de mercadorias",
+      SUPORTE: "Ocorrências",
+      COMERCIAL: "Aguardando atendimento",
+      FINANCEIRO: "Aguardando atendimento",
+      GERAL: "Aguardando atendimento",
+    };
+    const stageName = stageNameByTopic[topic] || "Aguardando atendimento";
+    const stageRes = await pool.query(
+      `
+        SELECT s.id
+        FROM pendencias.crm_leads l
+        JOIN pendencias.crm_stages s ON s.pipeline_id = l.pipeline_id
+        WHERE l.id = $1::uuid AND LOWER(s.name) = LOWER($2)
+        LIMIT 1
+      `,
+      [input.leadId, stageName]
+    );
+    stageToApply = (stageRes.rows?.[0]?.id as string | undefined) || null;
+  }
+
+  if (stageToApply) {
     await pool.query(
       `
         UPDATE pendencias.crm_leads
         SET stage_id = $1::uuid, updated_at = NOW()
         WHERE id = $2::uuid
       `,
-      [routing.targetStageId, input.leadId]
+      [stageToApply, input.leadId]
     );
   }
 

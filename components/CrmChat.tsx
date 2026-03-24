@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useEffect, useRef, useLayoutEffect } from 'react';
 import {
   MessageCircle,
   Phone,
@@ -187,6 +187,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
   const [sofiaSuggesting, setSofiaSuggesting] = useState(false);
   const [sofiaAutoRunning, setSofiaAutoRunning] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const messageInputRef = useRef<HTMLTextAreaElement | null>(null);
   const [ultimoRastreio, setUltimoRastreio] = useState<string | null>(null);
   const [sofiaName, setSofiaName] = useState('Sofia');
   const [sofiaWelcome, setSofiaWelcome] = useState(
@@ -198,6 +199,16 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
   const conversationsFetchLock = useRef(false);
   const conversationsPollInFlight = useRef(false);
   const messagesRequestSeq = useRef(0);
+
+  useLayoutEffect(() => {
+    const el = messageInputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    const max = 168; // ~7 linhas
+    const next = Math.min(el.scrollHeight, max);
+    el.style.height = `${next}px`;
+    el.style.overflowY = el.scrollHeight > max ? "auto" : "hidden";
+  }, [input]);
 
   const { pendencias, criticos, fullData } = useData();
 
@@ -1124,11 +1135,13 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
             />
             <div className="flex-1">
               <textarea
+                ref={messageInputRef}
                 rows={1}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 placeholder="Digite sua mensagem..."
                 className="w-full resize-none rounded-2xl border border-slate-300 bg-white px-4 py-2 text-xs text-slate-900 outline-none placeholder:text-slate-500 focus:border-[#2c348c]/45 focus:ring-2 focus:ring-[#2c348c]/25"
+                style={{ minHeight: 38, maxHeight: 168 }}
               />
             </div>
             <button

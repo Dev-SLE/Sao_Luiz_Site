@@ -63,9 +63,127 @@ function buildAttachmentMeta(message: any) {
 }
 
 function extractCteFromText(text: string): string | null {
-  // Padrão simples: qualquer sequência de 5+ dígitos
-  const m = String(text || "").match(/\b\d{5,}\b/);
-  return m ? m[0] : null;
+  const raw = String(text || "");
+  if (/^\s*\d{3,12}\s*$/.test(raw)) return raw.trim();
+  const longDigits = raw.match(/\b\d{5,}\b/);
+  if (longDigits) return longDigits[0];
+  const cteHint = raw.match(/\bcte\b[^0-9]{0,10}(\d{3,12})\b/i);
+  if (cteHint?.[1]) return cteHint[1];
+  return null;
+}
+
+function parseWhatsappProfileName(value: any, from: string) {
+  const contacts = Array.isArray(value?.contacts) ? value.contacts : [];
+  const byWaId = contacts.find((c: any) => String(c?.wa_id || "") === String(from || ""));
+  const first = byWaId || contacts[0];
+  const name = String(first?.profile?.name || "").trim();
+  return name || null;
+}
+
+async function lookupCteSummary(pool: any, cteInput: string | null | undefined) {
+  const cte = String(cteInput || "").replace(/\D/g, "");
+  if (!cte) return null;
+  const res = await pool.query(
+    `
+      SELECT
+        c.cte,
+        c.serie,
+        c.status,
+        c.entrega,
+        c.destinatario,
+        c.data_limite_baixa,
+        i.status_calculado
+      FROM pendencias.ctes c
+      LEFT JOIN pendencias.cte_view_index i ON i.cte = c.cte AND i.serie = c.serie
+      WHERE c.cte = $1 OR LTRIM(c.cte, '0') = LTRIM($1, '0')
+      ORDER BY c.data_emissao DESC NULLS LAST
+      LIMIT 1
+    `,
+    [cte]
+  );
+  return res.rows?.[0] || null;
+}
+
+function detectConversationSlots(historyText: string) {
+  const full = String(historyText || "").toLowerCase();
+  const cte = extractCteFromText(full);
+  const hasDestination = /\b(destino|cidade de destino|entrega em|vai para|cidade)\b/.test(full);
+  const hasRecipient = /\b(destinat[aá]rio|recebedor|quem vai receber|nome\/cnpj|cnpj)\b/.test(full);
+  return {
+    cte: cte || "",
+    hasDestination,
+    hasRecipient,
+  };
+}
+
+function buildGuidedFallback(input: {
+  text: string;
+  cteNumber?: string | null;
+  customFallback?: string | null;
+  lastIaBody?: string | null;
+  historyText?: string | null;
+  cteSummary?: any;
+}) {
+  const text = String(input.text || "").toLowerCase();
+  const isGreeting =
+    /\b(oi|ola|olá|bom dia|boa tarde|boa noite|tudo bem|blz|beleza)\b/i.test(String(input.text || ""));
+  const slots = detectConversationSlots(String(input.historyText || ""));
+  const detectedCte = extractCteFromText(input.text || "") || String(input.cteNumber || slots.cte || "").trim() || "";
+  const custom = String(input.customFallback || "").trim();
+  const cteSummary = input.cteSummary || null;
+
+  const variantsNoCte = [
+    "Para eu te ajudar no rastreio com precisão, me informe o número do CTE. Se não tiver, pode me passar NF, remetente, destinatário e cidade de destino.",
+    "Vamos resolver isso juntos. Você consegue me enviar o número do CTE? Se não tiver agora, me passe NF e cidade de destino para eu seguir.",
+    "Consigo avançar para você agora: me informe o CTE. Sem CTE, me envie NF + destino + nome/CNPJ do destinatário.",
+  ];
+  let next = "";
+  if (!detectedCte) {
+    if (isGreeting) {
+      next =
+        "Olá! Eu sou a Sofia da São Luiz Express. Posso te ajudar no rastreio agora: me informe o CTE. Se não tiver, me envie NF e cidade de destino.";
+    } else {
+    const idx = Math.abs(String(input.text || "").length + text.length) % variantsNoCte.length;
+    next = variantsNoCte[idx];
+    }
+  } else if (cteSummary) {
+    const destino = String(cteSummary.entrega || "").trim() || "não informado";
+    const status = String(cteSummary.status_calculado || cteSummary.status || "").trim() || "em análise";
+    next = `Encontrei o CTE ${detectedCte} no sistema. Status atual: ${status}. Destino: ${destino}. Para continuar, me confirme o nome/CNPJ do destinatário.`;
+  } else if (!slots.hasDestination) {
+    next = `Perfeito, recebi o CTE ${detectedCte}. Para eu validar o rastreio agora, me confirme a cidade de destino.`;
+  } else if (!slots.hasRecipient) {
+    next = `Ótimo, com o CTE ${detectedCte} e destino em mãos. Agora me confirme o nome ou CNPJ do destinatário para eu concluir a triagem.`;
+  } else if (text.includes("onde") || text.includes("status") || text.includes("rast")) {
+    next = `Perfeito. Recebi o CTE ${detectedCte}. Vou validar o status na unidade responsável. Se puder, me confirme também a cidade de destino para agilizar.`;
+  } else if (text.includes("prazo") || text.includes("entrega")) {
+    next = `Entendi. Vou validar internamente a previsão do CTE ${detectedCte}. Para acelerar, me confirme a cidade de destino e um telefone para retorno.`;
+  } else {
+    next = `Recebi sua solicitação sobre o CTE ${detectedCte}. Vou seguir com a validação interna e te manter atualizado aqui no chat.`;
+  }
+
+  // Evita repetir exatamente a mesma saída em mensagens seguidas.
+  if (input.lastIaBody && String(input.lastIaBody).trim() === next) {
+    next = detectedCte
+      ? `Para avançar sem atraso no CTE ${detectedCte}, me confirme por favor: cidade de destino e nome de quem está aguardando a entrega.`
+      : "Para seguir seu atendimento agora, me informe por favor: número do CTE (ou NF), cidade de destino e nome/CNPJ do destinatário.";
+  }
+
+  if (!next && custom) return custom;
+  return next || custom || "Recebi sua solicitação e já estou organizando as informações para direcionar ao setor responsável.";
+}
+
+function isGenericReply(text: string) {
+  const t = String(text || "").toLowerCase();
+  if (!t) return true;
+  const hasQuestion = t.includes("?") || t.includes("me confirme") || t.includes("me informe");
+  const hasCollection = t.includes("cte") || t.includes("nf") || t.includes("destino") || t.includes("destinat");
+  const hasGenericPattern =
+    t.includes("vou validar internamente") ||
+    t.includes("setor responsável") ||
+    t.includes("te retornar com segurança") ||
+    t.includes("encaminhar ao time");
+  return hasGenericPattern && !hasQuestion && !hasCollection;
 }
 
 async function callOpenAi(prompt: string, modelOverride?: string | null) {
@@ -82,9 +200,13 @@ async function callOpenAi(prompt: string, modelOverride?: string | null) {
       },
       body: JSON.stringify({
         model,
-        temperature: 0.2,
+        temperature: 0.55,
         messages: [
-          { role: "system", content: "Você é Sofia, assistente logística da São Luiz Express. Seja objetiva e cordial." },
+          {
+            role: "system",
+            content:
+              "Você é Sofia, assistente logística da São Luiz Express. Seja cordial, humana e objetiva. Nunca repita frases idênticas da última resposta. Sempre avance a conversa com 1 pergunta útil quando faltar dado.",
+          },
           { role: "user", content: prompt },
         ],
       }),
@@ -95,6 +217,42 @@ async function callOpenAi(prompt: string, modelOverride?: string | null) {
   } catch {
     return null;
   }
+}
+
+async function callGemini(prompt: string, modelOverride?: string | null) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  const model =
+    (modelOverride && String(modelOverride).trim()) || process.env.GEMINI_MODEL || "gemini-1.5-flash";
+  if (!apiKey) return null;
+  try {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        generationConfig: { temperature: 0.55 },
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+      }),
+    });
+    if (!resp.ok) return null;
+    const json = await resp.json().catch(() => ({}));
+    const text = json?.candidates?.[0]?.content?.parts?.[0]?.text;
+    return text ? String(text) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function callAiProvider(opts: { provider?: string | null; prompt: string; modelOverride?: string | null }) {
+  const selected = String(opts.provider || process.env.AI_PROVIDER || "OPENAI").toUpperCase();
+  if (selected === "GEMINI") {
+    const gemini = await callGemini(opts.prompt, opts.modelOverride);
+    if (gemini) return gemini;
+    return callOpenAi(opts.prompt, process.env.OPENAI_MODEL || null);
+  }
+  const openai = await callOpenAi(opts.prompt, opts.modelOverride);
+  if (openai) return openai;
+  return callGemini(opts.prompt, process.env.GEMINI_MODEL || null);
 }
 
 async function sendWhatsAppText(toE164: string, body: string) {
@@ -218,7 +376,7 @@ async function runWebhookSofiaAutoReply(
           business_hours_start, business_hours_end,
           escalation_keywords, blocked_topics, blocked_statuses,
           require_human_if_sla_breached, require_human_after_customer_messages,
-          model_name, system_instructions, fallback_message,
+          model_name, ai_provider, system_instructions, fallback_message, welcome_enabled, welcome_message,
           response_tone, max_response_chars
         FROM pendencias.crm_sofia_settings
         ORDER BY updated_at DESC
@@ -284,6 +442,7 @@ async function runWebhookSofiaAutoReply(
       [conversationId]
     );
     const iaCount = (historyRes.rows || []).filter((m: any) => String(m.sender_type || "").toUpperCase() === "IA").length;
+    const clientCount = (historyRes.rows || []).filter((m: any) => String(m.sender_type || "").toUpperCase() === "CLIENT").length;
     const escalateAfter = Number(s.require_human_after_customer_messages || 4);
     const trailingClientStreak = countTrailingClientStreak(historyRes.rows || []);
     if (trailingClientStreak > escalateAfter) return;
@@ -293,32 +452,69 @@ async function runWebhookSofiaAutoReply(
       .reverse()
       .map((m: any) => `${String(m.sender_type)}: ${String(m.body)}`)
       .join("\n");
+    const contextText = `${transcript}\nCLIENT: ${text}`;
+    const cteCandidate = extractCteFromText(text) || String(convInfo.cte_number || "").trim();
+    const cteSummary = await lookupCteSummary(pool, cteCandidate);
     const maxResponseChars = Number(s.max_response_chars || 480);
+    const minConf = Number(s.min_confidence || 70);
+    const confidence = text.length > 80 ? 85 : text.length > 30 ? 75 : 65;
+    if (confidence < minConf) return;
+
     const prompt = [
       `Cliente: ${String(convInfo.title || "")}`,
       `CTE: ${String(convInfo.cte_number || "")}`,
       `Tópico: ${String(convInfo.topic || "")}`,
       `Tom de resposta: ${String(s.response_tone || "PROFISSIONAL")}`,
       `Instruções do supervisor: ${String(s.system_instructions || "")}`,
+      `Objetivo: coletar dados essenciais para o atendente humano quando faltar contexto (CTE, origem, destino, unidade, problema e prazo).`,
+      `Se faltar dado crítico, faça pergunta curta e objetiva antes de prometer solução.`,
+      `Não repita frase pronta já usada no histórico; varie a formulação mantendo o mesmo sentido.`,
+      cteSummary
+        ? `CTE encontrado no banco: CTE ${String(cteSummary.cte || "")} Série ${String(cteSummary.serie || "")} | Status ${String(cteSummary.status_calculado || cteSummary.status || "")} | Destino ${String(cteSummary.entrega || "")} | Destinatário ${String(cteSummary.destinatario || "")}.`
+        : "Se o cliente enviar número de CTE/NF e não houver resultado no banco, informe que não encontrou e peça confirmação do número.",
       `Base: ${String(s.knowledge_base || "")}`,
       `Histórico:\n${transcript}`,
       `Mensagem atual: ${text}`,
       `Responda em pt-BR, curta e útil.`,
     ].join("\n\n");
 
-    const aiReply = await callOpenAi(prompt, s.model_name);
+    const aiReply = await callAiProvider({
+      provider: s.ai_provider,
+      prompt,
+      modelOverride: s.model_name,
+    });
     const normalizedReply = String(aiReply || "").trim();
-    const finalReply =
+    const lastIaMessage = (historyRes.rows || []).find(
+      (m: any) => String(m.sender_type || "").toUpperCase() === "IA"
+    );
+    const guidedFallback = buildGuidedFallback({
+      text,
+      cteNumber: String(convInfo.cte_number || ""),
+      customFallback: String(s.fallback_message || ""),
+      lastIaBody: lastIaMessage?.body ? String(lastIaMessage.body) : null,
+      historyText: contextText,
+      cteSummary,
+    });
+    let finalReply =
       normalizedReply.length > 0
         ? normalizedReply.length > maxResponseChars && maxResponseChars > 0
           ? `${normalizedReply.slice(0, Math.max(1, maxResponseChars - 1)).trimEnd()}…`
           : normalizedReply
-        : String(s.fallback_message || "").trim();
-    if (!finalReply) return;
-    const minConf = Number(s.min_confidence || 70);
-    const confidence = Math.max(minConf, 82);
-
-    const waSend = await sendWhatsAppText(from, finalReply);
+        : guidedFallback;
+    const previousIa = String(lastIaMessage?.body || "").trim();
+    if (
+      !finalReply ||
+      (previousIa && finalReply === previousIa) ||
+      isGenericReply(finalReply)
+    ) {
+      finalReply = guidedFallback;
+    }
+    const welcomeEnabled = s.welcome_enabled === undefined ? true : !!s.welcome_enabled;
+    const welcomeText = String(s.welcome_message || "").trim();
+    const shouldSendWelcome = welcomeEnabled && iaCount === 0 && clientCount <= 1 && welcomeText.length > 0;
+    const outboundReply = shouldSendWelcome ? `${welcomeText}\n\n${guidedFallback}` : finalReply;
+    if (!outboundReply) return;
+    const waSend = await sendWhatsAppText(from, outboundReply);
     if (!waSend.ok) return;
 
     await pool.query(
@@ -331,7 +527,7 @@ async function runWebhookSofiaAutoReply(
       [
         conversationId,
         String(s.name || "Sofia"),
-        finalReply,
+        outboundReply,
         JSON.stringify({
           outbound_whatsapp: {
             attempted: true,
@@ -352,7 +548,7 @@ async function runWebhookSofiaAutoReply(
         INSERT INTO pendencias.crm_activities (lead_id, user_username, type, description, data, created_at)
         VALUES ($1, $2, 'EVENT', 'Sofia respondeu automaticamente', $3::jsonb, NOW())
       `,
-      [leadId, String(s.name || "Sofia"), JSON.stringify({ conversationId })]
+      [leadId, String(s.name || "Sofia"), JSON.stringify({ conversationId, cteCandidate, cteFound: !!cteSummary })]
     );
   } catch (e) {
     console.error("[whatsapp-webhook] Sofia auto:", e);
@@ -472,6 +668,7 @@ export async function POST(req: Request) {
           const from = String(message.from || "");
           const text = parseWhatsAppText(message);
           const cteDetected = extractCteFromText(text);
+          const profileName = parseWhatsappProfileName(value, from);
 
           const last10 = lastN(from, 10);
           const defaultIds = await ensureDefaultPipelineAndFirstStage(pool);
@@ -496,9 +693,19 @@ export async function POST(req: Request) {
           if (leadRes.rows?.[0]?.id) {
             leadId = leadRes.rows[0].id as string;
             leadTitle = String(leadRes.rows[0].title || leadId);
+            if (profileName && /^whatsapp\s+\d+/i.test(leadTitle)) {
+              const upgradedTitle = `${profileName} (${last10 || from})`;
+              await pool.query(
+                `UPDATE pendencias.crm_leads SET title = $1, updated_at = NOW() WHERE id = $2`,
+                [upgradedTitle, leadId]
+              );
+              leadTitle = upgradedTitle;
+            }
           } else {
             // 2) Cria lead automático para este número
-            leadTitle = `WhatsApp ${last10 || from.slice(-4) || "Lead"}`;
+            leadTitle = profileName
+              ? `${profileName} (${last10 || from.slice(-4) || "Lead"})`
+              : `WhatsApp ${last10 || from.slice(-4) || "Lead"}`;
 
             const positionRow = await pool.query(
               `

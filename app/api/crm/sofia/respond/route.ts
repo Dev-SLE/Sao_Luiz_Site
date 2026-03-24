@@ -5,17 +5,87 @@ import { countTrailingClientStreak } from "../../../../../lib/server/sofiaStreak
 
 export const runtime = "nodejs";
 
+function extractCteFromText(text: string): string | null {
+  const raw = String(text || "");
+  if (/^\s*\d{3,12}\s*$/.test(raw)) return raw.trim();
+  const longDigits = raw.match(/\b\d{5,}\b/);
+  if (longDigits) return longDigits[0];
+  const cteHint = raw.match(/\bcte\b[^0-9]{0,10}(\d{3,12})\b/i);
+  if (cteHint?.[1]) return cteHint[1];
+  return null;
+}
+
+async function lookupCteSummary(pool: any, cteInput: string | null | undefined) {
+  const cte = String(cteInput || "").replace(/\D/g, "");
+  if (!cte) return null;
+  const res = await pool.query(
+    `
+      SELECT
+        c.cte,
+        c.serie,
+        c.status,
+        c.entrega,
+        c.destinatario,
+        c.data_limite_baixa,
+        i.status_calculado
+      FROM pendencias.ctes c
+      LEFT JOIN pendencias.cte_view_index i ON i.cte = c.cte AND i.serie = c.serie
+      WHERE c.cte = $1 OR LTRIM(c.cte, '0') = LTRIM($1, '0')
+      ORDER BY c.data_emissao DESC NULLS LAST
+      LIMIT 1
+    `,
+    [cte]
+  );
+  return res.rows?.[0] || null;
+}
+
+function detectConversationSlots(historyText: string) {
+  const full = String(historyText || "").toLowerCase();
+  const cte = extractCteFromText(full);
+  const hasDestination =
+    /\b(destino|cidade de destino|entrega em|vai para|cidade)\b/.test(full);
+  const hasRecipient =
+    /\b(destinat[aá]rio|recebedor|quem vai receber|nome\/cnpj|cnpj)\b/.test(full);
+  return {
+    cte: cte || "",
+    hasDestination,
+    hasRecipient,
+  };
+}
+
 function fallbackReply(input: { customerName?: string; cte?: string; text?: string; customFallback?: string | null }) {
-  if (input.customFallback && String(input.customFallback).trim()) {
-    return String(input.customFallback).trim();
-  }
   const lower = String(input.text || "").toLowerCase();
+  const isGreeting =
+    /\b(oi|ola|olá|bom dia|boa tarde|boa noite|tudo bem|blz|beleza)\b/i.test(String(input.text || ""));
+  const slots = detectConversationSlots(`${String(input.text || "")}\n${String(input.customFallback || "")}`);
+  const cte = String(input.cte || slots.cte || "").trim();
+  const custom = String(input.customFallback || "").trim();
+  const variantsNoCte = [
+    "Para eu te ajudar com precisão, me informe o número do CTE. Se não tiver, pode enviar NF, remetente, destinatário e cidade de destino.",
+    "Vamos agilizar: você consegue me informar o CTE? Se não tiver em mãos, me passe NF e cidade de destino.",
+    "Consigo avançar agora no seu atendimento. Me envie o CTE; sem ele, me passe NF + destino + nome/CNPJ do destinatário.",
+  ];
+
+  if (!cte) {
+    if (isGreeting) {
+      return "Olá! Eu sou a Sofia da São Luiz Express. Posso te ajudar no rastreio agora: me informe o CTE. Se não tiver, me envie NF e cidade de destino.";
+    }
+    const idx = Math.abs(String(input.text || "").length + lower.length) % variantsNoCte.length;
+    return variantsNoCte[idx];
+  }
+  if (!slots.hasDestination) {
+    return `Perfeito, recebi o CTE ${cte}. Para eu validar o rastreio agora, me confirme a cidade de destino.`;
+  }
+  if (!slots.hasRecipient) {
+    return `Ótimo, com o CTE ${cte} e destino em mãos. Agora me confirme o nome ou CNPJ do destinatário para eu concluir a triagem.`;
+  }
   if (lower.includes("prazo") || lower.includes("entrega")) {
-    return `Recebi sua dúvida sobre prazo. Vou conferir o status e já te atualizo com a previsão mais precisa.`;
+    return `Recebi sua dúvida sobre prazo. Vou validar internamente o CTE ${cte} e já te retorno. Se puder, me confirme também a cidade de destino.`;
   }
   if (lower.includes("cte") || lower.includes("rastre")) {
-    return `Perfeito, vou validar o rastreio do CTE ${input.cte || ""} e te retorno em seguida com os detalhes.`;
+    return `Perfeito, vou validar o rastreio do CTE ${cte} e te retorno em seguida com os detalhes.`;
   }
+  if (custom) return custom;
   return `Oi${input.customerName ? `, ${input.customerName}` : ""}! Recebi sua mensagem e já estou verificando para te responder com precisão.`;
 }
 
@@ -51,9 +121,13 @@ async function callOpenAi(prompt: string, modelOverride?: string | null) {
     },
     body: JSON.stringify({
       model,
-      temperature: 0.2,
+      temperature: 0.55,
       messages: [
-        { role: "system", content: "Você é Sofia, assistente de CRM logístico. Seja objetiva e cordial." },
+        {
+          role: "system",
+          content:
+            "Você é Sofia, assistente de CRM logístico. Seja cordial, humana e objetiva. Não repita frases idênticas da última resposta. Sempre avance com uma pergunta útil quando faltar dado.",
+        },
         { role: "user", content: prompt },
       ],
     }),
@@ -63,11 +137,58 @@ async function callOpenAi(prompt: string, modelOverride?: string | null) {
   return json?.choices?.[0]?.message?.content ? String(json.choices[0].message.content) : null;
 }
 
+async function callGemini(prompt: string, modelOverride?: string | null) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  const model =
+    (modelOverride && String(modelOverride).trim()) || process.env.GEMINI_MODEL || "gemini-1.5-flash";
+  if (!apiKey) return null;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      generationConfig: { temperature: 0.55 },
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+    }),
+  });
+  if (!resp.ok) return null;
+  const json = await resp.json().catch(() => ({}));
+  const text = json?.candidates?.[0]?.content?.parts?.[0]?.text;
+  return text ? String(text) : null;
+}
+
+async function callAiProvider(opts: { provider?: string | null; prompt: string; modelOverride?: string | null }) {
+  const selected = String(opts.provider || process.env.AI_PROVIDER || "OPENAI").toUpperCase();
+  if (selected === "GEMINI") {
+    const gemini = await callGemini(opts.prompt, opts.modelOverride);
+    if (gemini) return gemini;
+    return callOpenAi(opts.prompt, process.env.OPENAI_MODEL || null);
+  }
+  const openai = await callOpenAi(opts.prompt, opts.modelOverride);
+  if (openai) return openai;
+  return callGemini(opts.prompt, process.env.GEMINI_MODEL || null);
+}
+
 function normalizeAiText(input: string, maxChars: number) {
   const clean = String(input || "").replace(/\s+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
   if (!maxChars || maxChars <= 0) return clean;
   if (clean.length <= maxChars) return clean;
   return `${clean.slice(0, Math.max(1, maxChars - 1)).trimEnd()}…`;
+}
+
+function isGenericReply(text: string) {
+  const t = String(text || "").toLowerCase();
+  if (!t) return true;
+  const hasQuestion = t.includes("?") || t.includes("me confirme") || t.includes("me informe");
+  const hasCollection = t.includes("cte") || t.includes("nf") || t.includes("destino") || t.includes("destinat");
+  const hasGenericPattern =
+    t.includes("vou validar internamente") ||
+    t.includes("setor responsável") ||
+    t.includes("te retornar com segurança") ||
+    t.includes("encaminhar ao time");
+  return hasGenericPattern && !hasQuestion && !hasCollection;
 }
 
 export async function POST(req: Request) {
@@ -95,7 +216,7 @@ export async function POST(req: Request) {
       pool.query(
         `
           SELECT
-            name, welcome_message, knowledge_base, auto_reply_enabled, escalation_keywords,
+            name, ai_provider, welcome_message, knowledge_base, auto_reply_enabled, escalation_keywords,
             active_days, auto_mode, min_confidence, max_auto_replies_per_conversation,
             business_hours_start, business_hours_end, blocked_topics, blocked_statuses,
             require_human_if_sla_breached, require_human_after_customer_messages,
@@ -133,6 +254,7 @@ export async function POST(req: Request) {
     const blockedStatuses: string[] = Array.isArray(settings.blocked_statuses) ? settings.blocked_statuses.map((x: any) => String(x).toUpperCase()) : [];
 
     const iaMsgCount = (lastMsgsRes.rows || []).filter((m: any) => String(m.sender_type || "").toUpperCase() === "IA").length;
+    const lastIaMessage = (lastMsgsRes.rows || []).find((m: any) => String(m.sender_type || "").toUpperCase() === "IA");
     /** Sequência atual de mensagens do cliente sem resposta (histórico DESC = mais novo primeiro). */
     const trailingClientStreak = countTrailingClientStreak(lastMsgsRes.rows || []);
 
@@ -152,6 +274,9 @@ export async function POST(req: Request) {
     const autoMode = String(settings.auto_mode || "ASSISTIDO").toUpperCase(); // ASSISTIDO | SEMI_AUTO | AUTO_TOTAL
     const responseTone = String(settings.response_tone || "PROFISSIONAL");
     const maxResponseChars = Number(settings.max_response_chars || 480);
+    const contextText = `${transcript}\nCLIENT: ${text}`;
+    const cteCandidate = String(conv.cte_number || extractCteFromText(contextText) || "").trim();
+    const cteSummary = await lookupCteSummary(pool, cteCandidate);
 
     const prompt = [
       `Nome cliente: ${String(conv.title || "")}`,
@@ -159,23 +284,43 @@ export async function POST(req: Request) {
       `Tópico: ${String(conv.topic || "")}`,
       `Tom de resposta: ${responseTone}`,
       `Instruções do supervisor: ${String(settings.system_instructions || "")}`,
+      `Objetivo operacional: qualificar a conversa para o atendente humano, coletando os dados mínimos (CTE, origem, destino, unidade, ocorrência, urgência).`,
+      `Se não houver informação suficiente, faça pergunta curta e direta para avançar o diagnóstico.`,
+      `Não repita frase pronta já usada no histórico; varie a formulação mantendo o mesmo sentido.`,
+      cteSummary
+        ? `CTE encontrado no banco: CTE ${String(cteSummary.cte || "")} Série ${String(cteSummary.serie || "")} | Status ${String(cteSummary.status_calculado || cteSummary.status || "")} | Destino ${String(cteSummary.entrega || "")} | Destinatário ${String(cteSummary.destinatario || "")}.`
+        : "Se o cliente enviar CTE/NF e não houver resultado no banco, avise que não encontrou e peça confirmação do número.",
       `Conhecimento: ${String(settings.knowledge_base || "")}`,
       `Histórico:\n${transcript}`,
       `Mensagem atual: ${text}`,
       `Responda em pt-BR, curta e precisa.`,
     ].join("\n\n");
 
-    let suggestion = await callOpenAi(prompt, settings.model_name);
+    let suggestion = await callAiProvider({
+      provider: settings.ai_provider,
+      prompt,
+      modelOverride: settings.model_name,
+    });
     const fromOpenAi = !!suggestion?.trim();
     if (!suggestion) {
       suggestion = fallbackReply({
         customerName: String(conv.title || ""),
-        cte: String(conv.cte_number || ""),
-        text,
+        cte: String(conv.cte_number || extractCteFromText(contextText) || ""),
+        text: contextText,
         customFallback: settings.fallback_message,
       });
     }
     suggestion = normalizeAiText(suggestion, maxResponseChars);
+    const prevIaBody = String(lastIaMessage?.body || "").trim();
+    if (!suggestion || (prevIaBody && suggestion === prevIaBody) || isGenericReply(suggestion)) {
+      suggestion = fallbackReply({
+        customerName: String(conv.title || ""),
+        cte: String(conv.cte_number || extractCteFromText(contextText) || ""),
+        text: contextText,
+        customFallback: null,
+      });
+      suggestion = normalizeAiText(suggestion, maxResponseChars);
+    }
 
     const confidence = shouldEscalate
       ? 15
