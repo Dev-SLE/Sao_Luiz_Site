@@ -9,7 +9,7 @@ html, body, #root {
   margin: 0;
   padding: 0;
   overflow-x: hidden;
-  background-color: #f8fafc; /* Slate-50 */
+  background-color: #cfd9e8;
   font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
@@ -27,4 +27,44 @@ html, body, #root {
   height: 100vh;
   background: #f0f9ff;
   color: #0284c7;
+}
+
+/* Scrollbars — tema claro corporativo */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 #f1f5f9;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: #e8edf5;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #64748b, #475569);
+  border-radius: 9999px;
+  border: 2px solid #e8edf5;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: #94a3b8;
+}
+
+/* Select padrão claro (telas legadas sem classe própria) */
+select {
+  background-color: #ffffff;
+  color: #1e293b;
+}
+
+select option {
+  background-color: #ffffff;
+  color: #1e293b;
+}
+
+select:focus {
+  outline: none;
 }

@@ -14,7 +14,16 @@ export async function GET(req: Request) {
 
     const pool = getPool();
     const result = await pool.query(
-      "SELECT * FROM pendencias.process_control WHERE cte = $1 AND serie = $2 ORDER BY data DESC",
+      `
+        SELECT *
+        FROM pendencias.process_control
+        WHERE cte = $1
+          AND (
+            serie = $2
+            OR ltrim(serie, '0') = ltrim($2, '0')
+          )
+        ORDER BY data DESC
+      `,
       [cte, serie]
     );
     const rows = result.rows.map((row: any) => ({

@@ -28,7 +28,7 @@ interface Props {
 
 type SortDirection = 'asc' | 'desc';
 interface SortConfig {
-  key: keyof CteData | 'STATUS_CALCULADO' | 'VALOR_NUMBER' | 'DATA_LIMITE_DATE';
+  key: keyof CteData | 'STATUS_CALCULADO' | 'VALOR_NUMBER' | 'DATA_LIMITE_DATE' | 'DATA_BAIXA_DATE';
   direction: SortDirection;
 }
 
@@ -41,34 +41,38 @@ interface FilterCardProps {
   onClick: () => void;
 }
 
-// Modern Filter Card (Inspired by Dashboard Design)
 const FilterCard: React.FC<FilterCardProps> = ({ label, count, color, selected, dimmed, onClick }) => (
-  <div 
-      onClick={onClick}
-      className={clsx(
-          "rounded-xl border transition-all cursor-pointer flex flex-col justify-between p-3 relative overflow-hidden group select-none h-[72px]",
-          selected 
-              ? "bg-white ring-2 ring-offset-1 z-10 scale-[1.02] shadow-md" 
-              : "bg-white border-gray-200 hover:border-gray-300 hover:bg-gray-50",
-          dimmed && !selected ? "opacity-50 grayscale-[0.5]" : "opacity-100"
-      )}
-      style={{ 
-          borderColor: selected ? color : undefined, 
-          backgroundColor: selected ? `${color}10` : undefined,
-          boxShadow: selected ? `0 4px 12px -2px ${color}20` : undefined
-      }}
+  <button
+    type="button"
+    onClick={onClick}
+    className={clsx(
+      'group relative flex h-[72px] cursor-pointer select-none flex-col justify-between overflow-hidden rounded-xl border p-3 text-left transition-all',
+      'border-slate-300/80 bg-gradient-to-b from-white to-slate-50/40 text-slate-700 shadow-sm hover:border-slate-400/80 hover:shadow-md',
+      selected && 'z-10 scale-[1.02] ring-2 ring-[#e42424]/30',
+      dimmed && !selected ? 'opacity-50 grayscale-[0.35]' : 'opacity-100',
+    )}
+    style={{
+      borderColor: selected ? color : undefined,
+      boxShadow: selected ? `0 4px 12px -2px ${color}30` : undefined,
+    }}
   >
-      <div className="flex justify-between items-start w-full mb-1">
-          <span className="font-bold uppercase tracking-wider text-[10px] truncate mr-2" style={{ color: selected ? color : '#6b7280' }}>
-              {label}
-          </span>
-          {selected && <CheckCircle size={14} fill={color} className="text-white shrink-0" />}
-      </div>
-      <div className="flex items-baseline gap-1">
-          <span className="font-black text-gray-800 text-2xl leading-none tracking-tight">{count}</span>
-      </div>
-      <div className="absolute bottom-0 left-0 h-1 w-full transition-all" style={{ backgroundColor: color, opacity: selected ? 1 : 0.3 }} />
-  </div>
+    <div className="mb-1 flex w-full items-start justify-between">
+      <span
+        className="truncate text-[10px] font-bold uppercase tracking-wider text-slate-500"
+        style={{ color: selected ? color : undefined }}
+      >
+        {label}
+      </span>
+      {selected && <CheckCircle size={14} fill={color} className="shrink-0 text-white" />}
+    </div>
+    <div className="flex items-baseline gap-1">
+      <span className="text-2xl font-black leading-none tracking-tight text-slate-900">{count}</span>
+    </div>
+    <div
+      className="absolute bottom-0 left-0 h-1 w-full transition-all"
+      style={{ backgroundColor: color, opacity: selected ? 1 : 0.35 }}
+    />
+  </button>
 );
 
 const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView = false, isCriticalView = false, enableFilters = false, ignoreUnitFilter = false, serverPagination }) => {
@@ -79,20 +83,45 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
   const [noteFilter, setNoteFilter] = useState<'ALL' | 'WITH' | 'WITHOUT'>('ALL');
   const [filterTxEntrega, setFilterTxEntrega] = useState(false);
   const [globalSearch, setGlobalSearch] = useState('');
+  const [dateField, setDateField] = useState<'EMISSAO' | 'LIMITE' | 'BAIXA'>('LIMITE');
+  const [draftDateFrom, setDraftDateFrom] = useState('');
+  const [draftDateTo, setDraftDateTo] = useState('');
+  const [appliedDateFrom, setAppliedDateFrom] = useState('');
+  const [appliedDateTo, setAppliedDateTo] = useState('');
   // --- Sort State ---
   const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'DATA_LIMITE_DATE', direction: 'asc' });
 
   const { user } = useAuth();
-  const { notes, fullData, processControlData, isCteEmBusca } = useData();
+  const { notes, fullData, processControlData, isCteEmBusca, hasPermission } = useData();
 
   // --- Paginação (local ou server-side) ---
   const [pageLocal, setPageLocal] = useState(1);
   const [limitLocal, setLimitLocal] = useState(50);
-  const page = serverPagination?.page ?? pageLocal;
-  const limit = serverPagination?.limit ?? limitLocal;
+  const hasActiveTableFilters =
+    selectedUnit.trim().length > 0 ||
+    statusFilters.length > 0 ||
+    paymentFilters.length > 0 ||
+    noteFilter !== 'ALL' ||
+    filterTxEntrega ||
+    appliedDateFrom.trim().length > 0 ||
+    appliedDateTo.trim().length > 0 ||
+    globalSearch.trim().length > 0;
+
+  const shouldUseLocalPagination = !!serverPagination && hasActiveTableFilters;
+  const useServerPagination = !!serverPagination && !shouldUseLocalPagination;
+
+  const page = useServerPagination ? serverPagination!.page : pageLocal;
+  const limit = useServerPagination ? serverPagination!.limit : limitLocal;
   const totalFromServer = serverPagination?.total;
-  const setPage = (p: number) => (serverPagination ? serverPagination.onPageChange(p) : setPageLocal(p));
-  const setLimit = (l: number) => (serverPagination ? serverPagination.onLimitChange(l) : setLimitLocal(l));
+
+  const setPage = (p: number) =>
+    useServerPagination ? serverPagination!.onPageChange(p) : setPageLocal(p);
+
+  const setLimit = (l: number) => {
+    if (useServerPagination) return serverPagination!.onLimitChange(l);
+    setLimitLocal(l);
+    setPageLocal(1);
+  };
 
   const serverView = useMemo(() => {
     const t = (title || '').toLowerCase();
@@ -102,6 +131,35 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
     if (t.includes('conclu')) return 'concluidos' as const;
     return 'pendencias' as const;
   }, [title]);
+
+  const [allViewData, setAllViewData] = useState<CteData[] | null>(null);
+  const [allViewLoading, setAllViewLoading] = useState(false);
+
+  const normalizeCtes = (rows: any[]): CteData[] =>
+    (rows || []).map((row: any) => ({
+      CTE: row.cte || '',
+      SERIE: row.serie || '',
+      CODIGO: row.codigo || '',
+      DATA_EMISSAO: row.data_emissao || '',
+      DATA_BAIXA: row.data_baixa || '',
+      PRAZO_BAIXA_DIAS: row.prazo_baixa_dias?.toString() || '',
+      DATA_LIMITE_BAIXA: row.data_limite_baixa || '',
+      STATUS: row.status || '',
+      STATUS_CALCULADO: (row.status_calculado || undefined) as any,
+      COLETA: row.coleta || '',
+      ENTREGA: row.entrega || '',
+      VALOR_CTE: row.valor_cte?.toString() || '',
+      TX_ENTREGA: row.tx_entrega || '',
+      VOLUMES: row.volumes || '',
+      PESO: row.peso || '',
+      FRETE_PAGO: row.frete_pago || '',
+      DESTINATARIO: row.destinatario || '',
+      JUSTIFICATIVA: row.justificativa || '',
+      NOTE_COUNT:
+        typeof row.note_count === 'number'
+          ? row.note_count
+          : parseInt(row.note_count || '0') || 0,
+    }));
 
   const [serverCounts, setServerCounts] = useState<null | {
     total: number;
@@ -118,6 +176,10 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
       return;
     }
     if (globalSearch.trim()) {
+      setServerCounts(null);
+      return;
+    }
+    if (appliedDateFrom || appliedDateTo) {
       setServerCounts(null);
       return;
     }
@@ -154,7 +216,34 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
     return () => {
       cancelled = true;
     };
-  }, [serverPagination, serverView, selectedUnit, statusFilters.join('|'), paymentFilters.join('|'), noteFilter, filterTxEntrega, ignoreUnitFilter, user?.linkedDestUnit, globalSearch]);
+  }, [serverView, selectedUnit, statusFilters.join('|'), paymentFilters.join('|'), noteFilter, filterTxEntrega, ignoreUnitFilter, user?.linkedDestUnit, globalSearch, appliedDateFrom, appliedDateTo]);
+
+  // Quando houver filtros, buscamos o "view" completo uma vez e aplicamos os filtros localmente,
+  // para que o número de páginas e os resultados batam com os cards (ctes_view_counts).
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      if (!serverPagination) return;
+      if (!shouldUseLocalPagination) {
+        setAllViewData(null);
+        return;
+      }
+      setAllViewLoading(true);
+      try {
+        const resp = await authClient.getCtesView(serverView as any, 1, 10000);
+        if (cancelled) return;
+        setAllViewData(normalizeCtes(resp?.data || []));
+      } catch (e) {
+        if (!cancelled) setAllViewData([]);
+      } finally {
+        if (!cancelled) setAllViewLoading(false);
+      }
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [serverPagination, shouldUseLocalPagination, serverView]);
 
   // Main Data Filtering Logic
   // (Estados já declarados no início do componente)
@@ -164,10 +253,11 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
   // Main Data Filtering Logic
   const filteredData = useMemo(() => {
     const isGlobalSearch = globalSearch.trim().length > 0;
+    const sourceRows = shouldUseLocalPagination ? (allViewData ?? []) : data;
     let result: CteData[] = [];
     if (isGlobalSearch) {
       const term = globalSearch.toLowerCase();
-      const baseForSearch = fullData.length > 0 ? fullData : data;
+      const baseForSearch = shouldUseLocalPagination ? (allViewData ?? []) : (fullData.length > 0 ? fullData : data);
       const activeMatches = baseForSearch.filter(d =>
         d.CTE.toLowerCase().includes(term) ||
         (d.DESTINATARIO || '').toLowerCase().includes(term) ||
@@ -208,7 +298,7 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
       });
       result = [...activeMatches, ...historicalMatches];
     } else {
-      result = data;
+      result = sourceRows;
       if (isPendencyView) result = result.filter(d => d.STATUS_CALCULADO !== 'CRÍTICO');
     }
     const userRestrictedUnit = (ignoreUnitFilter || isGlobalSearch) ? null : user?.linkedDestUnit;
@@ -233,8 +323,38 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
     if (filterTxEntrega) {
       result = result.filter(d => parseCurrency(d.TX_ENTREGA) > 0);
     }
+    const fromKey = dateInputToKey(appliedDateFrom);
+    const toKey = dateInputToKey(appliedDateTo);
+    if (fromKey || toKey) {
+      result = result.filter((d) => {
+        const k = getDateKeyByField(d);
+        if (!k) return false;
+        if (fromKey && k < fromKey) return false;
+        if (toKey && k > toKey) return false;
+        return true;
+      });
+    }
     return result;
-  }, [data, fullData, processControlData, notes, globalSearch, isPendencyView, user, selectedUnit, statusFilters, paymentFilters, noteFilter, filterTxEntrega, ignoreUnitFilter]);
+  }, [
+    data,
+    fullData,
+    allViewData,
+    shouldUseLocalPagination,
+    processControlData,
+    notes,
+    globalSearch,
+    isPendencyView,
+    user,
+    selectedUnit,
+    statusFilters,
+    paymentFilters,
+    noteFilter,
+    filterTxEntrega,
+    dateField,
+    appliedDateFrom,
+    appliedDateTo,
+    ignoreUnitFilter,
+  ]);
   const sortedData = useMemo(() => {
     const sorted = [...filteredData];
     sorted.sort((a, b) => {
@@ -248,6 +368,10 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
         case 'DATA_LIMITE_DATE':
           valA = parseDate(a.DATA_LIMITE_BAIXA);
           valB = parseDate(b.DATA_LIMITE_BAIXA);
+          break;
+        case 'DATA_BAIXA_DATE':
+          valA = parseDate(a.DATA_BAIXA || '');
+          valB = parseDate(b.DATA_BAIXA || '');
           break;
         case 'CTE':
           valA = parseInt(a.CTE) || 0;
@@ -268,21 +392,34 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
     return sorted;
   }, [filteredData, sortConfig]);
 
-  const total = typeof totalFromServer === 'number' ? totalFromServer : sortedData.length;
+  const total = shouldUseLocalPagination
+    ? (serverCounts?.total ?? sortedData.length)
+    : (typeof totalFromServer === 'number' ? totalFromServer : sortedData.length);
   const totalPages = Math.max(1, Math.ceil(total / limit));
   const paginatedData = useMemo(() => {
-    if (serverPagination) return sortedData;
+    if (useServerPagination) return sortedData;
     const start = (page - 1) * limit;
     const end = start + limit;
     return sortedData.slice(start, end);
-  }, [sortedData, page, limit, serverPagination]);
+  }, [sortedData, page, limit, useServerPagination]);
 
   // --- Constants ---
   const STATUS_OPTIONS = useMemo(() => {
     if (isCriticalView) return [];
+    if (serverView === 'concluidos') {
+      return [
+        'CONCLUIDO CRÍTICO',
+        'CONCLUIDO FORA DO PRAZO',
+        'CONCLUIDO NO PRAZO',
+        'CONCLUIDO (SEM LIMITE)',
+      ];
+    }
     if (isPendencyView) return ['FORA DO PRAZO', 'PRIORIDADE', 'VENCE AMANHÃ', 'NO PRAZO'];
     return ['CRÍTICO', 'FORA DO PRAZO', 'PRIORIDADE', 'VENCE AMANHÃ', 'NO PRAZO'];
-  }, [isPendencyView, isCriticalView]);
+  }, [isPendencyView, isCriticalView, serverView]);
+  const STATUS_LABELS: Record<string, string> = {
+    PRIORIDADE: 'VENCE HOJE',
+  };
 
   const PAYMENT_OPTIONS = ['CIF', 'FOB', 'FATURAR_REMETENTE', 'FATURAR_DEST'];
   
@@ -292,6 +429,10 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
     'PRIORIDADE': COLORS.priority,
     'VENCE AMANHÃ': COLORS.tomorrow,
     'NO PRAZO': COLORS.ontime,
+    'CONCLUIDO CRÍTICO': COLORS.critical,
+    'CONCLUIDO FORA DO PRAZO': COLORS.priority,
+    'CONCLUIDO NO PRAZO': COLORS.ontime,
+    'CONCLUIDO (SEM LIMITE)': '#10b981',
   };
 
   const PAYMENT_COLORS_MAP: Record<string, string> = {
@@ -302,10 +443,11 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
   };
 
   const latestEmissaoDate = useMemo(() => {
-    if (data.length === 0) return '--/--/----';
+    const source = shouldUseLocalPagination ? (allViewData ?? []) : data;
+    if (source.length === 0) return '--/--/----';
     let maxVal = 0;
     let maxStr = '';
-    data.forEach((d: CteData) => {
+    source.forEach((d: CteData) => {
        if (!d.DATA_EMISSAO) return;
        const parts = d.DATA_EMISSAO.split('/');
        if (parts.length === 3) {
@@ -314,7 +456,7 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
        }
     });
     return maxStr || '--/--/----';
-  }, [data]);
+  }, [data, allViewData, shouldUseLocalPagination]);
 
   const toggleFilter = (list: string[], item: string) => {
     return list.includes(item) ? list.filter(i => i !== item) : [...list, item];
@@ -333,11 +475,35 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
     } catch { return 0; }
   }
 
+  const formatDateOnly = (value?: string | null) => {
+    if (!value) return '-';
+    const [datePart] = String(value).split(' ');
+    return datePart || '-';
+  };
+
   function parseDate(dateStr: string) {
     if (!dateStr) return 0;
-    const parts = dateStr.split('/');
+    const [datePart] = dateStr.split(' ');
+    const parts = datePart.split('/');
     if (parts.length !== 3) return 0;
     return parseInt(`${parts[2]}${parts[1]}${parts[0]}`);
+  }
+
+  function dateInputToKey(input: string) {
+    if (!input) return 0;
+    const parts = input.split('-');
+    if (parts.length !== 3) return 0;
+    return parseInt(`${parts[0]}${parts[1]}${parts[2]}`);
+  }
+
+  function getDateKeyByField(row: CteData) {
+    const raw =
+      dateField === 'EMISSAO'
+        ? row.DATA_EMISSAO || ''
+        : dateField === 'BAIXA'
+          ? row.DATA_BAIXA || ''
+          : row.DATA_LIMITE_BAIXA || '';
+    return parseDate(raw);
   }
 
   const handleSort = (sortKey: SortConfig['key']) => {
@@ -349,10 +515,14 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
 
   const availableUnits = useMemo(() => {
     // During global search, allow searching any unit found in fullData
-    const sourceForUnits = globalSearch.trim().length > 0 ? fullData : data;
+    const sourceForUnits = shouldUseLocalPagination
+      ? (allViewData ?? [])
+      : globalSearch.trim().length > 0
+        ? fullData
+        : data;
     const units = new Set(sourceForUnits.map(d => d.ENTREGA).filter(Boolean));
     return Array.from(units).sort();
-  }, [data, fullData, globalSearch]);
+  }, [data, fullData, allViewData, shouldUseLocalPagination, globalSearch]);
 
   // Quando troca de aba (normalmente muda o `title`), evita “filtros vazando” para outras telas
   useEffect(() => {
@@ -361,6 +531,10 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
     setPaymentFilters([]);
     setNoteFilter('ALL');
     setFilterTxEntrega(false);
+    setDraftDateFrom('');
+    setDraftDateTo('');
+    setAppliedDateFrom('');
+    setAppliedDateTo('');
     setGlobalSearch('');
     setSortConfig({ key: 'DATA_LIMITE_DATE', direction: 'asc' });
     setPage(1);
@@ -368,11 +542,16 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
 
   // Evita “sumir dados” quando filtros/dados mudam e a página atual fica fora do range
   useEffect(() => {
-    setPage(1);
+    // Para paginação no servidor, o `data` muda ao navegar entre páginas.
+    // Não podemos resetar para 1 nesse momento senão a navegação nunca avança.
+    if (!useServerPagination) setPage(1);
   }, [
     limit,
     globalSearch,
     selectedUnit,
+    dateField,
+    appliedDateFrom,
+    appliedDateTo,
     noteFilter,
     filterTxEntrega,
     statusFilters.join('|'),
@@ -380,8 +559,25 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
     data,
   ]);
 
+  // Para paginação no servidor, resetamos a página apenas quando os filtros/search mudam,
+  // nunca quando o `data` (resultado já paginado) é atualizado ao clicar em "Próxima".
+  useEffect(() => {
+    if (serverPagination) setPage(1);
+  }, [
+    limit,
+    globalSearch,
+    selectedUnit,
+    dateField,
+    appliedDateFrom,
+    appliedDateTo,
+    noteFilter,
+    filterTxEntrega,
+    statusFilters.join('|'),
+    paymentFilters.join('|'),
+  ]);
+
   const getCount = (filterType: 'status' | 'payment' | 'note' | 'txEntrega', key: string) => {
-      if (serverPagination && serverCounts) {
+      if (serverPagination && serverCounts && !appliedDateFrom && !appliedDateTo) {
         if (filterType === 'status') return serverCounts.statusCounts?.[key] ?? 0;
         if (filterType === 'payment') return serverCounts.paymentCounts?.[key] ?? 0;
         if (filterType === 'note') return key === 'WITH' ? serverCounts.noteWith : serverCounts.noteWithout;
@@ -389,7 +585,8 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
       }
       // Logic mirrors filteredData but targets specific counts
       const isGlobalSearch = globalSearch.trim().length > 0;
-      let base = isGlobalSearch ? fullData : data; // Use fullData for global search counts too
+      const baseAll = shouldUseLocalPagination ? (allViewData ?? []) : data;
+      let base = isGlobalSearch ? (shouldUseLocalPagination ? (allViewData ?? []) : fullData) : baseAll;
       
       if (!isGlobalSearch && isPendencyView) base = base.filter(d => d.STATUS_CALCULADO !== 'CRÍTICO');
       
@@ -409,8 +606,22 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
           });
       }
       if (filterType !== 'txEntrega' && filterTxEntrega) base = base.filter(d => parseCurrency(d.TX_ENTREGA) > 0);
+      const fromKey = dateInputToKey(appliedDateFrom);
+      const toKey = dateInputToKey(appliedDateTo);
+      if (fromKey || toKey) {
+        base = base.filter((d) => {
+          const k = getDateKeyByField(d);
+          if (!k) return false;
+          if (fromKey && k < fromKey) return false;
+          if (toKey && k > toKey) return false;
+          return true;
+        });
+      }
 
-      if (filterType === 'status') return base.filter(d => d.STATUS_CALCULADO === key).length;
+      if (filterType === 'status') {
+        if (serverView === 'concluidos') return base.filter(d => (d.STATUS || '') === key).length;
+        return base.filter(d => d.STATUS_CALCULADO === key).length;
+      }
       if (filterType === 'payment') return base.filter(d => d.FRETE_PAGO === key).length;
       if (filterType === 'note') {
          return base.filter(d => {
@@ -433,7 +644,10 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
   const showFilters = isPendencyView || enableFilters || isCriticalView;
 
   const SortHeader = ({ label, sortKey }: { label: string, sortKey: SortConfig['key'] }) => (
-    <th className="px-4 py-3 cursor-pointer group hover:bg-gray-100 transition-colors select-none" onClick={() => handleSort(sortKey)}>
+    <th
+      className="group cursor-pointer select-none px-4 py-3 transition-colors hover:bg-slate-100"
+      onClick={() => handleSort(sortKey)}
+    >
       <div className="flex items-center gap-1">
         {label}
         <div className="text-gray-400 group-hover:text-primary-600">
@@ -459,8 +673,10 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
               onChange={(e) => setGlobalSearch(e.target.value)}
               placeholder="Busca Global (CTE, Destinatário, Unidade)..."
               className={clsx(
-                  "w-full pl-10 pr-4 py-3 rounded-lg border focus:ring-2 focus:ring-primary-500 outline-none transition-all shadow-sm text-gray-900",
-                  globalSearch ? "bg-primary-50 border-primary-300 ring-2 ring-primary-100" : "bg-white border-gray-200"
+                  "w-full pl-10 pr-4 py-3 rounded-lg border outline-none transition-all shadow-sm text-sm",
+                  globalSearch
+                    ? "border-[#e42424] bg-red-50 text-slate-900 ring-1 ring-[#e42424]/40"
+                    : "border-slate-200 bg-white text-slate-800"
               )}
            />
            {globalSearch && (
@@ -469,28 +685,25 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
                </div>
            )}
         </div>
-        <div className="flex items-center gap-2 bg-emerald-50 px-4 py-2 rounded-lg border border-emerald-100 text-emerald-700 text-xs font-bold shadow-sm h-fit self-center whitespace-nowrap">
-            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-            <CalendarCheck2 size={16} />
-            <span>Atualizado: {latestEmissaoDate}</span>
-        </div>
       </div>
 
       {/* Controles de Paginação */}
-      <div className="flex items-center justify-between mt-4 gap-2">
+      <div className="surface-card mt-4 flex items-center justify-between gap-2 border border-[#2c348c]/15 bg-gradient-to-b from-white to-[#f6f9ff] px-3 py-2 text-slate-800">
         <button
-          className="px-3 py-1 rounded bg-gray-100 border border-gray-300 text-gray-700 disabled:opacity-50"
+          type="button"
+          className="rounded border border-slate-200 bg-white px-3 py-1 text-slate-700 disabled:opacity-40"
           disabled={page <= 1}
           onClick={() => setPage(page - 1)}
         >Anterior</button>
         <span className="text-sm font-bold">Página {page} de {totalPages}</span>
         <button
-          className="px-3 py-1 rounded bg-gray-100 border border-gray-300 text-gray-700 disabled:opacity-50"
+          type="button"
+          className="rounded border border-slate-200 bg-white px-3 py-1 text-slate-700 disabled:opacity-40"
           disabled={page >= totalPages}
           onClick={() => setPage(page + 1)}
         >Próxima</button>
         <select
-          className="ml-2 px-2 py-1 rounded border border-gray-300 text-sm"
+          className="ml-2 rounded border border-slate-200 bg-white px-2 py-1 text-sm text-slate-800"
           value={limit}
           onChange={e => { setLimit(Number(e.target.value)); setPage(1); }}
         >
@@ -498,25 +711,29 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
           <option value={100}>100</option>
           <option value={1000}>1000</option>
         </select>
-        <span className="text-xs text-gray-500 ml-2">Total: {total}</span>
+        <span className="ml-2 text-xs text-slate-600">Total: {total}</span>
       </div>
 
       {/* Filter Section */}
       {showFilters && !globalSearch && (
-        <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 transition-opacity">
+        <div className="surface-card-strong p-5 text-slate-700 transition-opacity">
             
             {/* Header com Unidade */}
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-gray-100 pb-4 mb-5">
-                <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                    <Filter size={20} className="text-primary-600" /> Filtros Inteligentes
+            <div className="mb-5 flex flex-col items-start justify-between gap-4 border-b border-slate-200 pb-4 md:flex-row md:items-center">
+                <h2 className="flex items-center gap-2 text-lg font-bold text-slate-900">
+                    <Filter size={20} className="text-[#2c348c]" /> Filtros inteligentes
                 </h2>
                 <div className="w-full md:w-auto">
                     {user?.linkedDestUnit && !ignoreUnitFilter ? (
-                        <div className="flex items-center gap-2 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 cursor-not-allowed">
-                            <Package size={14} /> <span className="font-bold text-xs">{user.linkedDestUnit}</span>
+                        <div className="flex cursor-not-allowed items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-slate-600">
+                            <Package size={14} /> <span className="text-xs font-bold">{user.linkedDestUnit}</span>
                         </div>
                     ) : (
-                        <select value={selectedUnit} onChange={(e) => setSelectedUnit(e.target.value)} className="w-full md:w-64 appearance-none bg-gray-50 border border-gray-200 text-gray-700 py-2.5 px-3 rounded-xl text-xs font-bold focus:outline-none focus:ring-1 focus:ring-primary-500 cursor-pointer shadow-sm">
+                        <select
+                            value={selectedUnit}
+                            onChange={(e) => setSelectedUnit(e.target.value)}
+                            className="w-full cursor-pointer appearance-none rounded-xl border border-slate-200 bg-white py-2.5 pl-3 pr-3 text-xs font-bold text-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#2c348c]/25 md:w-64"
+                        >
                             <option value="">Todas as Unidades</option>
                             {availableUnits.map(u => <option key={u} value={u}>{u}</option>)}
                         </select>
@@ -524,17 +741,56 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
                 </div>
             </div>
 
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-5">
+                <select
+                    value={dateField}
+                    onChange={(e) => setDateField(e.target.value as 'EMISSAO' | 'LIMITE' | 'BAIXA')}
+                    className="appearance-none rounded-xl border border-slate-200 bg-white py-2.5 px-3 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#2c348c]/25"
+                >
+                    <option value="EMISSAO">Filtrar por emissão</option>
+                    <option value="LIMITE">Filtrar por limite</option>
+                    <option value="BAIXA">Filtrar por baixa</option>
+                </select>
+                <input
+                    type="date"
+                    value={draftDateFrom}
+                    onChange={(e) => setDraftDateFrom(e.target.value)}
+                    className="rounded-xl border border-slate-200 bg-white py-2.5 px-3 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#2c348c]/25"
+                />
+                <input
+                    type="date"
+                    value={draftDateTo}
+                    onChange={(e) => setDraftDateTo(e.target.value)}
+                    className="rounded-xl border border-slate-200 bg-white py-2.5 px-3 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#2c348c]/25"
+                />
+                <button
+                    type="button"
+                    onClick={() => { setAppliedDateFrom(draftDateFrom); setAppliedDateTo(draftDateTo); }}
+                    className="inline-flex items-center justify-center gap-1 rounded-xl border border-[#2c348c]/30 bg-gradient-to-r from-[#2c348c] to-[#06183e] px-3 py-2 text-xs font-black text-white transition-colors hover:opacity-95"
+                >
+                    <CalendarCheck2 size={14} />
+                    Aplicar
+                </button>
+                <button
+                    type="button"
+                    onClick={() => { setDraftDateFrom(''); setDraftDateTo(''); setAppliedDateFrom(''); setAppliedDateTo(''); }}
+                    className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-600 transition-colors hover:bg-slate-100"
+                >
+                    Limpar datas
+                </button>
+            </div>
+
             <div className="flex flex-col gap-6">
                 
                 {/* BLOCO 1: STATUS (Apenas se não for visualização crítica) */}
                 {STATUS_OPTIONS.length > 0 && (
                     <div className="space-y-2">
-                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Status do Prazo</label>
+                        <label className="ml-1 text-[10px] font-bold uppercase tracking-wider text-slate-700">Status do prazo</label>
                         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3">
                             {STATUS_OPTIONS.map(status => (
                                 <FilterCard 
                                     key={status}
-                                    label={status}
+                                    label={STATUS_LABELS[status] || status}
                                     count={getCount('status', status)}
                                     color={STATUS_COLORS_MAP[status]}
                                     selected={statusFilters.includes(status)}
@@ -551,7 +807,7 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
                     
                     {/* PAGAMENTOS (6 Cols on Desktop) */}
                     <div className="col-span-1 md:col-span-12 lg:col-span-6 space-y-2">
-                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Tipo de Pagamento</label>
+                        <label className="ml-1 text-[10px] font-bold uppercase tracking-wider text-slate-700">Tipo de pagamento</label>
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                             {PAYMENT_OPTIONS.map(pay => (
                                 <FilterCard 
@@ -569,7 +825,7 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
 
                     {/* NOTAS (3 Cols on Desktop) */}
                     <div className="col-span-1 md:col-span-6 lg:col-span-3 space-y-2">
-                         <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Anotações</label>
+                         <label className="ml-1 text-[10px] font-bold uppercase tracking-wider text-slate-700">Anotações</label>
                          <div className="grid grid-cols-2 gap-3">
                             <FilterCard 
                                 label="Com Notas" count={getCount('note', 'WITH')} color={COLORS.priority} 
@@ -586,7 +842,7 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
 
                     {/* ATRIBUTOS (3 Cols on Desktop - HARMONIZED DESIGN) */}
                     <div className="col-span-1 md:col-span-6 lg:col-span-3 space-y-2">
-                         <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Atributos</label>
+                         <label className="ml-1 text-[10px] font-bold uppercase tracking-wider text-slate-700">Atributos</label>
                          <div className="grid grid-cols-1">
                             <FilterCard
                                 label="COM ENTREGA"
@@ -601,9 +857,13 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
             </div>
              
              {/* FOOTER: CLEAR FILTERS */}
-             {(statusFilters.length > 0 || paymentFilters.length > 0 || noteFilter !== 'ALL' || filterTxEntrega) && (
-                 <div className="flex justify-end mt-6 pt-3 border-t border-gray-100">
-                    <button onClick={() => { setStatusFilters([]); setPaymentFilters([]); setNoteFilter('ALL'); setFilterTxEntrega(false); }} className="px-4 py-2 text-xs text-red-600 font-bold bg-red-50 hover:bg-red-100 rounded-lg transition-colors flex items-center gap-2 border border-red-100">
+             {(statusFilters.length > 0 || paymentFilters.length > 0 || noteFilter !== 'ALL' || filterTxEntrega || appliedDateFrom || appliedDateTo) && (
+                 <div className="mt-6 flex justify-end border-t border-slate-200 pt-3">
+                    <button
+                      type="button"
+                      onClick={() => { setStatusFilters([]); setPaymentFilters([]); setNoteFilter('ALL'); setFilterTxEntrega(false); setDraftDateFrom(''); setDraftDateTo(''); setAppliedDateFrom(''); setAppliedDateTo(''); }}
+                      className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-xs font-bold text-red-700 transition-colors hover:bg-red-100"
+                    >
                         <X size={14} /> Limpar Todos os Filtros
                     </button>
                  </div>
@@ -612,35 +872,56 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
       )}
 
       {/* Main Table Title & Action */}
-      <div className="flex justify-between items-center mb-4 mt-6">
-        <h2 className="text-xl font-bold text-primary-900">{title} <span className="text-gray-400 text-sm font-normal">({filteredData.length})</span></h2>
-        <button onClick={() => {
-            const exportData = sortedData.map(d => ({
-                CTE: d.CTE, SERIE: d.SERIE, DATA_EMISSAO: d.DATA_EMISSAO, DATA_LIMITE: d.DATA_LIMITE_BAIXA,
-                STATUS: d.STATUS_CALCULADO || d.STATUS, UNIDADE: d.ENTREGA, CLIENTE: d.DESTINATARIO, VALOR: d.VALOR_CTE
-            }));
-            const ws = XLSX.utils.json_to_sheet(exportData);
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, "Dados");
-            XLSX.writeFile(wb, `SLE_${title.replace(/\s/g, '_')}.xlsx`);
-        }} className="bg-emerald-600 text-white px-4 py-2 rounded hover:bg-emerald-700 text-sm font-medium shadow-sm flex items-center gap-2 transition-colors">
-          <FileSpreadsheet size={18} /> Exportar Excel
-        </button>
+      <div className="mb-4 mt-6 flex items-center justify-between">
+        <h2 className="text-xl font-bold text-slate-900">
+          {title} <span className="text-sm font-medium text-slate-600">({filteredData.length})</span>
+        </h2>
+        {hasPermission('EXPORT_DATA') && (
+          <button
+            type="button"
+            onClick={() => {
+              const exportData = sortedData.map(d => ({
+                CTE: d.CTE,
+                SERIE: d.SERIE,
+                DATA_EMISSAO: d.DATA_EMISSAO,
+                DATA_BAIXA: d.DATA_BAIXA || '',
+                DATA_LIMITE: d.DATA_LIMITE_BAIXA,
+                STATUS: d.STATUS_CALCULADO || d.STATUS,
+                UNIDADE: d.ENTREGA,
+                CLIENTE: d.DESTINATARIO,
+                VALOR: d.VALOR_CTE,
+              }));
+              const ws = XLSX.utils.json_to_sheet(exportData);
+              const wb = XLSX.utils.book_new();
+              XLSX.utils.book_append_sheet(wb, ws, 'Dados');
+              XLSX.writeFile(wb, `SLE_${title.replace(/\s/g, '_')}.xlsx`);
+            }}
+            className="group relative inline-flex items-center gap-2 overflow-hidden rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm transition-all duration-300 hover:border-[#e42424]/40 hover:bg-red-50 hover:text-[#06183e]"
+          >
+            <span className="pointer-events-none absolute inset-0 translate-y-full bg-[#e42424]/10 transition-transform duration-500 ease-out group-hover:translate-y-0" />
+            <span className="relative flex items-center gap-2">
+              <FileSpreadsheet size={18} />
+              Exportar Excel
+            </span>
+          </button>
+        )}
       </div>
 
-      <div className="hidden md:block overflow-x-auto bg-white rounded-lg shadow border border-gray-200">
-        <table className="w-full text-sm text-left">
-          <thead className="bg-primary-50 text-primary-900 uppercase font-bold text-xs">
+      <div className="table-shell hidden md:block">
+        <table className="w-full text-left text-sm">
+          <thead className="border-b border-slate-300/70 bg-gradient-to-b from-slate-100 to-slate-50 text-xs font-bold uppercase text-slate-600">
             <tr>
               <SortHeader label="Status" sortKey="STATUS_CALCULADO" />
               <SortHeader label="CTE / Série" sortKey="CTE" />
+              <SortHeader label="Data Emissão" sortKey="DATA_EMISSAO" />
               <SortHeader label="Data Limite" sortKey="DATA_LIMITE_DATE" />
+              <SortHeader label="Data Baixa" sortKey="DATA_BAIXA_DATE" />
               <SortHeader label="Unid. Destino / Cliente" sortKey="DESTINATARIO" />
               <SortHeader label="Valor" sortKey="VALOR_NUMBER" />
               <th className="px-4 py-3">Ações</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-slate-200/70">
             {paginatedData.map((row, idx) => {
               const noteCount = getNoteCount(row.CTE, row);
               const isEmBusca = isCteEmBusca(row.CTE, row.SERIE, row.STATUS);
@@ -648,7 +929,19 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
               const needsAttention = isEmBusca && !userHasInteracted && !!user?.linkedDestUnit && !row.IS_HISTORICAL;
 
               return (
-                <tr key={`${row.CTE}-${idx}`} className={clsx("transition-colors", row.IS_HISTORICAL ? "bg-gray-50 opacity-75 grayscale" : (needsAttention ? "bg-red-50 hover:bg-red-100 border-l-4 border-red-500 animate-[pulse_3s_ease-in-out_infinite]" : "hover:bg-gray-50"))}>
+                <tr
+                  key={`${row.CTE}-${idx}`}
+                  className={clsx(
+                    "transition-all duration-150",
+                    row.IS_HISTORICAL
+                      ? "bg-slate-50 opacity-70 grayscale"
+                      : needsAttention
+                        ? "animate-[pulse_3s_ease-in-out_infinite] border-l-4 border-red-500 bg-red-50 hover:bg-red-100"
+                        : idx % 2 === 0
+                          ? "bg-white hover:bg-[#e9f1ff] hover:shadow-[inset_3px_0_0_#2c348c]"
+                          : "bg-slate-50/45 hover:bg-[#e5eefc] hover:shadow-[inset_3px_0_0_#2c348c]"
+                  )}
+                >
                   <td className="px-4 py-3">
                     <div className="flex flex-col gap-1 items-start">
                       {row.IS_HISTORICAL ? (
@@ -665,19 +958,49 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    <div className="font-medium text-gray-900">{row.CTE}</div>
-                    <div className="text-xs text-gray-500">Série: {row.SERIE}</div>
+                    <div className="font-medium text-slate-900">{row.CTE}</div>
+                    <div className="text-xs text-slate-600">Série: {row.SERIE}</div>
                   </td>
                   <td className="px-4 py-3">
-                    <span className={clsx("font-bold", row.STATUS_CALCULADO === 'FORA DO PRAZO' && !row.IS_HISTORICAL ? 'text-red-600' : 'text-gray-700')}>{row.DATA_LIMITE_BAIXA || '-'}</span>
+                    <span className="text-slate-700">
+                      {formatDateOnly(row.DATA_EMISSAO)}
+                    </span>
                   </td>
-                  <td className="px-4 py-3 truncate max-w-xs">
-                    <div className="truncate text-xs text-primary-600 font-bold uppercase mb-0.5">{row.ENTREGA}</div>
-                    <div className="truncate font-medium text-gray-800">{row.DESTINATARIO}</div>
-                  </td>
-                  <td className="px-4 py-3 font-mono font-bold text-gray-700">{row.VALOR_CTE}</td>
                   <td className="px-4 py-3">
-                    <button onClick={() => onNoteClick(row)} className={clsx("p-2 rounded-full relative transition-all group", needsAttention ? "bg-red-600 text-white shadow-lg" : noteCount > 0 ? "text-orange-500 bg-orange-50" : "text-gray-400 hover:text-primary-600 hover:bg-gray-100")}>
+                    <span
+                      className={clsx(
+                        'font-bold',
+                        row.STATUS_CALCULADO === 'FORA DO PRAZO' && !row.IS_HISTORICAL
+                          ? 'text-red-600'
+                          : 'text-slate-800',
+                      )}
+                    >
+                      {formatDateOnly(row.DATA_LIMITE_BAIXA)}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-slate-700">
+                    {formatDateOnly(row.DATA_BAIXA)}
+                  </td>
+                  <td className="max-w-xs truncate px-4 py-3">
+                    <div className="mb-0.5 truncate text-xs font-bold uppercase text-[#2c348c]">
+                      {row.ENTREGA}
+                    </div>
+                    <div className="truncate font-medium text-slate-900">{row.DESTINATARIO}</div>
+                  </td>
+                  <td className="px-4 py-3 font-mono font-bold text-emerald-700">{row.VALOR_CTE}</td>
+                  <td className="px-4 py-3">
+                    <button
+                      type="button"
+                      onClick={() => onNoteClick(row)}
+                      className={clsx(
+                        'group relative rounded-full p-2 transition-all',
+                        needsAttention
+                          ? 'bg-red-600 text-white shadow-lg'
+                          : noteCount > 0
+                            ? 'bg-orange-50 text-orange-600'
+                            : 'text-slate-400 hover:bg-[#e8f0ff] hover:text-[#2c348c] hover:shadow-sm',
+                      )}
+                    >
                       <MessageSquare size={18} fill={noteCount > 0 ? "currentColor" : "none"} />
                       {noteCount > 0 && <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[9px] w-4 h-4 rounded-full flex items-center justify-center font-bold border border-white">{noteCount}</span>}
                     </button>
@@ -687,7 +1010,11 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
             })}
           </tbody>
         </table>
-        {filteredData.length === 0 && <div className="p-8 text-center text-gray-400 text-sm">Nenhum resultado para os filtros aplicados.</div>}
+        {filteredData.length === 0 && (
+          <div className="p-8 text-center text-sm text-slate-500">
+            Nenhum resultado para os filtros aplicados.
+          </div>
+        )}
       </div>
 
       {/* Mobile Cards */}
@@ -696,29 +1023,65 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
            const noteCount = getNoteCount(row.CTE, row);
            const needsAttention = isCteEmBusca(row.CTE, row.SERIE, row.STATUS) && !notes.some(n => n.CTE === row.CTE && n.USUARIO.toLowerCase() === user?.username.toLowerCase()) && !!user?.linkedDestUnit && !row.IS_HISTORICAL;
            return (
-            <div key={`${row.CTE}-${idx}`} className={clsx("bg-white p-4 rounded-lg shadow border-l-4 transition-all", row.IS_HISTORICAL ? "border-gray-300 opacity-80" : (needsAttention ? "border-red-500 bg-red-50" : "border-primary-500"))}>
-              <div className="flex justify-between items-start mb-2">
+            <div
+              key={`${row.CTE}-${idx}`}
+              className={clsx(
+                'rounded-xl border border-slate-300/75 bg-gradient-to-b from-white to-slate-50/40 p-4 shadow-sm transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_10px_22px_rgba(15,23,42,0.12)]',
+                row.IS_HISTORICAL
+                  ? 'border-l-4 border-slate-300 opacity-80'
+                  : needsAttention
+                    ? 'border-l-4 border-red-500 bg-red-50'
+                    : 'border-l-4 border-[#2c348c]',
+              )}
+            >
+              <div className="mb-2 flex items-start justify-between">
                 <div>
-                    <div className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                    <div className="flex items-center gap-2 text-lg font-bold text-slate-900">
                         CTE {row.CTE} 
-                        {row.IS_HISTORICAL && <Archive size={14} className="text-gray-400"/>}
+                        {row.IS_HISTORICAL && <Archive size={14} className="text-slate-400"/>}
                     </div>
-                    <div className="text-xs text-gray-500">Série {row.SERIE}</div>
+                    <div className="text-xs text-slate-500">Série {row.SERIE}</div>
                 </div>
-                <div className="flex flex-col gap-1 items-end">
-                    {row.IS_HISTORICAL ? <span className="text-xs font-bold text-gray-500">HISTÓRICO</span> : <><StatusBadge status={row.STATUS_CALCULADO || row.STATUS} /><StatusBadge status={row.FRETE_PAGO} /></>}
+                    <div className="flex flex-col items-end gap-1">
+                      {row.IS_HISTORICAL ? (
+                        <span className="text-xs font-bold text-slate-400">HISTÓRICO</span>
+                      ) : (
+                        <>
+                          <StatusBadge status={row.STATUS_CALCULADO || row.STATUS} />
+                          <StatusBadge status={row.FRETE_PAGO} />
+                        </>
+                      )}
+                    </div>
+              </div>
+              <div className="mb-3 grid grid-cols-2 gap-2 border-t border-slate-200 pt-2 text-sm text-slate-800">
+                <div>
+                  <span className="block text-xs text-slate-500">Emissão</span>
+                  <span className="font-bold">{formatDateOnly(row.DATA_EMISSAO)}</span>
+                </div>
+                <div>
+                  <span className="block text-xs text-slate-500">Limite</span>
+                  <span className="font-bold">{formatDateOnly(row.DATA_LIMITE_BAIXA)}</span>
+                </div>
+                <div>
+                  <span className="block text-xs text-slate-500">Data baixa</span>
+                  <span className="font-bold">{formatDateOnly(row.DATA_BAIXA)}</span>
+                </div>
+                <div>
+                  <span className="block text-xs text-slate-500">Valor</span>
+                  <span className="font-mono font-bold text-emerald-700">{row.VALOR_CTE}</span>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-2 text-sm text-gray-700 mb-3 pt-2 border-t border-gray-50">
-                <div><span className="block text-xs text-gray-400">Limite</span><span className="font-bold">{row.DATA_LIMITE_BAIXA || '-'}</span></div>
-                <div><span className="block text-xs text-gray-400">Valor</span><span className="font-mono font-bold">{row.VALOR_CTE}</span></div>
-              </div>
-              <div className="flex justify-end pt-2 border-t border-gray-50">
+              <div className="flex justify-end border-t border-slate-200 pt-2">
                   <button
+                    type="button"
                     onClick={() => onNoteClick(row)}
                     className={clsx(
-                      "flex items-center font-medium text-sm transition-colors px-3 py-1.5 rounded-lg",
-                      needsAttention ? "bg-red-600 text-white shadow-lg" : noteCount > 0 ? "text-orange-500" : "text-gray-500"
+                      'flex items-center rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
+                      needsAttention
+                        ? 'bg-red-600 text-white shadow-lg'
+                        : noteCount > 0
+                          ? 'text-orange-600'
+                          : 'text-slate-600',
                     )}
                   >
                     <MessageSquare size={16} className="mr-1" fill={noteCount > 0 ? "currentColor" : "none"} />

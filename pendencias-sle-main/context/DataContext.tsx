@@ -193,6 +193,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       SERIE: row.serie || '',
       CODIGO: row.codigo || '',
       DATA_EMISSAO: row.data_emissao || '',
+      DATA_BAIXA: row.data_baixa || '',
       PRAZO_BAIXA_DIAS: row.prazo_baixa_dias?.toString() || '',
       DATA_LIMITE_BAIXA: row.data_limite_baixa || '',
       STATUS: row.status || '',
@@ -215,7 +216,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!user) return;
     setLoading(true);
     try {
-      const [pendResp, critResp, buscaResp, tadResp, conclResp, usersData] = await Promise.all([
+      const [
+        dashboardResp,
+        pendResp,
+        critResp,
+        buscaResp,
+        tadResp,
+        conclResp,
+        usersData,
+      ] = await Promise.all([
+        authClient.getCtesDashboard(1, 10000),
         authClient.getCtesView('pendencias', pendenciasState.page, pendenciasState.limit),
         authClient.getCtesView('criticos', criticosState.page, criticosState.limit),
         authClient.getCtesView('em_busca', emBuscaState.page, emBuscaState.limit),
@@ -223,6 +233,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         authClient.getCtesView('concluidos', concluidosState.page, concluidosState.limit),
         authClient.getUsers(),
       ]);
+
+      const dashboardData = normalizeCtes(dashboardResp.data || []);
 
       const pendenciasData = normalizeCtes(pendResp.data || []);
       const criticosData = normalizeCtes(critResp.data || []);
@@ -238,10 +250,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         linkedDestUnit: row.linked_dest_unit || ''
       }));
 
-      // Compatibilidade: baseData = pendências (aba principal)
-      setBaseData(pendenciasData);
-      setFullData(pendenciasData);
-      setProcessedData(pendenciasData);
+      // Compatibilidade: baseData/fullData/processedData = pendências COMPLETAS (para dashboards)
+      setBaseData(dashboardData);
+      setFullData(dashboardData);
+      setProcessedData(dashboardData);
 
       // Não carregar notas/processo globais (pesado). Usaremos endpoints específicos quando abrir o modal.
       setNotes([]);
@@ -283,25 +295,56 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const refreshViewPage = async (
+    view: 'pendencias' | 'criticos' | 'em_busca' | 'tad' | 'concluidos',
+    page: number,
+    limit: number,
+    setState: React.Dispatch<React.SetStateAction<{ data: CteData[]; page: number; limit: number; total: number }>>,
+    countKey: keyof KPICounts
+  ) => {
+    if (!user) return;
+    try {
+      const resp = await authClient.getCtesView(view, page, limit);
+      const pageData = normalizeCtes(resp.data || []);
+      setState(s => ({ ...s, data: pageData, total: resp.total || 0 }));
+      setCounts(prev => ({ ...prev, [countKey]: resp.total || 0 }));
+    } catch (error) {
+      console.error(`Erro ao carregar paginação (${view}):`, error);
+    }
+  };
+
 
   useEffect(() => {
-    if (user) {
-      refreshData();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (user) refreshData();
   }, [
-    user,
-    pendenciasState.page,
-    pendenciasState.limit,
-    criticosState.page,
-    criticosState.limit,
-    emBuscaState.page,
-    emBuscaState.limit,
-    tadState.page,
-    tadState.limit,
-    concluidosState.page,
-    concluidosState.limit,
+    user
   ]);
+
+  // Recarrega SOMENTE a aba que mudou (melhor performance na paginação).
+  useEffect(() => {
+    if (user) refreshViewPage('pendencias', pendenciasState.page, pendenciasState.limit, setPendenciasState, 'pendencias');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, pendenciasState.page, pendenciasState.limit]);
+
+  useEffect(() => {
+    if (user) refreshViewPage('criticos', criticosState.page, criticosState.limit, setCriticosState, 'criticos');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, criticosState.page, criticosState.limit]);
+
+  useEffect(() => {
+    if (user) refreshViewPage('em_busca', emBuscaState.page, emBuscaState.limit, setEmBuscaState, 'emBusca');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, emBuscaState.page, emBuscaState.limit]);
+
+  useEffect(() => {
+    if (user) refreshViewPage('tad', tadState.page, tadState.limit, setTadState, 'tad');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, tadState.page, tadState.limit]);
+
+  useEffect(() => {
+    if (user) refreshViewPage('concluidos', concluidosState.page, concluidosState.limit, setConcluidosState, 'concluidos');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, concluidosState.page, concluidosState.limit]);
 
   const getLatestNote = (_cte: string) => null;
 
@@ -373,10 +416,57 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         data: formattedDate
       };
       const created = await authClient.addNote(noteData);
+
+      // Se a nota estiver marcando EM BUSCA ou TAD, também gravamos no process_control
+      // para que o CTE mude de aba (cte_view_index) imediatamente.
+      const statusBusca = (notePayload.STATUS_BUSCA || '').trim().toUpperCase();
+      if (statusBusca === 'EM BUSCA') {
+        await authClient.markAsInSearch({
+          cte: notePayload.CTE,
+          serie: notePayload.SERIE || '0',
+          user: notePayload.USUARIO,
+          description: notePayload.TEXTO || 'Marcado como EM BUSCA',
+          link: links.join(' , '),
+        });
+        await authClient.logEvent({
+          event: 'CTE_MARK_EM_BUSCA',
+          username: notePayload.USUARIO,
+          cte: notePayload.CTE,
+          serie: notePayload.SERIE || '0',
+          payload: { text: notePayload.TEXTO || '', links },
+        });
+      } else if (statusBusca === 'TAD') {
+        await authClient.saveProcessData({
+          cte: notePayload.CTE,
+          serie: notePayload.SERIE || '0',
+          user: notePayload.USUARIO,
+          status: 'TAD',
+          description: notePayload.TEXTO || 'Processo de TAD',
+          link: links.join(' , '),
+        });
+        await authClient.logEvent({
+          event: 'CTE_MARK_TAD',
+          username: notePayload.USUARIO,
+          cte: notePayload.CTE,
+          serie: notePayload.SERIE || '0',
+          payload: { text: notePayload.TEXTO || '', links },
+        });
+      }
+
       await refreshData();
       return created;
     } catch (error) {
       console.error('Erro ao adicionar nota:', error);
+      try {
+        await authClient.logEvent({
+          level: 'ERROR',
+          event: 'ADD_NOTE_ERROR',
+          username: notePayload?.USUARIO,
+          cte: notePayload?.CTE,
+          serie: notePayload?.SERIE,
+          payload: { message: (error as any)?.message || String(error) },
+        });
+      } catch {}
       throw error;
     }
   };
@@ -400,23 +490,63 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         link_imagem: "",
         status_busca: "RESOLVIDO",
       });
+      await authClient.logEvent({
+        event: 'CTE_RESOLVE',
+        username,
+        cte,
+        serie: targetSerie,
+        payload: { text: textMsg },
+      });
       await refreshData();
   };
 
   const addUser = async (u: UserData) => {
       await authClient.saveUser(u);
+      try {
+        await authClient.logEvent({
+          event: 'USER_CREATE',
+          username: user?.username || 'Sistema',
+          payload: {
+            targetUsername: u.username,
+            role: u.role,
+            linkedOriginUnit: u.linkedOriginUnit,
+            linkedDestUnit: u.linkedDestUnit,
+          },
+        });
+      } catch {}
       await refreshData();
   };
   const deleteUser = async (username: string) => {
       await authClient.deleteUser(username);
+      try {
+        await authClient.logEvent({
+          event: 'USER_DELETE',
+          username: user?.username || 'Sistema',
+          payload: { targetUsername: username },
+        });
+      } catch {}
       await refreshData();
   };
   const saveProfile = async (p: ProfileData) => {
       await authClient.saveProfile(p);
+      try {
+        await authClient.logEvent({
+          event: 'PROFILE_SAVE',
+          username: user?.username || 'Sistema',
+          payload: { name: p.name, description: p.description, permissions: p.permissions || [] },
+        });
+      } catch {}
       await refreshData();
   };
   const deleteProfile = async (name: string) => {
       await authClient.deleteProfile(name);
+      try {
+        await authClient.logEvent({
+          event: 'PROFILE_DELETE',
+          username: user?.username || 'Sistema',
+          payload: { name },
+        });
+      } catch {}
       await refreshData();
   };
 

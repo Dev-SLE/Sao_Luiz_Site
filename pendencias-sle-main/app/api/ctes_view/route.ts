@@ -4,6 +4,10 @@ import { formatDateTime } from "../../../lib/server/datetime";
 
 export const runtime = "nodejs";
 
+const NORMALIZED_STATUS_SQL = `
+  TRANSLATE(UPPER(COALESCE(c.status, '')), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇ', 'AAAAAEEEEIIIIOOOOOUUUUC')
+`;
+
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
@@ -16,7 +20,28 @@ export async function GET(req: Request) {
 
     const pool = getPool();
     const totalResult = await pool.query(
-      "SELECT COUNT(*)::int AS total FROM pendencias.cte_view_index WHERE view = $1",
+      `
+        SELECT COUNT(*)::int AS total
+        FROM pendencias.cte_view_index i
+        JOIN pendencias.ctes c ON c.cte = i.cte AND c.serie = i.serie
+        WHERE
+          (
+            $1 = 'concluidos'
+            AND (
+              i.view = 'concluidos'
+              OR ${NORMALIZED_STATUS_SQL} LIKE 'CONCLUIDO%'
+              OR ${NORMALIZED_STATUS_SQL} LIKE 'ENTREGUE%'
+              OR ${NORMALIZED_STATUS_SQL} LIKE 'RESOLVIDO%'
+            )
+          )
+          OR (
+            $1 <> 'concluidos'
+            AND i.view = $1
+            AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'CONCLUIDO%'
+            AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'ENTREGUE%'
+            AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'RESOLVIDO%'
+          )
+      `,
       [viewKey]
     );
     const total = totalResult.rows?.[0]?.total || 0;
@@ -34,7 +59,23 @@ export async function GET(req: Request) {
           END AS status_exibicao
         FROM pendencias.cte_view_index i
         JOIN pendencias.ctes c ON c.cte = i.cte AND c.serie = i.serie
-        WHERE i.view = $1
+        WHERE
+          (
+            $1 = 'concluidos'
+            AND (
+              i.view = 'concluidos'
+              OR ${NORMALIZED_STATUS_SQL} LIKE 'CONCLUIDO%'
+              OR ${NORMALIZED_STATUS_SQL} LIKE 'ENTREGUE%'
+              OR ${NORMALIZED_STATUS_SQL} LIKE 'RESOLVIDO%'
+            )
+          )
+          OR (
+            $1 <> 'concluidos'
+            AND i.view = $1
+            AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'CONCLUIDO%'
+            AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'ENTREGUE%'
+            AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'RESOLVIDO%'
+          )
         ORDER BY c.data_emissao DESC
         LIMIT $2 OFFSET $3
       `,
@@ -45,6 +86,7 @@ export async function GET(req: Request) {
       ...row,
       status: row.status_exibicao || row.status || "",
       data_emissao: formatDateTime(row.data_emissao),
+      data_baixa: formatDateTime(row.data_baixa),
       data_limite_baixa: formatDateTime(row.data_limite_baixa),
     }));
 

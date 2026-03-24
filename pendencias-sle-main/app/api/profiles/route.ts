@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getPool } from "../../../lib/server/db";
+import { serverLog } from "../../../lib/server/appLog";
 
 export const runtime = "nodejs";
 
@@ -10,6 +11,11 @@ export async function GET() {
     return NextResponse.json(result.rows || []);
   } catch (error) {
     console.error("Erro ao buscar perfis:", error);
+    await serverLog({
+      level: "ERROR",
+      event: "API_PROFILES_GET_ERROR",
+      data: { message: (error as any)?.message || String(error) },
+    });
     return NextResponse.json({ error: "Erro interno" }, { status: 500 });
   }
 }
@@ -38,6 +44,11 @@ export async function POST(req: Request) {
     return NextResponse.json(result.rows?.[0] || null);
   } catch (error) {
     console.error("Erro ao salvar perfil:", error);
+    await serverLog({
+      level: "ERROR",
+      event: "API_PROFILES_POST_ERROR",
+      data: { message: (error as any)?.message || String(error) },
+    });
     return NextResponse.json({ error: "Erro interno" }, { status: 500 });
   }
 }
@@ -52,6 +63,11 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Erro ao deletar perfil:", error);
+    await serverLog({
+      level: "ERROR",
+      event: "API_PROFILES_DELETE_ERROR",
+      data: { message: (error as any)?.message || String(error) },
+    });
     return NextResponse.json({ error: "Erro interno" }, { status: 500 });
   }
 }

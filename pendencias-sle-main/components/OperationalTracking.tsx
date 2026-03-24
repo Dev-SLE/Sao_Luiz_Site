@@ -1,0 +1,994 @@
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { MapPin, Search, Plus, Camera, Loader2 } from "lucide-react";
+import clsx from "clsx";
+import { useAuth } from "../context/AuthContext";
+import { useData } from "../context/DataContext";
+import {
+  DESTINO_OPTIONS,
+  DESTINO_TO_MAPS_URL_BY_NORMALIZED,
+  normalizeDestination,
+} from "../lib/maps/destinos";
+
+type TrackingItem = {
+  CTE: string;
+  SERIE: string;
+  COLETA: string;
+  ENTREGA: string;
+  DESTINATARIO: string;
+  FRETE_PAGO: string;
+  VALOR_CTE: string;
+  STATUS_CALCULADO: string;
+  LAST_UPDATE_AT: string;
+};
+
+type TimelineEntry = {
+  id: string;
+  source: "NOTA" | "EVENTO_MANUAL" | "PROCESS_CONTROL";
+  kind: string;
+  time: string;
+  user?: string | null;
+  option?: string | null;
+  observation?: string | null;
+  bus_name?: string | null;
+  stop_name?: string | null;
+  location_text?: string | null;
+  photos?: string[];
+};
+
+type TrackingDetail = {
+  item: TrackingItem;
+  timeline: TimelineEntry[];
+  stops: Array<{
+    stop_name: string;
+    bus_name: string | null;
+    location_text: string | null;
+    at: string;
+  }>;
+};
+
+type EventMode = "ROTA" | "DESCARGA";
+type RotaAction = "MUDOU_ONIBUS" | "QUEBROU_ATRASOU" | "PASSOU_PARADA" | "OBSERVACAO_GERAL";
+type DescargaStatus = "RECEBIDO" | "EXTRAVIADO" | "DANIFICADO" | "OUTRO";
+
+const googleMapsSearchUrl = (query: string) =>
+  `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+
+const googleMapsDirectionsUrl = ({
+  origin,
+  destination,
+  waypoints,
+  travelMode,
+}: {
+  origin: string;
+  destination: string;
+  waypoints?: string[];
+  travelMode?: "driving" | "transit" | "walking" | "bicycling";
+}) => {
+  const base = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}`;
+  const tm = travelMode || "transit";
+  if (!waypoints?.length) return `${base}&travelmode=${encodeURIComponent(tm)}`;
+
+  // google maps usa waypoints separados por "|"
+  const wp = waypoints
+    .map((w) => w.trim())
+    .filter(Boolean)
+    .filter((v, idx, arr) => arr.indexOf(v) === idx)
+    .slice(0, 8)
+    .join("|");
+
+  return `${base}&waypoints=${encodeURIComponent(wp)}&travelmode=${encodeURIComponent(tm)}`;
+};
+
+const extractMainLocation = (raw?: string | null) => {
+  const s = String(raw || "").trim();
+  if (!s) return "";
+
+  // Ex: "DEC - ANAPOLIS" => pega o final
+  const parts = s.split("-").map((x) => x.trim()).filter(Boolean);
+  if (parts.length > 1) return parts[parts.length - 1];
+
+  // Ex: "DEC - ANAPOLIS / ..." => pega a última parte depois de "/"
+  const slashParts = s.split("/").map((x) => x.trim()).filter(Boolean);
+  if (slashParts.length > 1) return slashParts[slashParts.length - 1];
+
+  return s;
+};
+
+const getFileIdFromUrl = (url: string): string => {
+  if (!url) return "";
+  let match = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  if (match) return match[1];
+  match = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (match) return match[1];
+  match = url.match(/id=([a-zA-Z0-9_-]+)/);
+  if (match) return match[1];
+  return "";
+};
+
+const getMapsUrlForDestination = (name?: string | null) => {
+  const raw = String(name || "");
+  const n = normalizeDestination(raw);
+  if (!n) return "";
+
+  const candidates: string[] = [];
+  candidates.push(n);
+
+  // Remove prefixos comuns do seu sistema (ex.: "DEC - CUIABÁ", "DEC - ANAPOLIS")
+  const splitHyphen = n.includes("-") ? n.split("-").map((x) => x.trim()).filter(Boolean) : [];
+  if (splitHyphen.length > 1) {
+    candidates.push(splitHyphen[splitHyphen.length - 1]);
+  }
+
+  const withoutDec = n.replace(/\bDEC\b/g, "").trim();
+  if (withoutDec) candidates.push(withoutDec);
+
+  // Quando a string vem com " / " ou "–", pega a parte principal final
+  const splitSlash = n.includes("/") ? n.split("/").map((x) => x.trim()).filter(Boolean) : [];
+  if (splitSlash.length > 1) {
+    candidates.push(splitSlash[splitSlash.length - 1]);
+  }
+
+  for (const c of candidates) {
+    const hit = DESTINO_TO_MAPS_URL_BY_NORMALIZED[c];
+    if (hit) return hit;
+  }
+
+  return "";
+};
+
+const isGoogleDriveUrl = (url: string) => !!getFileIdFromUrl(url);
+
+interface Props {
+  initialCte?: string | null;
+  initialSerie?: string | null;
+}
+
+const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
+  const { user } = useAuth();
+  const { hasPermission } = useData();
+
+  const [loadingItems, setLoadingItems] = useState(false);
+  const [items, setItems] = useState<TrackingItem[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(30);
+
+  const [q, setQ] = useState("");
+  const [unit, setUnit] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+
+  const [selected, setSelected] = useState<TrackingDetail | null>(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+
+  const canManage = hasPermission("MANAGE_RASTREIO_OPERACIONAL");
+
+  // Manual event form
+  const [mode, setMode] = useState<EventMode>("ROTA");
+  const [rotaAction, setRotaAction] = useState<RotaAction>("OBSERVACAO_GERAL");
+  const [descStatus, setDescStatus] = useState<DescargaStatus>("RECEBIDO");
+  const [busName, setBusName] = useState("");
+  const [stopName, setStopName] = useState("");
+  const [locationText, setLocationText] = useState("");
+  const [observation, setObservation] = useState("");
+  const [eventTimeLocal, setEventTimeLocal] = useState<string>("");
+  const [photos, setPhotos] = useState<File[]>([]);
+  const [uploadedPhotoUrls, setUploadedPhotoUrls] = useState<string[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const unitOptions = useMemo(() => {
+    const s = new Set(items.map((x) => x.ENTREGA).filter(Boolean));
+    return Array.from(s).sort();
+  }, [items]);
+
+  const fetchItems = async () => {
+    setLoadingItems(true);
+    try {
+      const usp = new URLSearchParams();
+      usp.set("page", String(page));
+      usp.set("limit", String(limit));
+      if (unit.trim()) usp.set("unit", unit.trim());
+      if (q.trim()) usp.set("q", q.trim());
+      if (dateFrom.trim()) usp.set("dateFrom", dateFrom.trim());
+      if (dateTo.trim()) usp.set("dateTo", dateTo.trim());
+
+      const resp = await fetch(`/api/operational_tracking/items?${usp.toString()}`);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      setItems(Array.isArray(data.data) ? data.data : []);
+      setTotal(data.total || 0);
+    } finally {
+      setLoadingItems(false);
+    }
+  };
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      fetchItems();
+    }, 250);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q, unit, dateFrom, dateTo, page, limit]);
+
+  const resetForm = () => {
+    setMode("ROTA");
+    setRotaAction("OBSERVACAO_GERAL");
+    setDescStatus("RECEBIDO");
+    setBusName("");
+    setStopName("");
+    setLocationText("");
+    setObservation("");
+    setPhotos([]);
+    setUploadedPhotoUrls([]);
+    setEventTimeLocal("");
+  };
+
+  const fetchDetail = async (cte: string, serie: string): Promise<TrackingDetail | null> => {
+    setLoadingDetail(true);
+    try {
+      const usp = new URLSearchParams();
+      usp.set("cte", cte);
+      usp.set("serie", serie);
+      const resp = await fetch(`/api/operational_tracking/item?${usp.toString()}`);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data: TrackingDetail = await resp.json();
+      setSelected(data);
+      resetForm();
+      return data;
+    } finally {
+      setLoadingDetail(false);
+    }
+  };
+
+  useEffect(() => {
+    if (initialCte) {
+      fetchDetail(initialCte, initialSerie || "0");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialCte, initialSerie]);
+
+  const handleOpenMapsForList = async (i: TrackingItem) => {
+    const data = await fetchDetail(i.CTE, i.SERIE);
+    if (data) openMapsForItem(data);
+  };
+
+  const openMapsForItem = (arg: TrackingItem | TrackingDetail) => {
+    const origin = extractMainLocation("item" in arg ? arg.item.COLETA : arg.COLETA);
+    const destination = extractMainLocation("item" in arg ? arg.item.ENTREGA : arg.ENTREGA);
+    const waypoints =
+      "item" in arg ? arg.stops?.map((s) => extractMainLocation(s.stop_name)).filter(Boolean) : [];
+
+    if (origin && destination) {
+      window.open(
+        googleMapsDirectionsUrl({ origin, destination, waypoints, travelMode: "transit" }),
+        "_blank"
+      );
+      return;
+    }
+
+    // Fallback: tenta link fixo por destino
+    const destRaw = "item" in arg ? arg.item.ENTREGA : arg.ENTREGA;
+    const destLink = getMapsUrlForDestination(destRaw);
+    if (destLink) return window.open(destLink, "_blank");
+
+    const originRaw = "item" in arg ? arg.item.COLETA : arg.COLETA;
+    const destForSearch = "item" in arg ? arg.item.ENTREGA : arg.ENTREGA;
+    const query = `${originRaw} ${destForSearch}`.trim();
+    window.open(googleMapsSearchUrl(query), "_blank");
+  };
+
+  const openMapsForStop = (
+    i: TrackingItem,
+    s: { location_text?: string | null; stop_name: string }
+  ) => {
+    const origin = extractMainLocation(i.COLETA);
+    const destination = extractMainLocation(s.location_text || s.stop_name);
+
+    if (origin && destination) {
+      window.open(
+        googleMapsDirectionsUrl({
+          origin,
+          destination,
+          travelMode: "transit",
+        }),
+        "_blank"
+      );
+      return;
+    }
+
+    const destLink = getMapsUrlForDestination(s.location_text || s.stop_name);
+    if (destLink) return window.open(destLink, "_blank");
+
+    const query = (s.location_text || s.stop_name || "").trim();
+    if (!query) return;
+    window.open(googleMapsSearchUrl(query), "_blank");
+  };
+
+  const destinoKnown = !!stopName && DESTINO_OPTIONS.includes(stopName);
+  const destinoSelectValue = !stopName ? "" : destinoKnown ? stopName : "__CUSTOM__";
+
+  const uploadPhotos = async (files: File[]) => {
+    if (!files.length) return [];
+    if (!user?.username) throw new Error("Usuário não autenticado.");
+
+    setIsUploading(true);
+    try {
+      const urls: string[] = [];
+      for (const f of files) {
+        const fd = new FormData();
+        fd.append("file", f, f.name);
+        fd.append("username", user.username);
+
+        const resp = await fetch("/api/uploadImage", {
+          method: "POST",
+          body: fd,
+        });
+        const data = await resp.json();
+        if (!resp.ok || !data?.url) throw new Error(data?.error || `Falha upload: ${f.name}`);
+        urls.push(String(data.url));
+      }
+      return urls;
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handlePickPhotos = async (filesList: FileList | null) => {
+    const files = filesList ? Array.from(filesList) : [];
+    setPhotos(files);
+    setUploadedPhotoUrls([]);
+  };
+
+  const handleSaveEvent = async () => {
+    if (!selected) return;
+    if (!canManage) return;
+    if (isSaving || isUploading) return;
+
+    const cte = selected.item.CTE;
+    const serie = selected.item.SERIE;
+
+    if (!observation.trim() && mode === "ROTA" && !busName.trim() && !stopName.trim()) {
+      // Para rota, permitir evento sem texto desde que tenha pelo menos bus/stop.
+    }
+    if (!eventTimeLocal.trim()) {
+      // default: agora
+    }
+
+    let photoUrls = uploadedPhotoUrls;
+    if (photos.length > 0 && uploadedPhotoUrls.length === 0) {
+      photoUrls = await uploadPhotos(photos);
+      setUploadedPhotoUrls(photoUrls);
+    }
+
+    const eventTime = eventTimeLocal ? new Date(eventTimeLocal).toISOString() : undefined;
+    const eventType = mode;
+    const optionKey = mode === "ROTA" ? rotaAction : descStatus;
+
+    setIsSaving(true);
+    try {
+      const resp = await fetch("/api/operational_tracking/events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cte,
+          serie,
+          createdBy: user?.username ?? null,
+          eventType,
+          optionKey,
+          observation: observation.trim() || null,
+          busName: busName.trim() || null,
+          stopName: stopName.trim() || null,
+          locationText: locationText.trim() || null,
+          photos: photoUrls,
+          eventTime,
+        }),
+      });
+      if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}));
+        throw new Error(data?.error || `HTTP ${resp.status}`);
+      }
+
+      await fetchDetail(cte, serie);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const timelineEmpty = !selected?.timeline?.length;
+
+  return (
+    <div className="space-y-4 animate-in fade-in duration-500 text-slate-900">
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="rounded-lg bg-slate-100 p-2 text-[#e42424] border border-slate-200 shadow-[0_0_18px_rgba(236,27,35,0.4)]">
+            <MapPin size={20} />
+          </div>
+          <div>
+            <h1 className="text-xl md:text-2xl font-black">Rastreio Operacional</h1>
+            <p className="text-xs text-slate-600">Acompanhamento estilo “Em Busca” com timeline e atualização manual.</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => fetchItems()}
+            className="inline-flex items-center gap-2 rounded-xl bg-[#2c348c] px-4 py-2 text-xs font-semibold text-white shadow-md transition-all hover:bg-[#e42424]"
+            disabled={loadingItems}
+          >
+            {loadingItems ? <Loader2 size={14} className="animate-spin" /> : "Atualizar"}
+          </button>
+        </div>
+      </div>
+
+      {/* Filtros (cards, sem tabela) */}
+      <div className="rounded-2xl border border-[#2c348c]/20 bg-gradient-to-b from-white to-[#f4f7ff] p-3 shadow-[0_12px_26px_rgba(15,23,42,0.12)]">
+        <div className="flex flex-col md:flex-row md:items-center md:gap-3">
+          <div className="flex-1 relative">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <Search className="text-slate-500" size={18} />
+            </div>
+            <input
+              type="text"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Buscar por CTE, série, destino, coleta, destinatário e rastreio..."
+              className="w-full pl-10 pr-4 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-[#2c348c]/25 focus:border-[#2c348c]/40"
+            />
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <select
+              value={unit}
+              onChange={(e) => setUnit(e.target.value)}
+              className="appearance-none rounded-xl bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-[#2c348c]/25 focus:border-[#2c348c]/40"
+            >
+              <option value="">Todas unidades</option>
+              {unitOptions.map((u) => (
+                <option key={u} value={u}>
+                  {u}
+                </option>
+              ))}
+            </select>
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="appearance-none rounded-xl bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-[#2c348c]/25 focus:border-[#2c348c]/40"
+            />
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="appearance-none rounded-xl bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-[#2c348c]/25 focus:border-[#2c348c]/40"
+            />
+
+            <button
+              type="button"
+              onClick={() => {
+                setPage(1);
+                fetchItems();
+              }}
+              className="rounded-xl bg-[#2c348c] px-4 py-2 text-xs font-semibold text-white hover:bg-[#243a7a]"
+            >
+              Aplicar
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Lista de rastreios */}
+      <div className="flex flex-col gap-3">
+        {items.length === 0 && !loadingItems && (
+          <div className="bg-white border border-slate-200 rounded-xl p-6 text-slate-600 text-sm">
+            Nenhum rastreio encontrado para os filtros.
+          </div>
+        )}
+
+        {items.map((i) => (
+          <div
+            key={`${i.CTE}-${i.SERIE}`}
+            className="bg-white border border-slate-200 rounded-2xl p-4 shadow-[0_8px_24px_rgba(15,23,42,0.10)] transition-all duration-200 hover:-translate-y-[1px] hover:border-[#2c348c]/35 hover:shadow-[0_14px_30px_rgba(44,52,140,0.16)]"
+          >
+            <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <span className="px-2 py-0.5 rounded-lg bg-slate-100 border border-slate-200 text-slate-700">
+                    {i.CTE} / {i.SERIE}
+                  </span>
+                  {i.STATUS_CALCULADO && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-50 border border-slate-200 text-slate-700">
+                      {i.STATUS_CALCULADO}
+                    </span>
+                  )}
+                </div>
+
+                <div className="mt-2 text-xs text-slate-600 space-y-1">
+                  <div>
+                    <span className="text-slate-500">Coleta:</span> <span className="font-semibold">{i.COLETA || "—"}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500">Destino:</span> <span className="font-semibold">{i.ENTREGA || "—"}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500">Cliente:</span> <span className="font-semibold">{i.DESTINATARIO || "—"}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500">Última atualização:</span>{" "}
+                    <span className="font-semibold">{i.LAST_UPDATE_AT || "—"}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => fetchDetail(i.CTE, i.SERIE)}
+                  className="rounded-xl border border-[#2c348c]/40 bg-[#2c348c] px-4 py-2 text-xs font-semibold text-white hover:bg-[#243a7a]"
+                >
+                  Abrir rastreio
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleOpenMapsForList(i)}
+                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                >
+                  <MapPin size={14} />
+                  Mapa
+                </button>
+              </div>
+            </div>
+          </div>
+        ))}
+
+        {loadingDetail && selected && (
+          <div className="bg-white border border-slate-200 rounded-xl p-4 text-slate-600 text-sm">
+            Carregando detalhe...
+          </div>
+        )}
+
+        {/* Pagination simples */}
+        {total > limit && (
+          <div className="flex items-center justify-between gap-2 pt-2">
+            <button
+              type="button"
+              className="px-3 py-1 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700 disabled:opacity-40"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              Anterior
+            </button>
+            <div className="text-xs text-slate-600">
+              Página {page} (total: {total})
+            </div>
+            <button
+              type="button"
+              className="px-3 py-1 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700 disabled:opacity-40"
+              disabled={page * limit >= total}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              Próxima
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Drawer de detalhes */}
+      {selected && (
+        <div className="fixed inset-y-0 right-0 z-40 w-full sm:w-[380px] md:w-[450px] bg-white border-l border-slate-200 shadow-[-12px_0_30px_rgba(15,23,42,0.18)] flex flex-col">
+          <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+            <div className="min-w-0">
+              <h2 className="text-sm font-bold text-slate-900 truncate">
+                {selected.item.CTE} / {selected.item.SERIE}
+              </h2>
+              <p className="text-[11px] text-slate-500 truncate">
+                {selected.item.COLETA} &rarr; {selected.item.ENTREGA}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSelected(null)}
+              className="text-slate-500 hover:text-slate-900 text-xs"
+            >
+              Fechar
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 flex flex-col">
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Mapa</span>
+                <button
+                  type="button"
+                  onClick={() => openMapsForItem(selected)}
+                  className="rounded-lg bg-[#2c348c] px-3 py-1.5 text-[11px] text-white hover:bg-[#243a7a]"
+                >
+                  Abrir destino
+                </button>
+              </div>
+              <div className="mt-1 text-xs text-slate-600">
+                <div>
+                  <span className="text-slate-500">Cliente:</span> <span className="font-semibold">{selected.item.DESTINATARIO || "—"}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500">Status:</span> <span className="font-semibold">{selected.item.STATUS_CALCULADO || "—"}</span>
+                </div>
+              </div>
+            </div>
+
+            {selected.stops?.length ? (
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Paradas</span>
+                  <span className="text-[11px] text-slate-600">{selected.stops.length}</span>
+                </div>
+                <div className="space-y-2">
+                  {selected.stops.slice(0, 6).map((s, idx) => (
+                    <div key={`${s.stop_name}-${idx}`} className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold text-slate-900 truncate">{s.stop_name}</div>
+                        <div className="text-[11px] text-slate-500 truncate">{s.at}</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => openMapsForStop(selected.item, s)}
+                        className="rounded-lg border border-[#2c348c]/40 bg-[#2c348c] px-2 py-1 text-[11px] text-white hover:bg-[#243a7a]"
+                      >
+                        Mapa
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {/* Timeline */}
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2 order-3">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Eventos</span>
+                <span className="text-[11px] text-slate-600">{selected.timeline.length}</span>
+              </div>
+              {timelineEmpty ? (
+                <div className="text-[11px] text-slate-600">Nenhum evento ainda.</div>
+              ) : (
+                <div className="space-y-3">
+                  {selected.timeline.slice(0, 18).map((t) => (
+                    <div key={t.id} className="border border-slate-200 rounded-xl p-3 bg-white transition-colors hover:bg-slate-50/80">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="text-xs font-bold text-slate-900 truncate">
+                            {t.source === "NOTA" ? "Nota" : t.source === "EVENTO_MANUAL" ? "Atualização manual" : "Processo"}
+                          </div>
+                          <div className="text-[11px] text-slate-500">{t.time}</div>
+                        </div>
+                        {t.option ? (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-50 border border-slate-200 text-slate-700 whitespace-nowrap">
+                            {t.option}
+                          </span>
+                        ) : null}
+                      </div>
+
+                      {t.bus_name ? (
+                        <div className="text-[11px] text-slate-600 mt-2">
+                          <span className="text-slate-500">Ônibus:</span> {t.bus_name}
+                        </div>
+                      ) : null}
+                      {t.stop_name ? (
+                        <div className="text-[11px] text-slate-600 mt-1">
+                          <span className="text-slate-500">Parada:</span> {t.stop_name}
+                        </div>
+                      ) : null}
+                      {t.location_text ? (
+                        <div className="text-[11px] text-slate-600 mt-1">
+                          <span className="text-slate-500">Local:</span> {t.location_text}
+                        </div>
+                      ) : null}
+
+                      {t.observation ? (
+                        <div className="text-[11px] text-slate-700 mt-2 whitespace-pre-wrap">{t.observation}</div>
+                      ) : null}
+
+                      {t.photos?.length ? (
+                        <div className="mt-3">
+                          <div className="text-[11px] text-slate-500 mb-2">Fotos</div>
+                          <div className="flex flex-wrap gap-2">
+                            {t.photos.slice(0, 6).map((url, idx) => (
+                              <a
+                                key={`${url}-${idx}`}
+                                href={url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center justify-center w-16 h-16 rounded-xl bg-white border border-slate-200 overflow-hidden"
+                              >
+                                {isGoogleDriveUrl(url) ? (
+                                  <iframe
+                                    title="Drive preview"
+                                    loading="lazy"
+                                    className="w-16 h-16"
+                                    src={`https://drive.google.com/file/d/${getFileIdFromUrl(url)}/preview`}
+                                  />
+                                ) : (
+                                  <img src={url} alt="foto" className="w-full h-full object-cover" />
+                                )}
+                              </a>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Form manual */}
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-3 order-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Atualização Manual</span>
+                {!canManage ? (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200">
+                    Sem permissão
+                  </span>
+                ) : (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 font-semibold">
+                    Agência
+                  </span>
+                )}
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setMode("ROTA")}
+                  className={clsx(
+                    "flex-1 px-3 py-2 text-xs rounded-lg border transition-colors",
+                    mode === "ROTA" ? "border-[#2c348c]/40 bg-[#2c348c] text-white" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-100"
+                  )}
+                  disabled={!canManage}
+                >
+                  Rota / ônibus
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMode("DESCARGA")}
+                  className={clsx(
+                    "flex-1 px-3 py-2 text-xs rounded-lg border transition-colors",
+                    mode === "DESCARGA" ? "border-[#2c348c]/40 bg-[#2c348c] text-white" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-100"
+                  )}
+                  disabled={!canManage}
+                >
+                  Descer carga
+                </button>
+              </div>
+
+              {mode === "ROTA" ? (
+                <>
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide">Ação</label>
+                    <select
+                      value={rotaAction}
+                      onChange={(e) => setRotaAction(e.target.value as RotaAction)}
+                      className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-[#2c348c]/25 focus:border-[#2c348c]/40"
+                      disabled={!canManage}
+                    >
+                      <option value="OBSERVACAO_GERAL">Observação geral</option>
+                      <option value="MUDOU_ONIBUS">Mudou de ônibus</option>
+                      <option value="QUEBROU_ATRASOU">Quebrou / Atraso</option>
+                      <option value="PASSOU_PARADA">Passou em parada</option>
+                    </select>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide">Ônibus (opcional)</label>
+                      <input
+                        className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-[#2c348c]/25 focus:border-[#2c348c]/40"
+                        value={busName}
+                        onChange={(e) => setBusName(e.target.value)}
+                        disabled={!canManage}
+                        placeholder="Ex: Ônibus 17 / Placa"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide">Parada (opcional)</label>
+                      <input
+                        className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-[#2c348c]/25 focus:border-[#2c348c]/40"
+                        value={stopName}
+                        onChange={(e) => setStopName(e.target.value)}
+                        disabled={!canManage}
+                        placeholder="Ex: Terminal Recife"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide">Local (opcional)</label>
+                    <input
+                      className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-[#2c348c]/25 focus:border-[#2c348c]/40"
+                      value={locationText}
+                      onChange={(e) => setLocationText(e.target.value)}
+                      disabled={!canManage}
+                      placeholder="Ex: Bairro / Cidade / Rodovia"
+                    />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide">Status do descarregamento</label>
+                    <select
+                      value={descStatus}
+                      onChange={(e) => setDescStatus(e.target.value as DescargaStatus)}
+                      className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-[#2c348c]/25 focus:border-[#2c348c]/40"
+                      disabled={!canManage}
+                    >
+                      <option value="RECEBIDO">Recebido</option>
+                      <option value="EXTRAVIADO">Extraviado</option>
+                      <option value="DANIFICADO">Danificada / Avariada</option>
+                      <option value="OUTRO">Outro</option>
+                    </select>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide">Ônibus (opcional)</label>
+                      <input
+                        className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-[#2c348c]/25 focus:border-[#2c348c]/40"
+                        value={busName}
+                        onChange={(e) => setBusName(e.target.value)}
+                        disabled={!canManage}
+                        placeholder="Ex: Ônibus 17 / Placa"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide">Destino (rodoviária)</label>
+                      <select
+                        value={destinoSelectValue}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          if (v === "__CUSTOM__") return;
+                          setStopName(v);
+                          setLocationText(v);
+                        }}
+                        className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-[#2c348c]/25 focus:border-[#2c348c]/40"
+                        disabled={!canManage}
+                      >
+                        <option value="">Selecione</option>
+                        {DESTINO_OPTIONS.map((d) => (
+                          <option key={d} value={d}>
+                            {d}
+                          </option>
+                        ))}
+                        <option value="__CUSTOM__">Outro (digitar)</option>
+                      </select>
+
+                      {destinoSelectValue === "__CUSTOM__" && (
+                        <input
+                          className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-[#2c348c]/25 focus:border-[#2c348c]/40"
+                          value={stopName}
+                          onChange={(e) => {
+                            setStopName(e.target.value);
+                            setLocationText(e.target.value);
+                          }}
+                          disabled={!canManage}
+                          placeholder="Digite o destino"
+                        />
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
+
+              <div>
+                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide">Observação</label>
+                <textarea
+                  className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-[#2c348c]/25 focus:border-[#2c348c]/40 min-h-[72px] resize-none"
+                  value={observation}
+                  onChange={(e) => setObservation(e.target.value)}
+                  disabled={!canManage}
+                  placeholder="Descreva o que aconteceu (quebrou, mudou ônibus, descer carga, etc)..."
+                />
+              </div>
+
+              {/* Photos */}
+              <div>
+                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide inline-flex items-center gap-2">
+                  <Camera size={14} />
+                  Fotos da carga (opcional)
+                </label>
+                <div className="mt-2 flex items-center gap-2 flex-wrap">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    capture="environment"
+                    onChange={(e) => handlePickPhotos(e.target.files)}
+                    className="hidden"
+                    disabled={!canManage}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={!canManage}
+                    className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs text-slate-700 transition-colors hover:bg-slate-100"
+                  >
+                    <Camera size={14} />
+                    Escolher / Camera
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!canManage) return;
+                      setPhotos([]);
+                      setUploadedPhotoUrls([]);
+                      if (fileInputRef.current) fileInputRef.current.value = '';
+                    }}
+                    disabled={!canManage || isUploading || photos.length === 0}
+                    className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-xs text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Limpar
+                  </button>
+                </div>
+                {photos.length > 0 && (
+                  <div className="mt-2 text-[11px] text-slate-500">
+                    {photos.length} foto(s) selecionada(s). Upload ocorrerá ao salvar.
+                  </div>
+                )}
+
+                {uploadedPhotoUrls.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {uploadedPhotoUrls.slice(0, 6).map((url, idx) => (
+                      <a
+                        key={`${url}-${idx}`}
+                        href={url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center justify-center w-16 h-16 rounded-xl bg-white border border-slate-200 overflow-hidden"
+                      >
+                        {isGoogleDriveUrl(url) ? (
+                          <iframe
+                            title="Drive preview"
+                            loading="lazy"
+                            className="w-16 h-16"
+                            src={`https://drive.google.com/file/d/${getFileIdFromUrl(url)}/preview`}
+                          />
+                        ) : (
+                          <img src={url} alt="foto" className="w-full h-full object-cover" />
+                        )}
+                      </a>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="pt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => resetForm()}
+                  className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 hover:bg-slate-100"
+                  disabled={!canManage || isSaving || isUploading}
+                >
+                  Limpar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveEvent}
+                  disabled={!canManage || isSaving || isUploading || !selected.item.CTE}
+                  className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#2c348c] px-3 py-2 text-xs font-semibold text-white shadow-md transition-all hover:bg-[#e42424] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+                  {isSaving ? "Salvando..." : "Salvar evento"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default OperationalTracking;
+

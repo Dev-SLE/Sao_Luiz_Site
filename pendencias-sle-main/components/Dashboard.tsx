@@ -1,24 +1,45 @@
 import React, { useMemo, useState } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
-import { 
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, 
-  PieChart, Pie, Cell, Legend, CartesianGrid 
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  PieChart, Pie, Cell, Legend, CartesianGrid, LineChart, Line, AreaChart, Area,
 } from 'recharts';
-import { Filter, DollarSign, Package, AlertCircle, CheckCircle, PieChart as PieChartIcon, BarChart3, TrendingUp, X, ArrowLeftCircle, CalendarCheck2 } from 'lucide-react';
+import {
+  Filter,
+  DollarSign,
+  Package,
+  CheckCircle,
+  PieChart as PieChartIcon,
+  BarChart3,
+  TrendingUp,
+  X,
+  ArrowLeftCircle,
+  CalendarCheck2,
+  Activity,
+} from 'lucide-react';
 import clsx from 'clsx';
 import { COLORS } from '../constants';
+
+/** Paleta alinhada ao site institucional + tons serenos */
+const NAVY = '#06183e';
+const NAVY_MID = '#2c348c';
+const BRAND_RED = '#e42424';
 
 const Dashboard: React.FC = () => {
   const { processedData, baseData } = useData();
   const { user } = useAuth();
-  
-  // State for Filters
+
   const [selectedUnit, setSelectedUnit] = useState<string>('');
   const [statusFilters, setStatusFilters] = useState<string[]>([]);
   const [paymentFilters, setPaymentFilters] = useState<string[]>([]);
+  const [draftDateFrom, setDraftDateFrom] = useState('');
+  const [draftDateTo, setDraftDateTo] = useState('');
+  const [appliedDateFrom, setAppliedDateFrom] = useState('');
+  const [appliedDateTo, setAppliedDateTo] = useState('');
   const [viewMode, setViewMode] = useState<'qty' | 'value'>('qty');
   const [pieMode, setPieMode] = useState<'status' | 'payment'>('status');
+  const [activePieKey, setActivePieKey] = useState<string | null>(null);
 
   const STATUS_COLORS: Record<string, string> = {
     'CRÍTICO': COLORS.critical,
@@ -29,49 +50,65 @@ const Dashboard: React.FC = () => {
   };
 
   const PAYMENT_COLORS: Record<string, string> = {
-    'CIF': '#10b981',             
-    'FOB': '#ef4444',             
-    'FATURAR_REMETENTE': '#eab308', 
-    'FATURAR_DEST': '#f97316'     
+    CIF: '#0d9488',
+    FOB: '#e11d48',
+    FATURAR_REMETENTE: '#ca8a04',
+    FATURAR_DEST: '#ea580c',
   };
 
   const cleanLabel = (name: string) => {
     if (!name) return '';
     let cleaned = name.replace(/^(DEC|FILIAL)\s*-?\s*/i, '');
-    // Increased truncate limit from 18 to 22 characters
     if (cleaned.length > 22) {
       return cleaned.substring(0, 22) + '...';
     }
     return cleaned;
   };
 
-  const formatCurrency = (val: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
+  const formatCurrency = (val: number) =>
+    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
   const formatNumber = (val: number) => new Intl.NumberFormat('pt-BR').format(val);
 
-  const toggleFilter = (list: string[], item: string) => {
-    return list.includes(item) ? list.filter(i => i !== item) : [...list, item];
-  };
+  const toggleFilter = (list: string[], item: string) =>
+    list.includes(item) ? list.filter((i) => i !== item) : [...list, item];
 
   const safeParseValue = (valStr: string | undefined | null) => {
     if (!valStr) return 0;
     try {
       const clean = valStr.replace(/[^\d,-]/g, '').replace(',', '.');
       return parseFloat(clean) || 0;
-    } catch (e) {
+    } catch {
       return 0;
     }
   };
 
   const parseDateToComparable = (dateStr: string) => {
     if (!dateStr || typeof dateStr !== 'string') return 0;
-    const parts = dateStr.split('/');
-    if (parts.length === 3) {
-      return parseInt(parts[2] + parts[1].padStart(2, '0') + parts[0].padStart(2, '0'));
+    const raw = dateStr.trim();
+    if (!raw) return 0;
+
+    const ddmmyyyy = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (ddmmyyyy) {
+      const [, dd, mm, yyyy] = ddmmyyyy;
+      return Number(`${yyyy}${mm.padStart(2, '0')}${dd.padStart(2, '0')}`);
     }
+
+    const yyyymmdd = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (yyyymmdd) {
+      const [, yyyy, mm, dd] = yyyymmdd;
+      return Number(`${yyyy}${mm.padStart(2, '0')}${dd.padStart(2, '0')}`);
+    }
+
     return 0;
   };
 
-  // --- Data Processing ---
+  const parseInputDateToComparable = (v: string) => {
+    if (!v) return 0;
+    const p = v.split('-');
+    if (p.length !== 3) return 0;
+    return parseInt(`${p[0]}${p[1]}${p[2]}`);
+  };
+
   const isUserUnitBound = !!user?.linkedDestUnit;
   const activeUnit = isUserUnitBound ? user.linkedDestUnit : selectedUnit;
 
@@ -79,37 +116,45 @@ const Dashboard: React.FC = () => {
     if (baseData.length === 0) return '--/--/----';
     let maxVal = 0;
     let maxStr = '';
-    baseData.forEach(d => {
-       const currentVal = parseDateToComparable(d.DATA_EMISSAO);
-       if (currentVal > maxVal) {
-           maxVal = currentVal;
-           maxStr = d.DATA_EMISSAO;
-       }
+    baseData.forEach((d) => {
+      const currentVal = parseDateToComparable(d.DATA_EMISSAO);
+      if (currentVal > maxVal) {
+        maxVal = currentVal;
+        maxStr = d.DATA_EMISSAO;
+      }
     });
     return maxStr || '--/--/----';
   }, [baseData]);
 
   const availableUnits = useMemo(() => {
-    const units = new Set(processedData.map(d => d.ENTREGA).filter(Boolean));
+    const units = new Set(processedData.map((d) => d.ENTREGA).filter(Boolean));
     return Array.from(units).sort();
   }, [processedData]);
 
   const baseScopeData = useMemo(() => {
-    return processedData.filter(item => {
+    const from = parseInputDateToComparable(appliedDateFrom);
+    const to = parseInputDateToComparable(appliedDateTo);
+    return processedData.filter((item) => {
       if (activeUnit && item.ENTREGA !== activeUnit) return false;
+      if (from || to) {
+        const dt = parseDateToComparable(item.DATA_EMISSAO || '');
+        if (!dt) return false;
+        if (from && dt < from) return false;
+        if (to && dt > to) return false;
+      }
       return true;
     });
-  }, [processedData, activeUnit]);
+  }, [processedData, activeUnit, appliedDateFrom, appliedDateTo]);
 
   const statusCardsData = useMemo(() => {
-    return baseScopeData.filter(item => {
+    return baseScopeData.filter((item) => {
       if (paymentFilters.length > 0 && !paymentFilters.includes(item.FRETE_PAGO || 'OUTROS')) return false;
       return true;
     });
   }, [baseScopeData, paymentFilters]);
 
   const paymentCardsData = useMemo(() => {
-    return baseScopeData.filter(item => {
+    return baseScopeData.filter((item) => {
       if (statusFilters.length > 0) {
         const status = item.STATUS_CALCULADO || item.STATUS || 'OUTROS';
         if (!statusFilters.includes(status)) return false;
@@ -119,7 +164,7 @@ const Dashboard: React.FC = () => {
   }, [baseScopeData, statusFilters]);
 
   const fullyFilteredData = useMemo(() => {
-    return baseScopeData.filter(item => {
+    return baseScopeData.filter((item) => {
       if (paymentFilters.length > 0 && !paymentFilters.includes(item.FRETE_PAGO || 'OUTROS')) return false;
       if (statusFilters.length > 0) {
         const status = item.STATUS_CALCULADO || item.STATUS || 'OUTROS';
@@ -132,16 +177,56 @@ const Dashboard: React.FC = () => {
   const mainKPIs = useMemo(() => {
     let qty = 0;
     let val = 0;
-    fullyFilteredData.forEach(d => {
+    fullyFilteredData.forEach((d) => {
       qty++;
       val += safeParseValue(d.VALOR_CTE);
     });
     return { qty, val };
   }, [fullyFilteredData]);
 
+  const operationalKPIs = useMemo(() => {
+    const total = fullyFilteredData.length;
+    if (!total) {
+      return {
+        onTimeRate: 0,
+        criticalRate: 0,
+        avgTicket: 0,
+      };
+    }
+    const onTime = fullyFilteredData.filter((d) => (d.STATUS_CALCULADO || d.STATUS) === 'NO PRAZO').length;
+    const critical = fullyFilteredData.filter((d) => (d.STATUS_CALCULADO || d.STATUS) === 'CRÍTICO').length;
+    return {
+      onTimeRate: (onTime / total) * 100,
+      criticalRate: (critical / total) * 100,
+      avgTicket: mainKPIs.val / total,
+    };
+  }, [fullyFilteredData, mainKPIs.val]);
+
+  const trendData = useMemo(() => {
+    const map: Record<string, { key: number; label: string; qty: number; val: number }> = {};
+    fullyFilteredData.forEach((item) => {
+      const raw = item.DATA_EMISSAO || '';
+      const key = parseDateToComparable(raw);
+      if (!key) return;
+      if (!map[raw]) {
+        map[raw] = {
+          key,
+          label: raw.includes('/') ? raw.slice(0, 5) : raw,
+          qty: 0,
+          val: 0,
+        };
+      }
+      map[raw].qty += 1;
+      map[raw].val += safeParseValue(item.VALOR_CTE);
+    });
+    return Object.values(map)
+      .sort((a, b) => a.key - b.key)
+      .slice(-14);
+  }, [fullyFilteredData]);
+
   const statusAgg = useMemo(() => {
-    const counts: Record<string, { qty: number, val: number }> = {};
-    statusCardsData.forEach(item => {
+    const counts: Record<string, { qty: number; val: number }> = {};
+    statusCardsData.forEach((item) => {
       const status = item.STATUS_CALCULADO || 'OUTROS';
       const v = safeParseValue(item.VALOR_CTE);
       if (!counts[status]) counts[status] = { qty: 0, val: 0 };
@@ -152,8 +237,8 @@ const Dashboard: React.FC = () => {
   }, [statusCardsData]);
 
   const paymentAgg = useMemo(() => {
-    const counts: Record<string, { qty: number, val: number }> = {};
-    paymentCardsData.forEach(item => {
+    const counts: Record<string, { qty: number; val: number }> = {};
+    paymentCardsData.forEach((item) => {
       const type = item.FRETE_PAGO || 'OUTROS';
       const v = safeParseValue(item.VALOR_CTE);
       if (!counts[type]) counts[type] = { qty: 0, val: 0 };
@@ -167,19 +252,19 @@ const Dashboard: React.FC = () => {
     const groupByClient = !!activeUnit;
     const barMap: Record<string, any> = {};
 
-    fullyFilteredData.forEach(item => {
+    fullyFilteredData.forEach((item) => {
       const rawKey = groupByClient ? item.DESTINATARIO : item.ENTREGA;
       if (!rawKey) return;
-      const key = cleanLabel(rawKey); 
+      const key = cleanLabel(rawKey);
 
       if (!barMap[key]) {
-        barMap[key] = { 
-          name: key, 
+        barMap[key] = {
+          name: key,
           fullName: rawKey,
-          total: 0 
+          total: 0,
         };
-        Object.keys(PAYMENT_COLORS).forEach(k => barMap[key][k] = 0);
-        barMap[key]['OUTROS'] = 0;
+        Object.keys(PAYMENT_COLORS).forEach((k) => (barMap[key][k] = 0));
+        barMap[key].OUTROS = 0;
       }
 
       const val = safeParseValue(item.VALOR_CTE);
@@ -190,70 +275,72 @@ const Dashboard: React.FC = () => {
       barMap[key].total += metric;
     });
 
-    // Reduced slice from 20 to 12 to prevent overlap
-    const barData = Object.values(barMap).sort((a: any, b: any) => b.total - a.total).slice(0, 12);
+    const barData = Object.values(barMap)
+      .sort((a: any, b: any) => b.total - a.total)
+      .slice(0, 12);
 
-    let pieData: { name: string, value: number, monetary: number }[] = [];
+    let pieData: { name: string; value: number; monetary: number }[] = [];
     const keys = pieMode === 'status' ? Object.keys(STATUS_COLORS) : Object.keys(PAYMENT_COLORS);
-    const tempMap: Record<string, { metric: number, monetary: number }> = {};
-    keys.forEach(k => tempMap[k] = { metric: 0, monetary: 0 });
+    const tempMap: Record<string, { metric: number; monetary: number }> = {};
+    keys.forEach((k) => (tempMap[k] = { metric: 0, monetary: 0 }));
 
-    fullyFilteredData.forEach(item => {
-        const key = pieMode === 'status' ? (item.STATUS_CALCULADO || 'OUTROS') : (item.FRETE_PAGO || 'OUTROS');
-        const val = safeParseValue(item.VALOR_CTE);
-        const metric = viewMode === 'qty' ? 1 : val;
+    fullyFilteredData.forEach((item) => {
+      const key = pieMode === 'status' ? item.STATUS_CALCULADO || 'OUTROS' : item.FRETE_PAGO || 'OUTROS';
+      const val = safeParseValue(item.VALOR_CTE);
+      const metric = viewMode === 'qty' ? 1 : val;
 
-        if (tempMap[key]) {
-            tempMap[key].metric += metric;
-            tempMap[key].monetary += val;
-        }
+      if (tempMap[key]) {
+        tempMap[key].metric += metric;
+        tempMap[key].monetary += val;
+      }
     });
 
-    pieData = Object.keys(tempMap).map(k => ({ 
-        name: k, 
-        value: tempMap[k].metric,
-        monetary: tempMap[k].monetary
+    pieData = Object.keys(tempMap).map((k) => ({
+      name: k,
+      value: tempMap[k].metric,
+      monetary: tempMap[k].monetary,
     }));
 
     return { barData, pieData, groupByClient };
   }, [fullyFilteredData, activeUnit, viewMode, pieMode]);
 
   const handleBarClick = (data: any) => {
-      if (activeUnit) return; 
-      let targetFullName = '';
-      if (data && data.fullName) {
-        targetFullName = data.fullName;
-      } else if (data && (typeof data === 'string' || data.value)) {
-        const val = typeof data === 'string' ? data : data.value;
-        const found = chartData.barData.find((d: any) => d.name === val);
-        if (found) targetFullName = found.fullName;
-      }
-      if (targetFullName) {
-          const match = availableUnits.find(u => u === targetFullName || cleanLabel(u) === cleanLabel(targetFullName));
-          if (match) setSelectedUnit(match);
-      }
+    if (activeUnit) return;
+    let targetFullName = '';
+    if (data && data.fullName) {
+      targetFullName = data.fullName;
+    } else if (data && (typeof data === 'string' || data.value)) {
+      const val = typeof data === 'string' ? data : data.value;
+      const found = chartData.barData.find((d: any) => d.name === val);
+      if (found) targetFullName = found.fullName;
+    }
+    if (targetFullName) {
+      const match = availableUnits.find((u) => u === targetFullName || cleanLabel(u) === cleanLabel(targetFullName));
+      if (match) setSelectedUnit(match);
+    }
   };
 
-  // Custom Tooltip for Bar Chart to hide zero values
+  const cardBase =
+    'rounded-2xl border border-slate-200/90 bg-white shadow-[0_1px_3px_rgba(15,23,42,0.06),0_8px_24px_rgba(15,23,42,0.04)]';
+
   const CustomBarTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
-      // Filter out payloads with zero value
       const visibleData = payload.filter((p: any) => p.value > 0);
       if (visibleData.length === 0) return null;
 
       const fullName = payload[0]?.payload?.fullName || label;
 
       return (
-        <div className="bg-white p-3 border border-gray-100 shadow-xl rounded-lg z-50">
-          <p className="text-sm font-bold text-gray-800 mb-2 border-b pb-1">{fullName}</p>
-          <div className="space-y-1">
+        <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-lg shadow-slate-200/80 z-50">
+          <p className="mb-2 border-b border-slate-100 pb-1.5 text-sm font-semibold text-slate-800">{fullName}</p>
+          <div className="space-y-1.5">
             {visibleData.map((p: any, idx: number) => (
-              <div key={idx} className="flex justify-between items-center gap-6">
+              <div key={idx} className="flex items-center justify-between gap-6">
                 <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: p.fill }} />
-                  <span className="text-[11px] font-bold text-gray-500 uppercase">{p.name}:</span>
+                  <div className="h-2 w-2 rounded-full" style={{ backgroundColor: p.fill }} />
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{p.name}:</span>
                 </div>
-                <span className="text-xs font-mono font-black text-gray-700">
+                <span className="font-mono text-xs font-bold text-slate-800">
                   {viewMode === 'value' ? formatCurrency(p.value) : formatNumber(p.value)}
                 </span>
               </div>
@@ -266,304 +353,582 @@ const Dashboard: React.FC = () => {
   };
 
   const FilterCard = ({ label, qty, val, color, selected, dimmed, onClick }: any) => (
-    <div 
+    <button
+      type="button"
       onClick={onClick}
       className={clsx(
-        "rounded-xl p-2.5 border transition-all cursor-pointer flex flex-col justify-between h-full relative overflow-hidden group hover:shadow-md",
-        selected 
-          ? "bg-white ring-2 ring-offset-1 z-10 scale-[1.02]" 
-          : "bg-white border-gray-200",
-        dimmed && !selected ? "opacity-40 hover:opacity-80 scale-95 grayscale-[0.5]" : "opacity-100"
+        'group relative flex h-full w-full flex-col justify-between overflow-hidden rounded-xl border text-left transition-all duration-200',
+        'border-slate-200/90 bg-white shadow-sm hover:border-slate-300 hover:shadow-md',
+        selected &&
+          'ring-2 ring-[#e42424]/30 border-[#e42424]/45 bg-gradient-to-b from-red-50/80 to-white scale-[1.01]',
+        dimmed && !selected && 'opacity-45 saturate-50 hover:opacity-90 hover:saturate-100',
       )}
-      style={{ 
-        borderColor: selected ? color : undefined, 
-        backgroundColor: selected ? `${color}10` : 'white',
-        boxShadow: selected ? `0 4px 12px -2px ${color}30` : undefined
+      style={{
+        boxShadow: selected ? `0 8px 28px -6px ${color}35` : undefined,
       }}
     >
-       {selected && (
-          <div className="absolute top-1.5 right-1.5">
-            <CheckCircle size={14} fill={color} className="text-white" />
-          </div>
-       )}
-      <div className="mb-1">
-        <span className="font-bold text-[10px] uppercase tracking-wider text-gray-500 truncate block pr-4" style={{ color: selected ? color : undefined }}>{label}</span>
+      <span
+        className="absolute left-0 top-0 h-full w-1 rounded-l-xl"
+        style={{ backgroundColor: color, opacity: selected ? 1 : 0.7 }}
+      />
+      {selected && (
+        <div className="absolute right-2 top-2 rounded-full bg-white/90 p-0.5 shadow-sm ring-1 ring-slate-200">
+          <CheckCircle size={14} style={{ color }} className="text-white" />
+        </div>
+      )}
+      <div className="pl-3.5 pr-2 pt-2.5">
+        <span
+          className="block truncate pr-5 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500"
+          style={{ color: selected ? color : undefined }}
+        >
+          {label}
+        </span>
       </div>
-      <div>
-        <div className="text-xl md:text-2xl font-bold text-gray-800 leading-none tracking-tight">{formatNumber(qty)}</div>
-        <div className="text-[10px] text-gray-400 mt-0.5 font-mono font-medium truncate">{formatCurrency(val)}</div>
+      <div className="px-3.5 pb-3 pt-1">
+        <div className="text-2xl font-bold tracking-tight text-slate-900 tabular-nums">{formatNumber(qty)}</div>
+        <div className="mt-0.5 truncate font-mono text-[11px] font-medium text-slate-500">{formatCurrency(val)}</div>
       </div>
-      <div className="absolute bottom-0 left-0 h-1 w-full transition-all" style={{ backgroundColor: color, opacity: selected ? 1 : 0.5 }} />
-    </div>
+    </button>
   );
 
   const CustomPieTooltip = ({ active, payload }: any) => {
-      if (active && payload && payload.length) {
-        const data = payload[0].payload;
-        return (
-          <div className="bg-white p-3 border border-gray-100 shadow-xl rounded-lg z-50">
-            <p className="text-sm font-bold text-gray-800 mb-1">{data.name}</p>
-            <p className="text-xs text-gray-500 flex justify-between gap-4">
-                <span>Qtd:</span> <span className="font-mono text-gray-700 font-bold">{viewMode === 'qty' ? formatNumber(data.value) : '-'}</span>
-            </p>
-            <p className="text-xs text-gray-500 flex justify-between gap-4">
-                <span>Valor:</span> <span className="font-mono text-primary-600 font-bold">{formatCurrency(data.monetary)}</span>
-            </p>
-          </div>
-        );
-      }
-      return null;
+    if (active && payload && payload.length) {
+      const data = payload[0].payload;
+      return (
+        <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-lg shadow-slate-200/80 z-50">
+          <p className="mb-1 text-sm font-semibold text-slate-800">{data.name}</p>
+          <p className="flex justify-between gap-6 text-xs text-slate-500">
+            <span>Qtd</span>
+            <span className="font-mono font-bold text-slate-900">
+              {viewMode === 'qty' ? formatNumber(data.value) : '—'}
+            </span>
+          </p>
+          <p className="mt-0.5 flex justify-between gap-6 text-xs text-slate-500">
+            <span>Valor</span>
+            <span className="font-mono font-bold text-emerald-700">{formatCurrency(data.monetary)}</span>
+          </p>
+        </div>
+      );
+    }
+    return null;
   };
 
   return (
-    <div className="flex flex-col gap-4 animate-in fade-in duration-500 h-full max-h-[calc(100vh-80px)] overflow-y-auto md:overflow-hidden pb-20 md:pb-0">
-      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-2 shrink-0">
-        <div className="flex items-center gap-3">
-             <div className="bg-primary-100 p-2 rounded-lg text-primary-700 hidden md:block">
-                 <TrendingUp size={24} />
-             </div>
-             <div>
-                <h1 className="text-2xl font-bold text-gray-900 leading-tight">Painel de Controle</h1>
-                <p className="text-gray-500 text-xs">
-                    {activeUnit ? `Análise detalhada: ${activeUnit}` : 'Visão consolidada da rede'}
-                </p>
-             </div>
-        </div>
+    <div
+      className={clsx(
+        'dashboard-executive relative flex w-full flex-1 flex-col gap-6 md:gap-8',
+        'min-h-full px-4 py-6 sm:px-6 lg:px-10 lg:py-8',
+        'animate-in fade-in duration-500',
+      )}
+    >
+      <div
+        className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_90%_60%_at_50%_-10%,rgba(44,52,140,0.06),transparent_55%)]"
+        aria-hidden
+      />
 
-        <div className="w-full lg:w-auto flex flex-col md:flex-row gap-2 items-center">
-            <div className="flex items-center gap-2 bg-emerald-50 px-3 py-2 rounded-lg border border-emerald-100 text-emerald-700 text-xs font-bold animate-in fade-in w-full md:w-auto justify-center md:justify-start">
-               <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-               <CalendarCheck2 size={14} className="shrink-0" />
-               <span>Atualizado até {latestEmissaoDate}</span>
+      {/* Cabeçalho + controles */}
+      <section className={clsx(cardBase, 'overflow-hidden')}>
+        <div className="h-1 w-full bg-gradient-to-r from-[#06183e] via-[#2c348c] to-[#e42424]" />
+        <div className="flex flex-col gap-6 p-5 md:flex-row md:items-end md:justify-between md:p-8">
+          <div className="flex min-w-0 flex-1 items-start gap-4">
+            <div
+              className="hidden shrink-0 rounded-2xl border border-slate-100 p-3 shadow-inner md:flex"
+              style={{ background: `linear-gradient(145deg, ${NAVY} 0%, #0c2860 100%)` }}
+            >
+              <TrendingUp className="h-7 w-7 text-white" strokeWidth={2} />
             </div>
+            <div className="min-w-0">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#2c348c]">Painel operacional</p>
+              <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900 md:text-[1.75rem]">
+                Visão executiva de pendências
+              </h1>
+              <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-500">
+                {activeUnit
+                  ? `Análise focada em: ${activeUnit}`
+                  : 'Indicadores consolidados da rede. Combine filtros de status, tipo de frete e período de emissão.'}
+              </p>
+              <p className="mt-3 inline-flex items-center gap-2 rounded-lg border border-slate-200/80 bg-slate-50/80 px-3 py-1.5 text-xs text-slate-600">
+                <span className="font-medium text-slate-500">Última emissão no conjunto</span>
+                <span className="font-semibold tabular-nums text-slate-800">{latestEmissaoDate}</span>
+              </p>
+            </div>
+          </div>
 
-            {(statusFilters.length > 0 || paymentFilters.length > 0) && (
-                <button 
-                    onClick={() => { setStatusFilters([]); setPaymentFilters([]); }}
-                    className="text-xs text-red-500 hover:text-red-700 font-bold flex items-center justify-center gap-1 px-3 py-2 bg-red-50 rounded-lg border border-red-100 transition-colors w-full md:w-auto"
-                >
-                    <X size={14} /> Limpar Filtros
-                </button>
+          <div className="flex w-full flex-col gap-3 md:max-w-xl md:items-end">
+            {(statusFilters.length > 0 || paymentFilters.length > 0 || appliedDateFrom || appliedDateTo) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setStatusFilters([]);
+                  setPaymentFilters([]);
+                  setDraftDateFrom('');
+                  setDraftDateTo('');
+                  setAppliedDateFrom('');
+                  setAppliedDateTo('');
+                }}
+                className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 transition hover:bg-red-100 md:w-auto"
+              >
+                <X size={14} /> Limpar filtros
+              </button>
             )}
-           {isUserUnitBound ? (
-             <div className="flex items-center gap-2 bg-gray-50 px-4 py-2 rounded-xl border border-gray-200 text-gray-600 cursor-not-allowed w-full lg:w-auto shadow-sm">
-               <Package size={16} />
-               <span className="font-bold text-sm">{user.linkedDestUnit}</span>
-             </div>
-           ) : (
-             <div className="relative w-full lg:w-auto group">
-               <select 
-                 value={selectedUnit}
-                 onChange={(e) => setSelectedUnit(e.target.value)}
-                 className="appearance-none bg-white border border-gray-300 text-gray-700 py-2.5 pl-4 pr-10 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 font-bold text-sm w-full lg:min-w-[280px] cursor-pointer hover:border-primary-400 transition-colors"
-               >
-                 <option value="">Todas as Unidades</option>
-                 {availableUnits.map(u => <option key={u} value={u}>{u}</option>)}
-               </select>
-               <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-gray-400 group-hover:text-primary-600 transition-colors">
-                 <Filter size={16} />
-               </div>
-             </div>
-           )}
+
+            <div className="flex w-full flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+              {isUserUnitBound ? (
+                <div className="flex w-full cursor-not-allowed items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-slate-700 sm:w-auto">
+                  <Package size={16} style={{ color: NAVY_MID }} />
+                  <span className="text-sm font-semibold">{user.linkedDestUnit}</span>
+                </div>
+              ) : (
+                <div className="group relative w-full sm:min-w-[260px]">
+                  <select
+                    value={selectedUnit}
+                    onChange={(e) => setSelectedUnit(e.target.value)}
+                    className="w-full cursor-pointer appearance-none rounded-xl border border-slate-200 bg-white py-2.5 pl-4 pr-10 text-sm font-semibold text-slate-800 shadow-sm transition hover:border-slate-300 focus:border-[#2c348c] focus:outline-none focus:ring-2 focus:ring-[#2c348c]/20"
+                  >
+                    <option value="">Todas as unidades</option>
+                    {availableUnits.map((u) => (
+                      <option key={u} value={u}>
+                        {u}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-400 transition group-hover:text-[#2c348c]">
+                    <Filter size={16} />
+                  </div>
+                </div>
+              )}
+
+              <div className="flex w-full flex-1 flex-wrap gap-2">
+                <input
+                  type="date"
+                  value={draftDateFrom}
+                  onChange={(e) => setDraftDateFrom(e.target.value)}
+                  className="min-w-[140px] flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 shadow-sm focus:border-[#2c348c] focus:outline-none focus:ring-2 focus:ring-[#2c348c]/15"
+                  title="Data de emissão inicial"
+                />
+                <input
+                  type="date"
+                  value={draftDateTo}
+                  onChange={(e) => setDraftDateTo(e.target.value)}
+                  className="min-w-[140px] flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 shadow-sm focus:border-[#2c348c] focus:outline-none focus:ring-2 focus:ring-[#2c348c]/15"
+                  title="Data de emissão final"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAppliedDateFrom(draftDateFrom);
+                    setAppliedDateTo(draftDateTo);
+                  }}
+                  className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl px-4 py-2 text-xs font-semibold text-white shadow-md transition hover:opacity-95 sm:flex-none"
+                  style={{ background: `linear-gradient(135deg, ${NAVY_MID} 0%, ${NAVY} 100%)` }}
+                  title="Aplicar filtro por data de emissão"
+                >
+                  <CalendarCheck2 size={14} />
+                  Aplicar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDraftDateFrom('');
+                    setDraftDateTo('');
+                    setAppliedDateFrom('');
+                    setAppliedDateTo('');
+                  }}
+                  className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-100"
+                  title="Limpar filtro por data de emissão"
+                >
+                  Limpar datas
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
+      </section>
 
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 shrink-0">
-         <div className="xl:col-span-2 grid grid-cols-2 xl:grid-cols-1 gap-3 h-full">
-             <div className="bg-gradient-to-br from-primary-900 to-primary-800 rounded-xl p-4 shadow-lg text-white flex flex-col justify-center relative overflow-hidden group">
-                <div className="absolute right-[-15px] top-[-15px] opacity-10 group-hover:opacity-20 transition-all">
-                    <Package size={80} />
-                </div>
-                <p className="text-primary-200 text-[10px] font-bold uppercase tracking-wider mb-0.5">Pendências Totais</p>
-                <h2 className="text-3xl font-black tracking-tight leading-none">{formatNumber(mainKPIs.qty)}</h2>
-             </div>
-             <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200 flex flex-col justify-center relative overflow-hidden">
-                <p className="text-gray-400 text-[10px] font-bold uppercase tracking-wider mb-0.5">Valor em Risco</p>
-                <h2 className="text-2xl font-black text-gray-800 tracking-tight leading-none">{formatCurrency(mainKPIs.val)}</h2>
-                <div className="absolute right-2 top-2 bg-green-50 p-1.5 rounded-full text-green-600">
-                    <DollarSign size={16} />
-                </div>
-             </div>
-         </div>
+      {/* Filtros */}
+      <section className="grid grid-cols-1 gap-4 xl:grid-cols-12 xl:gap-6">
+        <div className={clsx(cardBase, 'p-4 md:p-5 xl:col-span-12')}>
+          <div className="mb-3 flex flex-wrap items-end justify-between gap-2 border-b border-slate-100 pb-3">
+            <h2 className="text-sm font-bold text-slate-800">Por status</h2>
+            <span className="text-[11px] font-medium text-slate-400">Clique para incluir ou excluir do conjunto</span>
+          </div>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5 md:gap-3">
+            {['FORA DO PRAZO', 'CRÍTICO', 'PRIORIDADE', 'VENCE AMANHÃ', 'NO PRAZO'].map((status) => (
+              <FilterCard
+                key={status}
+                label={status === 'PRIORIDADE' ? 'Vence hoje' : status}
+                qty={statusAgg[status]?.qty || 0}
+                val={statusAgg[status]?.val || 0}
+                color={STATUS_COLORS[status]}
+                selected={statusFilters.includes(status)}
+                dimmed={statusFilters.length > 0}
+                onClick={() => setStatusFilters((prev) => toggleFilter(prev, status))}
+              />
+            ))}
+          </div>
+        </div>
 
-         <div className="xl:col-span-10 flex flex-col gap-2">
-            <div className="bg-gray-50/50 p-3 rounded-xl border border-gray-200/50 flex-1">
-                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 h-full">
-                    {['FORA DO PRAZO', 'CRÍTICO', 'PRIORIDADE', 'VENCE AMANHÃ', 'NO PRAZO'].map(status => (
-                        <FilterCard 
-                            key={status}
-                            label={status}
-                            qty={statusAgg[status]?.qty || 0}
-                            val={statusAgg[status]?.val || 0}
-                            color={STATUS_COLORS[status]}
-                            selected={statusFilters.includes(status)}
-                            dimmed={statusFilters.length > 0}
-                            onClick={() => setStatusFilters(prev => toggleFilter(prev, status))}
-                        />
-                    ))}
-                 </div>
+        <div className={clsx(cardBase, 'p-4 md:p-5 xl:col-span-12')}>
+          <div className="mb-3 flex flex-wrap items-end justify-between gap-2 border-b border-slate-100 pb-3">
+            <h2 className="text-sm font-bold text-slate-800">Tipo de frete</h2>
+            <span className="text-[11px] font-medium text-slate-400">CIF, FOB e faturamento</span>
+          </div>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 md:gap-3">
+            {Object.keys(PAYMENT_COLORS).map((type) => (
+              <FilterCard
+                key={type}
+                label={type.replace('_', ' ')}
+                qty={paymentAgg[type]?.qty || 0}
+                val={paymentAgg[type]?.val || 0}
+                color={PAYMENT_COLORS[type]}
+                selected={paymentFilters.includes(type)}
+                dimmed={paymentFilters.length > 0}
+                onClick={() => setPaymentFilters((prev) => toggleFilter(prev, type))}
+              />
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* KPIs */}
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-12 lg:gap-6">
+        <div
+          className={clsx(cardBase, 'relative overflow-hidden p-6 lg:col-span-4')}
+          style={{ background: `linear-gradient(135deg, #ffffff 0%, #f4f7fb 100%)` }}
+        >
+          <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-[#2c348c]/[0.07]" />
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Pendências no escopo</p>
+              <p className="mt-2 text-4xl font-bold tabular-nums tracking-tight text-slate-900">{formatNumber(mainKPIs.qty)}</p>
+              <p className="mt-2 text-sm text-slate-500">Quantidade após filtros ativos</p>
             </div>
-            
-            <div className="bg-gray-50/50 p-3 rounded-xl border border-gray-200/50">
-                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 h-full">
-                    {Object.keys(PAYMENT_COLORS).map(type => (
-                        <FilterCard 
-                            key={type}
-                            label={type.replace('_', ' ')}
-                            qty={paymentAgg[type]?.qty || 0}
-                            val={paymentAgg[type]?.val || 0}
-                            color={PAYMENT_COLORS[type]}
-                            selected={paymentFilters.includes(type)}
-                            dimmed={paymentFilters.length > 0}
-                            onClick={() => setPaymentFilters(prev => toggleFilter(prev, type))}
-                        />
-                    ))}
-                 </div>
+            <div
+              className="rounded-2xl p-3 shadow-sm"
+              style={{ background: `${NAVY}08`, color: NAVY }}
+            >
+              <Package className="h-7 w-7" strokeWidth={1.75} />
             </div>
-         </div>
-      </div>
+          </div>
+        </div>
 
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-4 min-h-0">
-        <div className="lg:col-span-2 bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex flex-col h-full min-h-[450px]">
-           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 shrink-0 gap-2">
-              <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="font-bold text-gray-800 flex items-center gap-2 text-sm">
-                    <BarChart3 size={18} className="text-primary-600" />
-                    {chartData.groupByClient ? 'Ranking de Clientes' : 'Agências Ofensoras'}
-                  </h3>
-                  
-                  {!isUserUnitBound && activeUnit && (
-                      <button 
-                        onClick={() => setSelectedUnit('')}
-                        className="flex items-center gap-1 text-[10px] font-bold bg-gray-100 hover:bg-gray-200 text-gray-600 px-2 py-1 rounded-full transition-colors border border-gray-200 whitespace-nowrap"
-                      >
-                         <ArrowLeftCircle size={12} />
-                         Limpar
-                      </button>
+        <div className={clsx(cardBase, 'relative overflow-hidden p-6 lg:col-span-4')}>
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_90%_10%,rgba(228,36,36,0.06),transparent_50%)]" />
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Valor em risco (R$)</p>
+              <p className="mt-2 text-3xl font-bold tabular-nums tracking-tight text-slate-900">{formatCurrency(mainKPIs.val)}</p>
+              <p className="mt-2 text-sm text-slate-500">Soma dos valores de CTe filtrados</p>
+            </div>
+            <div className="rounded-2xl border border-emerald-200/80 bg-emerald-50 p-3 text-emerald-700 shadow-sm">
+              <DollarSign className="h-7 w-7" strokeWidth={1.75} />
+            </div>
+          </div>
+        </div>
+
+        <div className={clsx(cardBase, 'relative overflow-hidden p-6 lg:col-span-4')}>
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_8%_15%,rgba(44,52,140,0.08),transparent_50%)]" />
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Performance operacional</p>
+              <div className="mt-2 space-y-2">
+                <p className="text-sm font-semibold text-slate-700">
+                  SLA no prazo:
+                  <span className="ml-2 text-lg font-bold text-emerald-700 tabular-nums">
+                    {operationalKPIs.onTimeRate.toFixed(1)}%
+                  </span>
+                </p>
+                <p className="text-sm font-semibold text-slate-700">
+                  Crítico:
+                  <span className="ml-2 text-lg font-bold text-red-700 tabular-nums">
+                    {operationalKPIs.criticalRate.toFixed(1)}%
+                  </span>
+                </p>
+                <p className="text-sm font-semibold text-slate-700">
+                  Ticket médio:
+                  <span className="ml-2 text-lg font-bold text-[#2c348c] tabular-nums">
+                    {formatCurrency(operationalKPIs.avgTicket)}
+                  </span>
+                </p>
+              </div>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-white p-3 text-[#2c348c] shadow-sm">
+              <Activity className="h-7 w-7" strokeWidth={1.8} />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Tendência temporal + valor diário */}
+      <section className="grid grid-cols-1 gap-4 lg:grid-cols-12 lg:gap-6">
+        <div className={clsx(cardBase, 'p-5 md:p-6 lg:col-span-7')}>
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-bold text-slate-900">Tendência de volume (14 dias)</h2>
+              <p className="text-xs text-slate-500">Evolução diária da quantidade de CTe no escopo filtrado</p>
+            </div>
+          </div>
+          <div className="h-[240px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={trendData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                <XAxis dataKey="label" tick={{ fill: '#64748b', fontSize: 10, fontWeight: 600 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill: '#64748b', fontSize: 10, fontWeight: 600 }} axisLine={false} tickLine={false} />
+                <Tooltip
+                  formatter={(value: any, name: any) => [formatNumber(Number(value)), name === 'qty' ? 'Quantidade' : name]}
+                  labelFormatter={(l: string) => `Data: ${l}`}
+                />
+                <Line type="monotone" dataKey="qty" name="Quantidade" stroke={NAVY_MID} strokeWidth={2.5} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div className={clsx(cardBase, 'p-5 md:p-6 lg:col-span-5')}>
+          <div className="mb-4">
+            <h2 className="text-base font-bold text-slate-900">Valor diário (14 dias)</h2>
+            <p className="text-xs text-slate-500">Área acumulada para leitura rápida de risco financeiro</p>
+          </div>
+          <div className="h-[240px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={trendData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="valGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={BRAND_RED} stopOpacity={0.42} />
+                    <stop offset="100%" stopColor={BRAND_RED} stopOpacity={0.06} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                <XAxis dataKey="label" tick={{ fill: '#64748b', fontSize: 10, fontWeight: 600 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill: '#64748b', fontSize: 10, fontWeight: 600 }} axisLine={false} tickLine={false} tickFormatter={(v) => `R$ ${(Number(v) / 1000).toFixed(0)}k`} />
+                <Tooltip formatter={(value: any) => [formatCurrency(Number(value)), 'Valor']} labelFormatter={(l: string) => `Data: ${l}`} />
+                <Area type="monotone" dataKey="val" name="Valor" stroke={BRAND_RED} fill="url(#valGradient)" strokeWidth={2.2} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </section>
+
+      {/* Gráficos */}
+      <section className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-12 lg:gap-6">
+        <div className={clsx(cardBase, 'flex min-h-[480px] flex-col p-5 md:p-6 lg:col-span-8')}>
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <span
+                className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-100 shadow-sm"
+                style={{ color: BRAND_RED, background: `${NAVY}06` }}
+              >
+                <BarChart3 size={18} strokeWidth={2} />
+              </span>
+              <div>
+                <h2 className="text-base font-bold text-slate-900">
+                  {chartData.groupByClient ? 'Ranking de clientes' : 'Agências ofensoras'}
+                </h2>
+                <p className="text-xs text-slate-500">Barras empilhadas por tipo de frete</p>
+              </div>
+              {!isUserUnitBound && activeUnit && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedUnit('')}
+                  className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-semibold text-slate-600 transition hover:bg-white"
+                >
+                  <ArrowLeftCircle size={12} />
+                  Visão rede
+                </button>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="hidden text-xs text-slate-400 sm:inline">Métrica:</span>
+              <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50/80 p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('qty')}
+                  className={clsx(
+                    'rounded-lg px-3 py-1.5 text-[10px] font-bold transition',
+                    viewMode === 'qty'
+                      ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200'
+                      : 'text-slate-500 hover:text-slate-800',
                   )}
+                >
+                  QTD
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('value')}
+                  className={clsx(
+                    'rounded-lg px-3 py-1.5 text-[10px] font-bold transition',
+                    viewMode === 'value'
+                      ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200'
+                      : 'text-slate-500 hover:text-slate-800',
+                  )}
+                >
+                  R$
+                </button>
               </div>
+            </div>
+          </div>
 
-              <div className="flex bg-gray-100 p-0.5 rounded-lg self-end sm:self-auto">
-                 <button 
-                   onClick={() => setViewMode('qty')}
-                   className={clsx("px-2 py-1 text-[10px] font-bold rounded-md transition-all", viewMode === 'qty' ? "bg-white shadow text-primary-700" : "text-gray-500")}
-                 >
-                   QTD
-                 </button>
-                 <button 
-                   onClick={() => setViewMode('value')}
-                   className={clsx("px-2 py-1 text-[10px] font-bold rounded-md transition-all", viewMode === 'value' ? "bg-white shadow text-primary-700" : "text-gray-500")}
-                 >
-                   R$
-                 </button>
-              </div>
-           </div>
-           
-           <div className="flex-1 w-full min-h-[350px]">
-             <ResponsiveContainer width="100%" height="100%">
-               <BarChart 
-                 data={chartData.barData} 
-                 layout="vertical"
-                 margin={{ top: 0, right: 10, left: 0, bottom: 0 }}
-               >
-                 <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f3f4f6" />
-                 <XAxis 
-                    type="number" 
-                    fontSize={9} 
-                    tickFormatter={(val) => viewMode === 'value' ? `R$ ${(val/1000).toFixed(0)}k` : val} 
-                    axisLine={false}
-                    tickLine={false}
-                 />
-                 <YAxis 
-                   dataKey="name" 
-                   type="category" 
-                   width={170} 
-                   fontSize={10} 
-                   tick={{fill: '#4b5563', fontWeight: 600}}
-                   interval={0}
-                   onClick={handleBarClick}
-                   style={{ cursor: !activeUnit ? 'pointer' : 'default' }}
-                 />
-                 <Tooltip content={<CustomBarTooltip />} cursor={{fill: 'rgba(0,0,0,0.05)'}} />
-                 <Legend iconType="circle" wrapperStyle={{ fontSize: '10px', paddingTop: '5px' }} />
-                 {Object.keys(PAYMENT_COLORS).map(key => (
-                   <Bar 
-                    key={key} 
-                    dataKey={key} 
-                    stackId="a" 
-                    fill={PAYMENT_COLORS[key]} 
-                    radius={[0, 2, 2, 0]} 
-                    barSize={18} 
+          <div className="mb-3 flex flex-wrap gap-2">
+            <span className="rounded-lg border border-slate-200/90 bg-slate-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+              Qtd · {formatNumber(mainKPIs.qty)}
+            </span>
+            <span className="rounded-lg border border-slate-200/90 bg-slate-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+              Valor · {formatCurrency(mainKPIs.val)}
+            </span>
+          </div>
+
+          <div className="min-h-[380px] flex-1">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={chartData.barData}
+                layout="vertical"
+                margin={{ top: 4, right: 12, left: 0, bottom: 4 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" />
+                <XAxis
+                  type="number"
+                  fontSize={10}
+                  tickFormatter={(val) => {
+                    const n = typeof val === 'number' ? val : Number(val);
+                    if (!Number.isFinite(n) || n === 0) return '—';
+                    return viewMode === 'value' ? `R$ ${(n / 1000).toFixed(0)}k` : String(n);
+                  }}
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fill: '#64748b', fontWeight: 600 }}
+                />
+                <YAxis
+                  dataKey="name"
+                  type="category"
+                  width={168}
+                  fontSize={10}
+                  tick={{ fill: '#475569', fontWeight: 600 }}
+                  interval={0}
+                  onClick={handleBarClick}
+                  style={{ cursor: !activeUnit ? 'pointer' : 'default' }}
+                />
+                <Tooltip content={<CustomBarTooltip />} cursor={{ fill: 'rgba(44, 52, 140, 0.06)' }} />
+                <Legend iconType="circle" wrapperStyle={{ fontSize: '11px', paddingTop: '12px', color: '#64748b' }} />
+                {Object.keys(PAYMENT_COLORS).map((key) => (
+                  <Bar
+                    key={key}
+                    dataKey={key}
+                    stackId="a"
+                    fill={PAYMENT_COLORS[key]}
+                    radius={[0, 4, 4, 0]}
+                    barSize={20}
                     onClick={handleBarClick}
                     cursor={!activeUnit ? 'pointer' : 'default'}
-                   />
-                 ))}
-               </BarChart>
-             </ResponsiveContainer>
-           </div>
+                  />
+                ))}
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         </div>
 
-        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex flex-col h-full min-h-[400px]">
-           <div className="flex justify-between items-center mb-4 shrink-0">
-              <h3 className="font-bold text-gray-800 flex items-center gap-2 text-sm">
-                <PieChartIcon size={18} className="text-primary-600" />
-                Distribuição
-              </h3>
-              <div className="flex bg-gray-100 p-0.5 rounded-lg">
-                 <button 
-                   onClick={() => setPieMode('status')}
-                   className={clsx("px-2 py-0.5 text-[10px] font-bold rounded-md transition-all uppercase", pieMode === 'status' ? "bg-white shadow text-primary-700" : "text-gray-500")}
-                 >
-                   Status
-                 </button>
-                 <button 
-                   onClick={() => setPieMode('payment')}
-                   className={clsx("px-2 py-0.5 text-[10px] font-bold rounded-md transition-all uppercase", pieMode === 'payment' ? "bg-white shadow text-primary-700" : "text-gray-500")}
-                 >
-                   Pgto
-                 </button>
+        <div className={clsx(cardBase, 'flex min-h-[480px] flex-col p-5 md:p-6 lg:col-span-4')}>
+          <div className="mb-4 flex items-start justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span
+                className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-100 shadow-sm"
+                style={{ color: BRAND_RED, background: `${NAVY}06` }}
+              >
+                <PieChartIcon size={18} strokeWidth={2} />
+              </span>
+              <div>
+                <h2 className="text-base font-bold text-slate-900">Distribuição</h2>
+                <p className="text-xs text-slate-500">Status ou forma de pagamento</p>
               </div>
-           </div>
+            </div>
+            <div className="inline-flex shrink-0 rounded-xl border border-slate-200 bg-slate-50/80 p-0.5">
+              <button
+                type="button"
+                onClick={() => setPieMode('status')}
+                className={clsx(
+                  'rounded-lg px-2.5 py-1 text-[10px] font-bold uppercase transition',
+                  pieMode === 'status'
+                    ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200'
+                    : 'text-slate-500 hover:text-slate-800',
+                )}
+              >
+                Status
+              </button>
+              <button
+                type="button"
+                onClick={() => setPieMode('payment')}
+                className={clsx(
+                  'rounded-lg px-2.5 py-1 text-[10px] font-bold uppercase transition',
+                  pieMode === 'payment'
+                    ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200'
+                    : 'text-slate-500 hover:text-slate-800',
+                )}
+              >
+                Pgto
+              </button>
+            </div>
+          </div>
 
-           <div className="flex-1 min-h-0 relative">
-             <ResponsiveContainer width="100%" height="100%">
-               <PieChart>
-                 <Pie
-                   data={chartData.pieData}
-                   cx="50%"
-                   cy="50%"
-                   innerRadius="50%"
-                   outerRadius="80%"
-                   paddingAngle={2}
-                   dataKey="value"
-                 >
-                   {chartData.pieData.map((entry, index) => {
-                      const color = pieMode === 'status' 
-                        ? (STATUS_COLORS[entry.name] || '#ccc') 
-                        : (PAYMENT_COLORS[entry.name] || '#ccc');
-                      return <Cell key={`cell-${index}`} fill={color} stroke="white" strokeWidth={2} />;
-                   })}
-                 </Pie>
-                 <Tooltip content={<CustomPieTooltip />} />
-                 <Legend 
-                    layout="horizontal" 
-                    verticalAlign="bottom" 
-                    align="center"
-                    iconSize={8}
-                    wrapperStyle={{ fontSize: '10px', paddingTop: '10px', width: '100%' }} 
-                 />
-               </PieChart>
-             </ResponsiveContainer>
-             
-             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                 <div className="text-center">
-                    <span className="text-[10px] text-gray-400 font-bold block uppercase">Total</span>
-                    <span className="text-lg font-black text-gray-800">{formatNumber(mainKPIs.qty)}</span>
-                 </div>
-             </div>
-           </div>
+          <div className="relative min-h-0 flex-1">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={chartData.pieData}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius="52%"
+                  outerRadius="78%"
+                  paddingAngle={2}
+                  dataKey="value"
+                >
+                  {chartData.pieData.map((entry, index) => {
+                    const color =
+                      pieMode === 'status'
+                        ? STATUS_COLORS[entry.name] || '#94a3b8'
+                        : PAYMENT_COLORS[entry.name] || '#94a3b8';
+                    return (
+                      <Cell
+                        key={`cell-${index}`}
+                        fill={color}
+                        stroke="#ffffff"
+                        strokeWidth={2}
+                        onMouseEnter={() => setActivePieKey(entry.name)}
+                        onMouseLeave={() => setActivePieKey(null)}
+                      />
+                    );
+                  })}
+                </Pie>
+                <Tooltip content={<CustomPieTooltip />} />
+                <Legend
+                  layout="horizontal"
+                  verticalAlign="bottom"
+                  align="center"
+                  iconSize={8}
+                  wrapperStyle={{ fontSize: '10px', paddingTop: '12px', width: '100%', color: '#64748b' }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center pb-10">
+              <div className="rounded-2xl border border-slate-100 bg-white/90 px-4 py-3 text-center shadow-sm backdrop-blur-[2px]">
+                <span className="block text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Total</span>
+                <span className="text-xl font-bold tabular-nums text-slate-900">
+                  {(() => {
+                    if (!activePieKey) return formatNumber(mainKPIs.qty);
+                    const found = chartData.pieData.find((p) => p.name === activePieKey);
+                    if (!found) return '—';
+                    return viewMode === 'qty' ? formatNumber(found.value) : formatCurrency(found.monetary);
+                  })()}
+                </span>
+                {activePieKey && (
+                  <span className="mt-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                    {activePieKey}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
+      </section>
     </div>
   );
 };

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getPool } from "../../../lib/server/db";
 import bcrypt from "../../../bcrypt.js";
+import { serverLog } from "../../../lib/server/appLog";
 
 export const runtime = "nodejs";
 
@@ -27,9 +28,20 @@ export async function POST(req: Request) {
     }
 
     if (!valid) {
+      await serverLog({
+        level: "WARN",
+        event: "API_LOGIN_INVALID",
+        username: String(username),
+      });
       return NextResponse.json({ success: false, message: "Credenciais inválidas" }, { status: 401 });
     }
 
+    await serverLog({
+      level: "INFO",
+      event: "API_LOGIN_SUCCESS",
+      username: String(username),
+      data: { role: user.role },
+    });
     return NextResponse.json({
       success: true,
       user: {
@@ -41,6 +53,11 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     console.error("Erro no login:", error);
+    await serverLog({
+      level: "ERROR",
+      event: "API_LOGIN_ERROR",
+      data: { message: (error as any)?.message || String(error) },
+    });
     return NextResponse.json({ error: "Erro interno" }, { status: 500 });
   }
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getPool } from "../../../lib/server/db";
 import bcrypt from "../../../bcrypt.js";
+import { serverLog } from "../../../lib/server/appLog";
 
 export const runtime = "nodejs";
 
@@ -28,9 +29,19 @@ export async function POST(req: Request) {
 
     const newHash = await bcrypt.hash(newPassword, 10);
     await pool.query("UPDATE pendencias.users SET password_hash = $1, updated_at = NOW() WHERE username = $2", [newHash, username]);
+    await serverLog({
+      level: "INFO",
+      event: "API_CHANGE_PASSWORD_SUCCESS",
+      username,
+    });
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Erro ao alterar senha:", error);
+    await serverLog({
+      level: "ERROR",
+      event: "API_CHANGE_PASSWORD_ERROR",
+      data: { message: (error as any)?.message || String(error) },
+    });
     return NextResponse.json({ success: false, error: "Erro interno" }, { status: 500 });
   }
 }

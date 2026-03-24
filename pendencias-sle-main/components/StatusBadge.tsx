@@ -11,37 +11,44 @@ const StatusBadge: React.FC<Props> = ({ status, onClick }) => {
     switch (s?.toUpperCase()) {
       case 'FORA DO PRAZO':
       case 'CRÍTICO':
-        return 'bg-red-100 text-red-800 border-red-200';
+        return 'border-red-300 bg-red-100 text-red-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]';
+      case 'CONCLUIDO CRÍTICO':
+        return 'border-red-300 bg-red-100 font-bold text-red-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]';
+      case 'CONCLUIDO FORA DO PRAZO':
+        return 'border-orange-300 bg-orange-100 font-bold text-orange-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]';
       case 'PRIORIDADE':
-        return 'bg-orange-100 text-orange-800 border-orange-200';
+        return 'border-amber-300 bg-amber-100 text-amber-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]';
       case 'VENCE AMANHÃ':
-        return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+        return 'border-yellow-300 bg-yellow-100 text-yellow-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]';
       case 'NO PRAZO':
-        return 'bg-cyan-100 text-cyan-800 border-cyan-200';
-      // New Payment Colors
+        return 'border-sky-300 bg-sky-100 text-sky-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]';
+      case 'CONCLUIDO NO PRAZO':
+      case 'CONCLUIDO (SEM LIMITE)':
+        return 'border-emerald-300 bg-emerald-100 font-bold text-emerald-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]';
+      case 'CALCULANDO...':
+        return 'border-indigo-200 bg-indigo-50 text-indigo-700';
       case 'CIF':
-        return 'bg-emerald-50 text-emerald-700 border-emerald-100'; // Green
+        return 'border-emerald-300 bg-emerald-100 text-emerald-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]';
       case 'FOB':
-        return 'bg-red-50 text-red-600 border-red-100'; // Red
+        return 'border-rose-300 bg-rose-100 text-rose-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]';
       case 'FATURAR_REMETENTE':
-        return 'bg-yellow-50 text-yellow-700 border-yellow-100'; // Yellow
+        return 'border-orange-300 bg-orange-100 text-orange-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]';
       case 'FATURAR_DEST':
-        return 'bg-orange-50 text-orange-700 border-orange-100'; // Orange
-      // Resolved Status
+        return 'border-violet-300 bg-violet-100 text-violet-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]';
       case 'RESOLVIDO':
       case 'LOCALIZADA':
-        return 'bg-green-100 text-green-800 border-green-200 font-bold';
+        return 'border-emerald-300 bg-emerald-100 font-bold text-emerald-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]';
       default:
-        return 'bg-gray-100 text-gray-800 border-gray-200';
+        return 'border-indigo-200 bg-indigo-50 text-indigo-700';
     }
   };
 
   return (
-    <span 
+    <span
       onClick={onClick}
       className={clsx(
-        "px-2 py-1 rounded-full text-xs font-semibold border cursor-pointer transition-all hover:opacity-80 whitespace-nowrap",
-        getColors(status)
+        'cursor-pointer whitespace-nowrap rounded-full border px-2 py-1 text-[11px] font-semibold transition-all',
+        getColors(status),
       )}
     >
       {status}

@@ -3,6 +3,10 @@ import { getPool } from "../../../lib/server/db";
 
 export const runtime = "nodejs";
 
+const NORMALIZED_STATUS_SQL = `
+  TRANSLATE(UPPER(COALESCE(c.status, '')), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇ', 'AAAAAEEEEIIIIOOOOOUUUUC')
+`;
+
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => ({}));
@@ -41,7 +45,24 @@ export async function POST(req: Request) {
           CASE WHEN $1 = 'concluidos' THEN c.status ELSE i.status_calculado END AS status_key
         FROM pendencias.cte_view_index i
         JOIN pendencias.ctes c ON c.cte = i.cte AND c.serie = i.serie
-        WHERE i.view = $1
+        WHERE (
+          (
+            $1 = 'concluidos'
+            AND (
+              i.view = 'concluidos'
+              OR ${NORMALIZED_STATUS_SQL} LIKE 'CONCLUIDO%'
+              OR ${NORMALIZED_STATUS_SQL} LIKE 'ENTREGUE%'
+              OR ${NORMALIZED_STATUS_SQL} LIKE 'RESOLVIDO%'
+            )
+          )
+          OR (
+            $1 <> 'concluidos'
+            AND i.view = $1
+            AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'CONCLUIDO%'
+            AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'ENTREGUE%'
+            AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'RESOLVIDO%'
+          )
+        )
           AND ($2::text IS NULL OR c.entrega = $2::text)
       ),
       base_for_status AS (

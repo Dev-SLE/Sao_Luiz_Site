@@ -4,6 +4,7 @@ export interface CteData {
   SERIE: string;
   CODIGO: string;
   DATA_EMISSAO: string;
+  DATA_BAIXA?: string;
   PRAZO_BAIXA_DIAS: string;
   DATA_LIMITE_BAIXA: string;
   STATUS: string;
@@ -16,7 +17,17 @@ export interface CteData {
   FRETE_PAGO: string;
   DESTINATARIO: string;
   JUSTIFICATIVA: string;
-  STATUS_CALCULADO?: 'FORA DO PRAZO' | 'CRÍTICO' | 'PRIORIDADE' | 'VENCE AMANHÃ' | 'NO PRAZO';
+  STATUS_CALCULADO?:
+    | 'CALCULANDO...'
+    | 'FORA DO PRAZO'
+    | 'CRÍTICO'
+    | 'PRIORIDADE'
+    | 'VENCE AMANHÃ'
+    | 'NO PRAZO'
+    | 'CONCLUIDO (SEM LIMITE)'
+    | 'CONCLUIDO CRÍTICO'
+    | 'CONCLUIDO FORA DO PRAZO'
+    | 'CONCLUIDO NO PRAZO';
   IS_HISTORICAL?: boolean; // Flag to indicate if data comes from history/logs
   NOTE_COUNT?: number; // opcional (server-side), para badge na tabela sem carregar todas as notas
 }
@@ -71,8 +82,16 @@ export enum Page {
   CRITICOS = 'criticos',
   EM_BUSCA = 'em_busca',
   TAD = 'tad',
+  RASTREIO_OPERACIONAL = 'rastreio_operacional',
   CONCLUIDOS = 'concluidos',
+  CRM_DASHBOARD = 'crm_dashboard',
+  CRM_FUNIL = 'crm_funil',
+  CRM_CHAT = 'crm_chat',
   CONFIGURACOES = 'configuracoes',
+  SOFIA_CONFIG = 'sofia_config',
+  COMERCIAL_AUDITORIA = 'comercial_auditoria',
+  COMERCIAL_ROBO_SUPREMO = 'comercial_robo_supremo',
+  RELATORIOS = 'relatorios',
   MUDAR_SENHA = 'mudar_senha',
 }
 
