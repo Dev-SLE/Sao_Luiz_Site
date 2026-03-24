@@ -68,6 +68,39 @@ function extractCteFromText(text: string): string | null {
   return m ? m[0] : null;
 }
 
+function buildGuidedFallback(input: {
+  text: string;
+  cteNumber?: string | null;
+  customFallback?: string | null;
+  lastIaBody?: string | null;
+}) {
+  const text = String(input.text || "").toLowerCase();
+  const detectedCte = extractCteFromText(input.text || "") || String(input.cteNumber || "").trim() || "";
+  const custom = String(input.customFallback || "").trim();
+
+  let next = "";
+  if (!detectedCte) {
+    next =
+      "Para eu te ajudar no rastreio com precisão, me informe o número do CTE. Se não tiver, pode me passar NF, remetente, destinatário e cidade de destino.";
+  } else if (text.includes("onde") || text.includes("status") || text.includes("rast")) {
+    next = `Perfeito. Recebi o CTE ${detectedCte}. Vou validar o status na unidade responsável. Se puder, me confirme também a cidade de destino para agilizar.`;
+  } else if (text.includes("prazo") || text.includes("entrega")) {
+    next = `Entendi. Vou validar internamente a previsão do CTE ${detectedCte}. Para acelerar, me confirme a cidade de destino e um telefone para retorno.`;
+  } else {
+    next = `Recebi sua solicitação sobre o CTE ${detectedCte}. Vou seguir com a validação interna e te manter atualizado aqui no chat.`;
+  }
+
+  // Evita repetir exatamente a mesma saída em mensagens seguidas.
+  if (input.lastIaBody && String(input.lastIaBody).trim() === next) {
+    next = detectedCte
+      ? `Para avançar sem atraso no CTE ${detectedCte}, me confirme por favor: cidade de destino e nome de quem está aguardando a entrega.`
+      : "Para seguir seu atendimento agora, me informe por favor: número do CTE (ou NF), cidade de destino e nome/CNPJ do destinatário.";
+  }
+
+  if (!next && custom) return custom;
+  return next || custom || "Recebi sua solicitação e já estou organizando as informações para direcionar ao setor responsável.";
+}
+
 async function callOpenAi(prompt: string, modelOverride?: string | null) {
   const apiKey = process.env.OPENAI_API_KEY;
   const model =
@@ -218,7 +251,7 @@ async function runWebhookSofiaAutoReply(
           business_hours_start, business_hours_end,
           escalation_keywords, blocked_topics, blocked_statuses,
           require_human_if_sla_breached, require_human_after_customer_messages,
-          model_name, system_instructions, fallback_message,
+          model_name, system_instructions, fallback_message, welcome_enabled, welcome_message,
           response_tone, max_response_chars
         FROM pendencias.crm_sofia_settings
         ORDER BY updated_at DESC
@@ -284,6 +317,7 @@ async function runWebhookSofiaAutoReply(
       [conversationId]
     );
     const iaCount = (historyRes.rows || []).filter((m: any) => String(m.sender_type || "").toUpperCase() === "IA").length;
+    const clientCount = (historyRes.rows || []).filter((m: any) => String(m.sender_type || "").toUpperCase() === "CLIENT").length;
     const escalateAfter = Number(s.require_human_after_customer_messages || 4);
     const trailingClientStreak = countTrailingClientStreak(historyRes.rows || []);
     if (trailingClientStreak > escalateAfter) return;
@@ -314,14 +348,27 @@ async function runWebhookSofiaAutoReply(
 
     const aiReply = await callOpenAi(prompt, s.model_name);
     const normalizedReply = String(aiReply || "").trim();
+    const lastIaMessage = (historyRes.rows || []).find(
+      (m: any) => String(m.sender_type || "").toUpperCase() === "IA"
+    );
+    const guidedFallback = buildGuidedFallback({
+      text,
+      cteNumber: String(convInfo.cte_number || ""),
+      customFallback: String(s.fallback_message || ""),
+      lastIaBody: lastIaMessage?.body ? String(lastIaMessage.body) : null,
+    });
     const finalReply =
       normalizedReply.length > 0
         ? normalizedReply.length > maxResponseChars && maxResponseChars > 0
           ? `${normalizedReply.slice(0, Math.max(1, maxResponseChars - 1)).trimEnd()}…`
           : normalizedReply
-        : String(s.fallback_message || "").trim();
-    if (!finalReply) return;
-    const waSend = await sendWhatsAppText(from, finalReply);
+        : guidedFallback;
+    const welcomeEnabled = s.welcome_enabled === undefined ? true : !!s.welcome_enabled;
+    const welcomeText = String(s.welcome_message || "").trim();
+    const shouldSendWelcome = welcomeEnabled && iaCount === 0 && clientCount <= 1 && welcomeText.length > 0;
+    const outboundReply = shouldSendWelcome ? `${welcomeText}\n\n${guidedFallback}` : finalReply;
+    if (!outboundReply) return;
+    const waSend = await sendWhatsAppText(from, outboundReply);
     if (!waSend.ok) return;
 
     await pool.query(
@@ -334,7 +381,7 @@ async function runWebhookSofiaAutoReply(
       [
         conversationId,
         String(s.name || "Sofia"),
-        finalReply,
+        outboundReply,
         JSON.stringify({
           outbound_whatsapp: {
             attempted: true,

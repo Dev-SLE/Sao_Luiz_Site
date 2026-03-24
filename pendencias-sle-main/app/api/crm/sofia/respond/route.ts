@@ -6,16 +6,20 @@ import { countTrailingClientStreak } from "../../../../../lib/server/sofiaStreak
 export const runtime = "nodejs";
 
 function fallbackReply(input: { customerName?: string; cte?: string; text?: string; customFallback?: string | null }) {
-  if (input.customFallback && String(input.customFallback).trim()) {
-    return String(input.customFallback).trim();
-  }
   const lower = String(input.text || "").toLowerCase();
+  const cte = String(input.cte || "").trim();
+  const custom = String(input.customFallback || "").trim();
+
+  if (!cte) {
+    return "Para eu te ajudar com precisão, me informe o número do CTE. Se não tiver, pode enviar NF, remetente, destinatário e cidade de destino.";
+  }
   if (lower.includes("prazo") || lower.includes("entrega")) {
-    return `Recebi sua dúvida sobre prazo. Vou conferir o status e já te atualizo com a previsão mais precisa.`;
+    return `Recebi sua dúvida sobre prazo. Vou validar internamente o CTE ${cte} e já te retorno. Se puder, me confirme também a cidade de destino.`;
   }
   if (lower.includes("cte") || lower.includes("rastre")) {
-    return `Perfeito, vou validar o rastreio do CTE ${input.cte || ""} e te retorno em seguida com os detalhes.`;
+    return `Perfeito, vou validar o rastreio do CTE ${cte} e te retorno em seguida com os detalhes.`;
   }
+  if (custom) return custom;
   return `Oi${input.customerName ? `, ${input.customerName}` : ""}! Recebi sua mensagem e já estou verificando para te responder com precisão.`;
 }
 
