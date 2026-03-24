@@ -49,17 +49,17 @@ const ComercialRoboSupremo: React.FC = () => {
   };
 
   return (
-    <div className="space-y-4 animate-in fade-in duration-500 text-white">
+    <div className="space-y-4 animate-in fade-in duration-500 text-slate-900">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
         <div>
           <h1 className="text-xl md:text-2xl font-black">Comercial - Robô Supremo</h1>
-          <p className="text-xs text-gray-400">Controle de execução e monitoramento do robô pelo site.</p>
+          <p className="text-xs text-slate-500">Controle de execução e monitoramento do robô pelo site.</p>
         </div>
         <button
           type="button"
           onClick={() => void load()}
           disabled={loading}
-          className="inline-flex items-center gap-2 rounded-xl bg-[#1A1B62] px-4 py-2 text-xs font-bold text-white hover:bg-[#EC1B23] transition-colors disabled:opacity-60"
+          className="inline-flex items-center gap-2 rounded-xl bg-[#2c348c] px-4 py-2 text-xs font-bold text-white hover:bg-[#e42424] transition-colors disabled:opacity-60"
         >
           <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
           Atualizar status
@@ -67,39 +67,39 @@ const ComercialRoboSupremo: React.FC = () => {
       </div>
 
       {feedback && (
-        <div className={`rounded-lg border px-3 py-2 text-xs ${isError ? 'border-red-600 bg-red-950/50 text-red-100' : 'border-emerald-600 bg-emerald-950/40 text-emerald-100'}`}>
+        <div className={`rounded-lg border px-3 py-2 text-xs ${isError ? 'border-red-200 bg-red-50 text-red-800' : 'border-emerald-200 bg-emerald-50 text-emerald-900'}`}>
           {feedback}
         </div>
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <div className="rounded-xl border border-[#1E226F] bg-[#070A20] p-3">
-          <p className="text-[10px] uppercase tracking-wider text-gray-400">Status atual</p>
+        <div className="rounded-xl border border-slate-200 bg-white p-3">
+          <p className="text-[10px] uppercase tracking-wider text-slate-500">Status atual</p>
           <p className="text-lg font-black">{running ? 'Executando' : 'Parado'}</p>
         </div>
-        <div className="rounded-xl border border-[#1E226F] bg-[#070A20] p-3">
-          <p className="text-[10px] uppercase tracking-wider text-gray-400">Runtime</p>
-          <p className="text-xs text-gray-200 break-all">{pythonBin}</p>
+        <div className="rounded-xl border border-slate-200 bg-white p-3">
+          <p className="text-[10px] uppercase tracking-wider text-slate-500">Runtime</p>
+          <p className="break-all text-xs text-slate-700">{pythonBin}</p>
         </div>
-        <div className="rounded-xl border border-[#1E226F] bg-[#070A20] p-3">
-          <p className="text-[10px] uppercase tracking-wider text-gray-400">Script</p>
-          <p className="text-xs text-gray-200 break-all">{scriptPath || 'Não configurado'}</p>
+        <div className="rounded-xl border border-slate-200 bg-white p-3">
+          <p className="text-[10px] uppercase tracking-wider text-slate-500">Script</p>
+          <p className="break-all text-xs text-slate-700">{scriptPath || 'Não configurado'}</p>
         </div>
       </div>
 
-      <div className="rounded-xl border border-[#1E226F] bg-[#070A20] p-4 space-y-3">
+      <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <p className="text-sm font-black text-white">Executar agora</p>
-            <p className="text-xs text-gray-400">A execução inicia em background e fica registrada no histórico.</p>
+            <p className="text-sm font-black text-slate-900">Executar agora</p>
+            <p className="text-xs text-slate-500">A execução inicia em background e fica registrada no histórico.</p>
           </div>
           {!runtimeReady ? (
-            <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/60 bg-amber-900/40 px-2 py-1 text-[11px] font-bold text-amber-200">
+            <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-bold text-amber-900">
               <AlertCircle size={12} />
               Configure `ROBO_SUPREMO_PATH`
             </span>
           ) : (
-            <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/60 bg-emerald-900/40 px-2 py-1 text-[11px] font-bold text-emerald-200">
+            <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-bold text-emerald-900">
               <CheckCircle2 size={12} />
               Pronto
             </span>
@@ -109,7 +109,7 @@ const ComercialRoboSupremo: React.FC = () => {
           <select
             value={mode}
             onChange={(e) => setMode(e.target.value)}
-            className="rounded-lg bg-[#080816] border border-[#1A1B62] px-3 py-2 text-xs text-gray-100 outline-none"
+            className="rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none"
           >
             <option value="AUTO">AUTO</option>
             <option value="ACOMPANHAMENTO">ACOMPANHAMENTO</option>
@@ -119,14 +119,14 @@ const ComercialRoboSupremo: React.FC = () => {
             type="button"
             onClick={() => void runNow()}
             disabled={!runtimeReady || running}
-            className="inline-flex items-center gap-2 rounded-xl bg-[#1A1B62] px-4 py-2 text-xs font-bold text-white hover:bg-[#EC1B23] transition-colors disabled:opacity-60"
+            className="inline-flex items-center gap-2 rounded-xl bg-[#2c348c] px-4 py-2 text-xs font-bold text-white hover:bg-[#e42424] transition-colors disabled:opacity-60"
           >
             <Play size={14} />
             {running ? 'Robô em execução' : 'Iniciar Robô'}
           </button>
         </div>
-        <div className="rounded-lg border border-[#1A1B62] bg-[#080816] p-3 text-[11px] text-gray-300">
-          <p className="font-bold text-gray-200 mb-1 inline-flex items-center gap-1">
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-600">
+          <p className="mb-1 inline-flex items-center gap-1 font-bold text-slate-800">
             <Bot size={12} />
             Observação importante
           </p>
@@ -134,11 +134,11 @@ const ComercialRoboSupremo: React.FC = () => {
         </div>
       </div>
 
-      <div className="rounded-xl border border-[#1E226F] bg-[#070A20] p-4">
-        <h2 className="text-sm font-black text-white mb-2">Histórico de execuções</h2>
-        <div className="max-h-[420px] overflow-auto border border-[#1A1B62] rounded-lg">
+      <div className="rounded-xl border border-slate-200 bg-white p-4">
+        <h2 className="mb-2 text-sm font-black text-slate-900">Histórico de execuções</h2>
+        <div className="max-h-[420px] overflow-auto border border-slate-200 rounded-lg">
           <table className="w-full text-xs">
-            <thead className="bg-[#080816] text-gray-300 uppercase">
+            <thead className="bg-slate-50 text-slate-600 uppercase">
               <tr>
                 <th className="px-3 py-2 text-left">Run</th>
                 <th className="px-3 py-2 text-left">Modo</th>
@@ -149,9 +149,9 @@ const ComercialRoboSupremo: React.FC = () => {
                 <th className="px-3 py-2 text-left">Exit</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#1A1B62]">
+            <tbody className="divide-y divide-slate-200">
               {runs.map((r) => (
-                <tr key={r.id} className="hover:bg-[#0F103A]">
+                <tr key={r.id} className="hover:bg-slate-50">
                   <td className="px-3 py-2">#{r.id}</td>
                   <td className="px-3 py-2">{r.mode || '-'}</td>
                   <td className="px-3 py-2">{r.status}</td>

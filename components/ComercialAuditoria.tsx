@@ -50,10 +50,10 @@ const Modal: React.FC<{ open: boolean; title: string; onClose: () => void; child
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-      <div className="w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl border border-[#1E226F] bg-[#070A20] p-4 shadow-[0_0_40px_rgba(0,0,0,0.9)]">
+      <div className="w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_0_40px_rgba(0,0,0,0.9)]">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-black text-white">{title}</h3>
-          <button onClick={onClose} className="rounded-full border border-[#1E226F] p-1 text-gray-300 hover:text-white hover:border-[#6E71DA]">
+          <h3 className="text-sm font-black text-slate-900">{title}</h3>
+          <button onClick={onClose} className="rounded-full border border-slate-200 p-1 text-slate-600 hover:border-[#2c348c]/50 hover:text-[#2c348c]">
             <X size={14} />
           </button>
         </div>
@@ -270,36 +270,36 @@ const ComercialAuditoria: React.FC = () => {
   };
 
   return (
-    <div className="space-y-4 animate-in fade-in duration-500 text-white">
+    <div className="space-y-4 animate-in fade-in duration-500 text-slate-900">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div className="rounded-xl border border-[#1E226F] bg-[#070A20] p-3">
-          <p className="text-[10px] uppercase tracking-wider text-gray-400">Pendentes</p>
-          <p className="text-xl font-black text-white">{kpis.pend}</p>
+        <div className="rounded-xl border border-slate-200 bg-white p-3">
+          <p className="text-[10px] uppercase tracking-wider text-slate-500">Pendentes</p>
+          <p className="text-xl font-black text-slate-900">{kpis.pend}</p>
         </div>
-        <div className="rounded-xl border border-[#1E226F] bg-[#070A20] p-3">
-          <p className="text-[10px] uppercase tracking-wider text-gray-400">Concluídas</p>
-          <p className="text-xl font-black text-emerald-300">{kpis.concl}</p>
+        <div className="rounded-xl border border-slate-200 bg-white p-3">
+          <p className="text-[10px] uppercase tracking-wider text-slate-500">Concluídas</p>
+          <p className="text-xl font-black text-emerald-700">{kpis.concl}</p>
         </div>
-        <div className="rounded-xl border border-[#1E226F] bg-[#070A20] p-3">
-          <p className="text-[10px] uppercase tracking-wider text-gray-400">Críticas</p>
-          <p className="text-xl font-black text-red-300">{kpis.crit}</p>
+        <div className="rounded-xl border border-slate-200 bg-white p-3">
+          <p className="text-[10px] uppercase tracking-wider text-slate-500">Críticas</p>
+          <p className="text-xl font-black text-red-600">{kpis.crit}</p>
         </div>
-        <div className="rounded-xl border border-[#1E226F] bg-[#070A20] p-3">
-          <p className="text-[10px] uppercase tracking-wider text-gray-400">% médio projetado</p>
-          <p className="text-xl font-black text-sky-300">{kpis.avg.toFixed(1)}%</p>
+        <div className="rounded-xl border border-slate-200 bg-white p-3">
+          <p className="text-[10px] uppercase tracking-wider text-slate-500">% médio projetado</p>
+          <p className="text-xl font-black text-sky-700">{kpis.avg.toFixed(1)}%</p>
         </div>
       </div>
 
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
         <div>
           <h1 className="text-xl md:text-2xl font-black">Comercial - Auditoria de Metas</h1>
-          <p className="text-xs text-gray-400">Layout executivo com subabas, ações rápidas e modais de trabalho.</p>
+          <p className="text-xs text-slate-500">Layout executivo com subabas, ações rápidas e modais de trabalho.</p>
         </div>
         <button
           type="button"
           onClick={() => void load()}
           disabled={loading}
-          className="inline-flex items-center gap-2 rounded-xl bg-[#1A1B62] px-4 py-2 text-xs font-bold text-white hover:bg-[#EC1B23] transition-colors disabled:opacity-60"
+          className="inline-flex items-center gap-2 rounded-xl bg-[#2c348c] px-4 py-2 text-xs font-bold text-white hover:bg-[#e42424] transition-colors disabled:opacity-60"
         >
           <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
           Atualizar
@@ -307,18 +307,18 @@ const ComercialAuditoria: React.FC = () => {
       </div>
 
       <div className="flex gap-2">
-        <button className={`px-3 py-1.5 rounded-lg text-xs font-bold border ${tab === 'ACOES' ? 'bg-[#1A1B62] border-[#6E71DA] text-white' : 'bg-[#080816] border-[#1A1B62] text-gray-300'}`} onClick={() => setTab('ACOES')}>Ações</button>
-        <button className={`px-3 py-1.5 rounded-lg text-xs font-bold border ${tab === 'DOSSIE' ? 'bg-[#1A1B62] border-[#6E71DA] text-white' : 'bg-[#080816] border-[#1A1B62] text-gray-300'}`} onClick={() => setTab('DOSSIE')}>Dossiê</button>
-        <button className={`px-3 py-1.5 rounded-lg text-xs font-bold border ${tab === 'ACOMPANHAMENTO' ? 'bg-[#1A1B62] border-[#6E71DA] text-white' : 'bg-[#080816] border-[#1A1B62] text-gray-300'}`} onClick={() => setTab('ACOMPANHAMENTO')}>Acompanhamento</button>
+        <button className={`px-3 py-1.5 rounded-lg text-xs font-bold border ${tab === 'ACOES' ? 'bg-[#2c348c] border-[#2c348c]/50 text-white' : 'bg-slate-50 border-slate-200 text-slate-600'}`} onClick={() => setTab('ACOES')}>Ações</button>
+        <button className={`px-3 py-1.5 rounded-lg text-xs font-bold border ${tab === 'DOSSIE' ? 'bg-[#2c348c] border-[#2c348c]/50 text-white' : 'bg-slate-50 border-slate-200 text-slate-600'}`} onClick={() => setTab('DOSSIE')}>Dossiê</button>
+        <button className={`px-3 py-1.5 rounded-lg text-xs font-bold border ${tab === 'ACOMPANHAMENTO' ? 'bg-[#2c348c] border-[#2c348c]/50 text-white' : 'bg-slate-50 border-slate-200 text-slate-600'}`} onClick={() => setTab('ACOMPANHAMENTO')}>Acompanhamento</button>
       </div>
 
-      <div className="rounded-xl border border-[#1E226F] bg-[#070A20] p-4">
-        <h2 className="text-sm font-black text-white mb-2">
+      <div className="rounded-xl border border-slate-200 bg-white p-4">
+        <h2 className="mb-2 text-sm font-black text-slate-900">
           {tab === 'ACOES' ? 'Ações em aberto' : tab === 'DOSSIE' ? 'Dossiês de auditoria' : 'Acompanhamentos'}
         </h2>
-        <div className="max-h-[620px] overflow-auto border border-[#1A1B62] rounded-lg">
+        <div className="max-h-[620px] overflow-auto border border-slate-200 rounded-lg">
           <table className="w-full text-xs">
-            <thead className="bg-[#080816] text-gray-300 uppercase">
+            <thead className="bg-slate-50 text-slate-600 uppercase">
               <tr>
                 <th className="px-3 py-2 text-left">ID</th>
                 <th className="px-3 py-2 text-left">Agência</th>
@@ -329,9 +329,9 @@ const ComercialAuditoria: React.FC = () => {
                 <th className="px-3 py-2 text-left">Ação</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#1A1B62]">
+            <tbody className="divide-y divide-slate-200">
               {rowsByTab.map((r) => (
-                <tr key={r.id} className={selectedId === r.id ? 'bg-[#1A1B62]/35' : 'hover:bg-[#0F103A]'}>
+                <tr key={r.id} className={selectedId === r.id ? 'bg-[#2c348c]/10' : 'hover:bg-slate-50'}>
                   <td className="px-3 py-2">{r.id}</td>
                   <td className="px-3 py-2">{r.agencia}</td>
                   {tab === 'ACOES' && <td className="px-3 py-2">{Number(r.percProjetado || 0).toFixed(1)}%</td>}
@@ -343,7 +343,7 @@ const ComercialAuditoria: React.FC = () => {
                   {tab === 'ACOMPANHAMENTO' && <td className="px-3 py-2">{r.responsavel || '-'}</td>}
                   <td className="px-3 py-2">{tab === 'DOSSIE' ? (r.dataAtualizacao ? new Date(r.dataAtualizacao).toLocaleDateString('pt-BR') : '-') : r.statusAuditoria}</td>
                   <td className="px-3 py-2">
-                    <button onClick={() => onView(r.id)} className="inline-flex items-center gap-1 rounded-md bg-[#1A1B62] px-2 py-1 font-bold hover:bg-[#2B2F8F]">
+                    <button onClick={() => onView(r.id)} className="inline-flex items-center gap-1 rounded-md bg-[#2c348c] px-2 py-1 font-bold text-white hover:bg-[#243a7a]">
                       <Eye size={12} />
                       Ver
                     </button>
@@ -367,34 +367,34 @@ const ComercialAuditoria: React.FC = () => {
               <>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                   <div>
-                    <label className="text-[11px] text-gray-300 uppercase tracking-wide">Status da auditoria</label>
-                    <select className="mt-1 w-full rounded-lg bg-[#080816] border border-[#1A1B62] px-3 py-2 text-xs text-gray-100 outline-none" value={status} onChange={(e) => setStatus(e.target.value)}>
+                    <label className="text-[11px] text-slate-600 uppercase tracking-wide">Status da auditoria</label>
+                    <select className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none" value={status} onChange={(e) => setStatus(e.target.value)}>
                       {STATUS_OPCOES.map((s) => <option key={s} value={s}>{s}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className="text-[11px] text-gray-300 uppercase tracking-wide">Causa raiz</label>
-                    <select className="mt-1 w-full rounded-lg bg-[#080816] border border-[#1A1B62] px-3 py-2 text-xs text-gray-100 outline-none" value={motivo} onChange={(e) => setMotivo(e.target.value)}>
+                    <label className="text-[11px] text-slate-600 uppercase tracking-wide">Causa raiz</label>
+                    <select className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none" value={motivo} onChange={(e) => setMotivo(e.target.value)}>
                       {MOTIVOS.map((m) => <option key={m} value={m}>{m}</option>)}
                     </select>
                   </div>
                 </div>
                 <div>
-                  <label className="text-[11px] text-gray-300 uppercase tracking-wide">Resumo do áudio/retorno</label>
-                  <textarea className="mt-1 w-full rounded-lg bg-[#080816] border border-[#1A1B62] px-3 py-2 text-xs text-gray-100 min-h-[100px] resize-y outline-none" value={resumo} onChange={(e) => setResumo(e.target.value)} />
+                  <label className="text-[11px] text-slate-600 uppercase tracking-wide">Resumo do áudio/retorno</label>
+                  <textarea className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 min-h-[100px] resize-y outline-none" value={resumo} onChange={(e) => setResumo(e.target.value)} />
                 </div>
                 <div className="flex justify-end">
-                  <button onClick={() => void suggestPlan()} disabled={suggesting} className="inline-flex items-center gap-2 rounded-xl bg-[#1A1B62] px-4 py-2 text-xs font-bold text-white hover:bg-[#EC1B23] transition-colors disabled:opacity-60">
+                  <button onClick={() => void suggestPlan()} disabled={suggesting} className="inline-flex items-center gap-2 rounded-xl bg-[#2c348c] px-4 py-2 text-xs font-bold text-white hover:bg-[#e42424] transition-colors disabled:opacity-60">
                     <Sparkles size={14} />
                     {suggesting ? 'Sugerindo...' : 'Sugerir Plano com IA'}
                   </button>
                 </div>
                 <div>
-                  <label className="text-[11px] text-gray-300 uppercase tracking-wide">Plano de ação</label>
-                  <textarea className="mt-1 w-full rounded-lg bg-[#080816] border border-[#1A1B62] px-3 py-2 text-xs text-gray-100 min-h-[180px] resize-y outline-none" value={plano} onChange={(e) => setPlano(e.target.value)} />
+                  <label className="text-[11px] text-slate-600 uppercase tracking-wide">Plano de ação</label>
+                  <textarea className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 min-h-[180px] resize-y outline-none" value={plano} onChange={(e) => setPlano(e.target.value)} />
                 </div>
                 <div className="flex justify-end">
-                  <button onClick={() => void saveAcoes()} disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-[#1A1B62] px-4 py-2 text-xs font-bold text-white hover:bg-[#EC1B23] transition-colors disabled:opacity-60">
+                  <button onClick={() => void saveAcoes()} disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-[#2c348c] px-4 py-2 text-xs font-bold text-white hover:bg-[#e42424] transition-colors disabled:opacity-60">
                     <Save size={14} />
                     {saving ? 'Salvando...' : 'Salvar Ações'}
                   </button>
@@ -403,11 +403,11 @@ const ComercialAuditoria: React.FC = () => {
             )}
 
             {recordModalTab === 'DOSSIE' && (
-              <div className="space-y-3 rounded-xl border border-[#1A1B62] bg-[#080816] p-3">
-                <div className="flex items-center gap-2 text-xs text-white font-black"><History size={14} /> Histórico de eventos</div>
-                <div className="max-h-[280px] overflow-auto border border-[#1A1B62] rounded-lg">
+              <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <div className="flex items-center gap-2 text-xs font-black text-slate-900"><History size={14} /> Histórico de eventos</div>
+                <div className="max-h-[280px] overflow-auto border border-slate-200 rounded-lg">
                   <table className="w-full text-xs">
-                    <thead className="bg-[#0B1030] text-gray-300 uppercase">
+                    <thead className="bg-slate-100 text-xs font-bold uppercase text-slate-700">
                       <tr>
                         <th className="px-3 py-2 text-left">Data</th>
                         <th className="px-3 py-2 text-left">Ação</th>
@@ -415,14 +415,14 @@ const ComercialAuditoria: React.FC = () => {
                         <th className="px-3 py-2 text-left">Detalhe</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-[#1A1B62]">
+                    <tbody className="divide-y divide-slate-200">
                       {historyRows.map((h) => (
-                        <tr key={h.id} className="hover:bg-[#0F103A]">
+                        <tr key={h.id} className="hover:bg-slate-100">
                           <td className="px-3 py-2">{h.createdAt ? new Date(h.createdAt).toLocaleString('pt-BR') : '-'}</td>
                           <td className="px-3 py-2">{h.acao}</td>
                           <td className="px-3 py-2">{h.actor || '-'}</td>
                           <td className="px-3 py-2">
-                            <button onClick={() => setSelectedHistoryDetail(h)} className="inline-flex items-center gap-1 rounded-md bg-[#1A1B62] px-2 py-1 font-bold hover:bg-[#2B2F8F]">
+                            <button onClick={() => setSelectedHistoryDetail(h)} className="inline-flex items-center gap-1 rounded-md bg-[#2c348c] px-2 py-1 font-bold text-white hover:bg-[#243a7a]">
                               <Eye size={12} />
                               Ver
                             </button>
@@ -431,18 +431,18 @@ const ComercialAuditoria: React.FC = () => {
                       ))}
                       {!historyRows.length && (
                         <tr>
-                          <td colSpan={4} className="px-3 py-6 text-center text-gray-400">Sem histórico registrado.</td>
+                          <td colSpan={4} className="px-3 py-6 text-center text-slate-500">Sem histórico registrado.</td>
                         </tr>
                       )}
                     </tbody>
                   </table>
                 </div>
                 <div>
-                  <label className="text-[11px] text-gray-300 uppercase tracking-wide">Novo evento do dossiê</label>
-                  <textarea className="mt-1 w-full rounded-lg bg-[#080816] border border-[#1A1B62] px-3 py-2 text-xs text-gray-100 min-h-[90px] resize-y outline-none" value={historyNote} onChange={(e) => setHistoryNote(e.target.value)} />
+                  <label className="text-[11px] text-slate-600 uppercase tracking-wide">Novo evento do dossiê</label>
+                  <textarea className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 min-h-[90px] resize-y outline-none" value={historyNote} onChange={(e) => setHistoryNote(e.target.value)} />
                 </div>
                 <div className="flex justify-end">
-                  <button onClick={() => void addHistory()} disabled={savingHistory || !historyNote.trim()} className="inline-flex items-center gap-2 rounded-xl bg-[#1A1B62] px-4 py-2 text-xs font-bold text-white hover:bg-[#EC1B23] transition-colors disabled:opacity-60">
+                  <button onClick={() => void addHistory()} disabled={savingHistory || !historyNote.trim()} className="inline-flex items-center gap-2 rounded-xl bg-[#2c348c] px-4 py-2 text-xs font-bold text-white hover:bg-[#e42424] transition-colors disabled:opacity-60">
                     <MessageSquarePlus size={14} />
                     {savingHistory ? 'Registrando...' : 'Registrar Evento'}
                   </button>
@@ -454,44 +454,44 @@ const ComercialAuditoria: React.FC = () => {
               <>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                   <div>
-                    <label className="text-[11px] text-gray-300 uppercase tracking-wide">Prioridade</label>
-                    <select className="mt-1 w-full rounded-lg bg-[#080816] border border-[#1A1B62] px-3 py-2 text-xs text-gray-100 outline-none" value={prioridade} onChange={(e) => setPrioridade(e.target.value as AuditoriaRow['prioridade'])}>
+                    <label className="text-[11px] text-slate-600 uppercase tracking-wide">Prioridade</label>
+                    <select className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none" value={prioridade} onChange={(e) => setPrioridade(e.target.value as AuditoriaRow['prioridade'])}>
                       {PRIORIDADES.map((p) => <option key={p} value={p}>{p}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className="text-[11px] text-gray-300 uppercase tracking-wide">Responsável</label>
-                    <input className="mt-1 w-full rounded-lg bg-[#080816] border border-[#1A1B62] px-3 py-2 text-xs text-gray-100 outline-none" value={responsavel} onChange={(e) => setResponsavel(e.target.value)} />
+                    <label className="text-[11px] text-slate-600 uppercase tracking-wide">Responsável</label>
+                    <input className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none" value={responsavel} onChange={(e) => setResponsavel(e.target.value)} />
                   </div>
                   <div>
-                    <label className="text-[11px] text-gray-300 uppercase tracking-wide">Prazo de retorno</label>
-                    <input type="date" className="mt-1 w-full rounded-lg bg-[#080816] border border-[#1A1B62] px-3 py-2 text-xs text-gray-100 outline-none" value={dataRetornoPrevista} onChange={(e) => setDataRetornoPrevista(e.target.value)} />
+                    <label className="text-[11px] text-slate-600 uppercase tracking-wide">Prazo de retorno</label>
+                    <input type="date" className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none" value={dataRetornoPrevista} onChange={(e) => setDataRetornoPrevista(e.target.value)} />
                   </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                   <div>
-                    <label className="text-[11px] text-gray-300 uppercase tracking-wide">Evolução</label>
-                    <select className="mt-1 w-full rounded-lg bg-[#080816] border border-[#1A1B62] px-3 py-2 text-xs text-gray-100 outline-none" value={resultadoEvolucao} onChange={(e) => setResultadoEvolucao(e.target.value as AuditoriaRow['resultadoEvolucao'])}>
+                    <label className="text-[11px] text-slate-600 uppercase tracking-wide">Evolução</label>
+                    <select className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none" value={resultadoEvolucao} onChange={(e) => setResultadoEvolucao(e.target.value as AuditoriaRow['resultadoEvolucao'])}>
                       {EVOLUCAO.map((v) => <option key={v} value={v}>{v}</option>)}
                     </select>
                   </div>
                   <div className="flex items-end">
-                    <label className="inline-flex items-center gap-2 text-xs text-gray-200">
+                    <label className="inline-flex items-center gap-2 text-xs text-slate-700">
                       <input type="checkbox" checked={concluido} onChange={(e) => setConcluido(e.target.checked)} />
                       Concluir auditoria
                     </label>
                   </div>
                 </div>
                 <div>
-                  <label className="text-[11px] text-gray-300 uppercase tracking-wide">Retorno do responsável</label>
-                  <textarea className="mt-1 w-full rounded-lg bg-[#080816] border border-[#1A1B62] px-3 py-2 text-xs text-gray-100 min-h-[90px] resize-y outline-none" value={retornoResponsavel} onChange={(e) => setRetornoResponsavel(e.target.value)} />
+                  <label className="text-[11px] text-slate-600 uppercase tracking-wide">Retorno do responsável</label>
+                  <textarea className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 min-h-[90px] resize-y outline-none" value={retornoResponsavel} onChange={(e) => setRetornoResponsavel(e.target.value)} />
                 </div>
                 <div>
-                  <label className="text-[11px] text-gray-300 uppercase tracking-wide">Conclusão final</label>
-                  <textarea className="mt-1 w-full rounded-lg bg-[#080816] border border-[#1A1B62] px-3 py-2 text-xs text-gray-100 min-h-[90px] resize-y outline-none" value={conclusao} onChange={(e) => setConclusao(e.target.value)} />
+                  <label className="text-[11px] text-slate-600 uppercase tracking-wide">Conclusão final</label>
+                  <textarea className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 min-h-[90px] resize-y outline-none" value={conclusao} onChange={(e) => setConclusao(e.target.value)} />
                 </div>
                 <div className="flex justify-end">
-                  <button onClick={() => void saveAcompanhamento()} disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-[#1A1B62] px-4 py-2 text-xs font-bold text-white hover:bg-[#EC1B23] transition-colors disabled:opacity-60">
+                  <button onClick={() => void saveAcompanhamento()} disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-[#2c348c] px-4 py-2 text-xs font-bold text-white hover:bg-[#e42424] transition-colors disabled:opacity-60">
                     <Save size={14} />
                     {saving ? 'Salvando...' : 'Salvar Acompanhamento'}
                   </button>
@@ -505,16 +505,16 @@ const ComercialAuditoria: React.FC = () => {
       <Modal open={!!selectedHistoryDetail} onClose={() => setSelectedHistoryDetail(null)} title="Detalhes do evento do dossiê">
         {!selectedHistoryDetail ? null : (
           <div className="space-y-2 text-xs">
-            <div className="rounded-lg border border-[#1A1B62] bg-[#080816] p-3">
-              <p className="text-gray-300">Data: <span className="text-white">{selectedHistoryDetail.createdAt ? new Date(selectedHistoryDetail.createdAt).toLocaleString('pt-BR') : '-'}</span></p>
-              <p className="text-gray-300">Ação: <span className="text-white">{selectedHistoryDetail.acao}</span></p>
-              <p className="text-gray-300">Ator: <span className="text-white">{selectedHistoryDetail.actor || '-'}</span></p>
-              <p className="text-gray-300">Status anterior: <span className="text-white">{selectedHistoryDetail.previousStatus || '-'}</span></p>
-              <p className="text-gray-300">Status novo: <span className="text-white">{selectedHistoryDetail.nextStatus || '-'}</span></p>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <p className="text-slate-600">Data: <span className="font-medium text-slate-900">{selectedHistoryDetail.createdAt ? new Date(selectedHistoryDetail.createdAt).toLocaleString('pt-BR') : '-'}</span></p>
+              <p className="text-slate-600">Ação: <span className="font-medium text-slate-900">{selectedHistoryDetail.acao}</span></p>
+              <p className="text-slate-600">Ator: <span className="font-medium text-slate-900">{selectedHistoryDetail.actor || '-'}</span></p>
+              <p className="text-slate-600">Status anterior: <span className="font-medium text-slate-900">{selectedHistoryDetail.previousStatus || '-'}</span></p>
+              <p className="text-slate-600">Status novo: <span className="font-medium text-slate-900">{selectedHistoryDetail.nextStatus || '-'}</span></p>
             </div>
             <div>
-              <label className="text-[11px] text-gray-300 uppercase tracking-wide">Nota registrada</label>
-              <div className="mt-1 rounded-lg border border-[#1A1B62] bg-[#080816] p-3 text-gray-100 whitespace-pre-wrap">
+              <label className="text-[11px] text-slate-600 uppercase tracking-wide">Nota registrada</label>
+              <div className="mt-1 rounded-lg border border-slate-200 bg-slate-50 p-3 text-slate-800 whitespace-pre-wrap">
                 {selectedHistoryDetail.note || '-'}
               </div>
             </div>
@@ -522,7 +522,7 @@ const ComercialAuditoria: React.FC = () => {
         )}
       </Modal>
       {toast && (
-        <div className={`fixed bottom-4 right-4 z-50 flex items-center gap-2 rounded-lg border px-3 py-2 text-xs shadow-[0_0_16px_rgba(0,0,0,0.7)] ${toast.type === 'ok' ? 'bg-emerald-950/80 border-emerald-600 text-emerald-100' : 'bg-red-950/80 border-red-600 text-red-100'}`}>
+        <div className={`fixed bottom-4 right-4 z-50 flex items-center gap-2 rounded-lg border px-3 py-2 text-xs shadow-md ${toast.type === 'ok' ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-red-200 bg-red-50 text-red-900'}`}>
           {toast.type === 'ok' ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
           {toast.text}
         </div>

@@ -197,26 +197,26 @@ const SofiaSettings: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500 text-white">
+    <div className="space-y-6 animate-in fade-in duration-500 text-slate-900">
       <div className="flex items-center gap-3">
-        <div className="rounded-lg bg-[#0F103A] p-2 text-[#EC1B23] border border-[#1A1B62] shadow-[0_0_18px_rgba(236,27,35,0.4)]">
+        <div className="rounded-lg bg-slate-100 p-2 text-[#e42424] border border-slate-200 shadow-[0_0_18px_rgba(236,27,35,0.4)]">
           <span className="text-sm font-black">IA</span>
         </div>
         <div>
           <h1 className="text-xl md:text-2xl font-black leading-tight">Configurações da Sofia</h1>
-          <p className="text-xs text-gray-400">
+          <p className="text-xs text-slate-600">
             Defina identidade, conhecimento e horários em que a IA atende sozinha.
           </p>
         </div>
       </div>
       {errorText && (
-        <div className="rounded-xl border border-red-500/60 bg-red-950/40 px-3 py-2">
+        <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2">
           <div className="flex items-center justify-between gap-2">
-            <p className="text-xs text-red-200">{errorText}</p>
+            <p className="text-xs text-red-800">{errorText}</p>
             <button
               type="button"
               onClick={() => navigator?.clipboard?.writeText(errorText)}
-              className="text-[11px] rounded border border-red-400/50 px-2 py-1 text-red-200 hover:bg-red-900/40"
+              className="rounded border border-red-200 px-2 py-1 text-[11px] text-red-700 hover:bg-red-100"
             >
               Copiar erro
             </button>
@@ -224,29 +224,29 @@ const SofiaSettings: React.FC = () => {
         </div>
       )}
       {successText && (
-        <div className="rounded-xl border border-emerald-500/60 bg-emerald-950/40 px-3 py-2 text-xs text-emerald-200">
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
           {successText}
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="bg-[#070A20] border border-[#1E226F] rounded-xl p-4 space-y-3 shadow-[0_0_24px_rgba(0,0,0,0.85)]">
-          <h2 className="text-sm font-bold text-white mb-1">Identidade</h2>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div className="space-y-3 rounded-xl border border-[#2c348c]/20 bg-gradient-to-b from-white to-[#f7faff] p-4 shadow-[0_10px_24px_rgba(15,23,42,0.10)]">
+          <h2 className="mb-1 text-sm font-bold text-slate-900">Identidade</h2>
           <div className="space-y-2">
             <div>
-              <label className="text-[11px] text-gray-300 uppercase tracking-wide">Nome da Assistente</label>
-              <p className="text-[11px] text-gray-400">Nome exibido no chat para respostas automáticas.</p>
+              <label className="text-ui-label">Nome da Assistente</label>
+              <p className="text-[11px] text-slate-600">Nome exibido no chat para respostas automáticas.</p>
               <input
-                className="mt-1 w-full rounded-lg bg-[#080816] border border-[#1A1B62] px-3 py-2 text-xs text-gray-100 outline-none focus:ring-1 focus:ring-[#EC1B23]"
+                className="field-ui mt-1 w-full"
                 value={state.name}
                 onChange={(e) => setState((s) => ({ ...s, name: e.target.value }))}
               />
             </div>
             <div>
-              <label className="text-[11px] text-gray-300 uppercase tracking-wide">Mensagem de Boas-vindas</label>
-              <p className="text-[11px] text-gray-400">Mensagem inicial enviada ao iniciar uma conversa.</p>
+              <label className="text-ui-label">Mensagem de Boas-vindas</label>
+              <p className="text-[11px] text-slate-600">Mensagem inicial enviada ao iniciar uma conversa.</p>
               <select
-                className="mt-1 mb-2 w-full rounded-lg bg-[#080816] border border-[#1A1B62] px-3 py-2 text-xs text-gray-100 outline-none"
+                className="field-ui mb-2 mt-1 w-full"
                 value={state.welcomeEnabled ? 'SIM' : 'NAO'}
                 onChange={(e) => setState((s) => ({ ...s, welcomeEnabled: e.target.value === 'SIM' }))}
               >
@@ -254,7 +254,7 @@ const SofiaSettings: React.FC = () => {
                 <option value="NAO">Boas-vindas desativadas</option>
               </select>
               <textarea
-                className="mt-1 w-full rounded-lg bg-[#080816] border border-[#1A1B62] px-3 py-2 text-xs text-gray-100 outline-none min-h-[80px] resize-none focus:ring-1 focus:ring-[#EC1B23]"
+                className="field-ui mt-1 min-h-[88px] w-full resize-none"
                 value={state.welcome}
                 onChange={(e) => setState((s) => ({ ...s, welcome: e.target.value }))}
               />
@@ -262,9 +262,9 @@ const SofiaSettings: React.FC = () => {
           </div>
         </div>
 
-        <div className="bg-[#070A20] border border-[#1E226F] rounded-xl p-4 space-y-3 shadow-[0_0_24px_rgba(0,0,0,0.85)]">
-          <h2 className="text-sm font-bold text-white mb-1">Horários de Atendimento</h2>
-          <p className="text-[11px] text-gray-400 mb-2">
+        <div className="space-y-3 rounded-xl border border-[#2c348c]/20 bg-gradient-to-b from-white to-[#f7faff] p-4 shadow-[0_10px_24px_rgba(15,23,42,0.10)]">
+          <h2 className="mb-1 text-sm font-bold text-slate-900">Horários de Atendimento</h2>
+          <p className="mb-2 text-[11px] text-slate-600">
             Selecione os dias em que a Sofia pode responder sozinha (sem intervenção humana).
           </p>
           <div className="grid grid-cols-2 gap-2 text-[11px]">
@@ -284,20 +284,20 @@ const SofiaSettings: React.FC = () => {
                 className={
                   state.days[key]
                     ? 'px-3 py-2 rounded-lg bg-emerald-700 text-white border border-emerald-500 font-semibold'
-                    : 'px-3 py-2 rounded-lg bg-[#080816] text-gray-300 border border-[#1A1B62] hover:border-[#6E71DA]'
+                    : 'px-3 py-2 rounded-lg bg-white text-slate-700 border border-slate-300 hover:border-[#2c348c]/45'
                 }
               >
                 {label}
               </button>
             ))}
           </div>
-          <div className="pt-2 border-t border-[#1A1B62] space-y-2">
+          <div className="pt-2 border-t border-slate-200 space-y-2">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
               <div>
-                <label className="text-[11px] text-gray-300 uppercase tracking-wide">Modo de Operação</label>
-                <p className="text-[11px] text-gray-400">Define quando a Sofia pode responder automaticamente.</p>
+                <label className="text-ui-label">Modo de Operação</label>
+                <p className="text-[11px] text-slate-600">Define quando a Sofia pode responder automaticamente.</p>
                 <select
-                className="w-full rounded-lg bg-[#080816] border border-[#1A1B62] px-3 py-2 text-xs text-gray-100 outline-none"
+                className="field-ui w-full"
                 value={state.autoMode}
                 onChange={(e) => setState((s) => ({ ...s, autoMode: e.target.value as SofiaSettingsState['autoMode'] }))}
               >
@@ -307,11 +307,11 @@ const SofiaSettings: React.FC = () => {
               </select>
               </div>
               <div>
-                <label className="text-[11px] text-gray-300 uppercase tracking-wide">Confiança mínima (%)</label>
-                <p className="text-[11px] text-gray-400">Abaixo deste valor, a IA não envia sozinha.</p>
+                <label className="text-ui-label">Confiança mínima (%)</label>
+                <p className="text-[11px] text-slate-600">Abaixo deste valor, a IA não envia sozinha.</p>
                 <input
                 type="number"
-                className="w-full rounded-lg bg-[#080816] border border-[#1A1B62] px-3 py-2 text-xs text-gray-100 outline-none"
+                className="field-ui w-full"
                 value={state.minConfidence}
                 onChange={(e) => setState((s) => ({ ...s, minConfidence: Number(e.target.value) || 70 }))}
                 placeholder="Ex: 70"
@@ -319,10 +319,10 @@ const SofiaSettings: React.FC = () => {
               </div>
             </div>
             <div>
-              <label className="text-[11px] text-gray-300 uppercase tracking-wide">Resposta automática</label>
-              <p className="text-[11px] text-gray-400">Ativa ou desativa a Sofia para respostas automáticas.</p>
+              <label className="text-ui-label">Resposta automática</label>
+              <p className="text-[11px] text-slate-600">Ativa ou desativa a Sofia para respostas automáticas.</p>
               <select
-                className="w-full rounded-lg bg-[#080816] border border-[#1A1B62] px-3 py-2 text-xs text-gray-100 outline-none"
+                className="field-ui w-full"
                 value={state.autoReplyEnabled ? 'SIM' : 'NAO'}
                 onChange={(e) => setState((s) => ({ ...s, autoReplyEnabled: e.target.value === 'SIM' }))}
               >
@@ -331,10 +331,10 @@ const SofiaSettings: React.FC = () => {
               </select>
             </div>
             <div>
-              <label className="text-[11px] text-gray-300 uppercase tracking-wide">Modelo da IA</label>
-              <p className="text-[11px] text-gray-400">Escolha o modelo da OpenAI utilizado na geração de respostas.</p>
+              <label className="text-ui-label">Modelo da IA</label>
+              <p className="text-[11px] text-slate-600">Escolha o modelo da OpenAI utilizado na geração de respostas.</p>
               <select
-              className="w-full rounded-lg bg-[#080816] border border-[#1A1B62] px-3 py-2 text-xs text-gray-100 outline-none"
+              className="field-ui w-full"
               value={state.modelName}
               onChange={(e) => setState((s) => ({ ...s, modelName: e.target.value }))}
             >
@@ -345,10 +345,10 @@ const SofiaSettings: React.FC = () => {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
               <div>
-                <label className="text-[11px] text-gray-300 uppercase tracking-wide">Tom de Resposta</label>
-                <p className="text-[11px] text-gray-400">Estilo padrão de escrita da Sofia.</p>
+                <label className="text-ui-label">Tom de Resposta</label>
+                <p className="text-[11px] text-slate-600">Estilo padrão de escrita da Sofia.</p>
                 <select
-                  className="w-full rounded-lg bg-[#080816] border border-[#1A1B62] px-3 py-2 text-xs text-gray-100 outline-none"
+                  className="field-ui w-full"
                   value={state.responseTone}
                   onChange={(e) => setState((s) => ({ ...s, responseTone: e.target.value as SofiaSettingsState['responseTone'] }))}
                 >
@@ -358,11 +358,11 @@ const SofiaSettings: React.FC = () => {
                 </select>
               </div>
               <div>
-                <label className="text-[11px] text-gray-300 uppercase tracking-wide">Máx. caracteres por resposta</label>
-                <p className="text-[11px] text-gray-400">Evita respostas longas demais no WhatsApp.</p>
+                <label className="text-ui-label">Máx. caracteres por resposta</label>
+                <p className="text-[11px] text-slate-600">Evita respostas longas demais no WhatsApp.</p>
                 <input
                   type="number"
-                  className="w-full rounded-lg bg-[#080816] border border-[#1A1B62] px-3 py-2 text-xs text-gray-100 outline-none"
+                  className="field-ui w-full"
                   value={state.maxResponseChars}
                   onChange={(e) => setState((s) => ({ ...s, maxResponseChars: Number(e.target.value) || 480 }))}
                   placeholder="Ex: 480"
@@ -371,50 +371,50 @@ const SofiaSettings: React.FC = () => {
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="text-[11px] text-gray-300 uppercase tracking-wide">Início do atendimento</label>
+                <label className="text-ui-label">Início do atendimento</label>
                 <input
                 type="time"
-                className="w-full rounded-lg bg-[#080816] border border-[#1A1B62] px-3 py-2 text-xs text-gray-100 outline-none"
+                className="field-ui w-full"
                 value={state.businessHoursStart}
                 onChange={(e) => setState((s) => ({ ...s, businessHoursStart: e.target.value }))}
               />
               </div>
               <div>
-                <label className="text-[11px] text-gray-300 uppercase tracking-wide">Fim do atendimento</label>
+                <label className="text-ui-label">Fim do atendimento</label>
                 <input
                 type="time"
-                className="w-full rounded-lg bg-[#080816] border border-[#1A1B62] px-3 py-2 text-xs text-gray-100 outline-none"
+                className="field-ui w-full"
                 value={state.businessHoursEnd}
                 onChange={(e) => setState((s) => ({ ...s, businessHoursEnd: e.target.value }))}
               />
               </div>
             </div>
             <div>
-              <label className="text-[11px] text-gray-300 uppercase tracking-wide">Máximo de respostas automáticas</label>
-              <p className="text-[11px] text-gray-400">Limite de respostas consecutivas da Sofia por conversa.</p>
+              <label className="text-ui-label">Máximo de respostas automáticas</label>
+              <p className="text-[11px] text-slate-600">Limite de respostas consecutivas da Sofia por conversa.</p>
               <input
               type="number"
-              className="w-full rounded-lg bg-[#080816] border border-[#1A1B62] px-3 py-2 text-xs text-gray-100 outline-none"
+              className="field-ui w-full"
               value={state.maxAutoRepliesPerConversation}
               onChange={(e) => setState((s) => ({ ...s, maxAutoRepliesPerConversation: Number(e.target.value) || 2 }))}
               placeholder="Ex: 2"
             />
             </div>
             <div>
-              <label className="text-[11px] text-gray-300 uppercase tracking-wide">Escalar após X mensagens do cliente</label>
-              <p className="text-[11px] text-gray-400">Quando exceder este número, exige atendimento humano.</p>
+              <label className="text-ui-label">Escalar após X mensagens do cliente</label>
+              <p className="text-[11px] text-slate-600">Quando exceder este número, exige atendimento humano.</p>
               <input
               type="number"
-              className="w-full rounded-lg bg-[#080816] border border-[#1A1B62] px-3 py-2 text-xs text-gray-100 outline-none"
+              className="field-ui w-full"
               value={state.requireHumanAfterCustomerMessages}
               onChange={(e) => setState((s) => ({ ...s, requireHumanAfterCustomerMessages: Number(e.target.value) || 4 }))}
               placeholder="Ex: 4"
             />
             </div>
             <div>
-              <label className="text-[11px] text-gray-300 uppercase tracking-wide">Escalar quando SLA estourar</label>
+              <label className="text-ui-label">Escalar quando SLA estourar</label>
               <select
-                className="w-full rounded-lg bg-[#080816] border border-[#1A1B62] px-3 py-2 text-xs text-gray-100 outline-none"
+                className="field-ui w-full"
                 value={state.requireHumanIfSlaBreached ? 'SIM' : 'NAO'}
                 onChange={(e) => setState((s) => ({ ...s, requireHumanIfSlaBreached: e.target.value === 'SIM' }))}
               >
@@ -426,66 +426,66 @@ const SofiaSettings: React.FC = () => {
         </div>
       </div>
 
-      <div className="bg-[#070A20] border border-[#1E226F] rounded-xl p-4 space-y-2 shadow-[0_0_24px_rgba(0,0,0,0.85)]">
-        <h2 className="text-sm font-bold text-white mb-1">Base de Conhecimento</h2>
-        <p className="text-[11px] text-gray-400 mb-2">
+      <div className="space-y-2 rounded-xl border border-[#2c348c]/20 bg-gradient-to-b from-white to-[#f7faff] p-4 shadow-[0_10px_24px_rgba(15,23,42,0.10)]">
+        <h2 className="mb-1 text-sm font-bold text-slate-900">Base de Conhecimento</h2>
+        <p className="mb-2 text-[11px] text-slate-600">
           Cole aqui as regras de negócio, políticas de prazo, tipos de carga aceitos, instruções de
           atendimento e qualquer contexto que a Sofia deve seguir.
         </p>
-        <p className="text-[11px] text-gray-400 mb-2">
+        <p className="mb-2 text-[11px] text-slate-600">
           Chave da IA (OpenAI) é controlada no ambiente do servidor (`.env`) por segurança e não é salva nesta tela.
         </p>
         <textarea
-          className="w-full rounded-lg bg-[#080816] border border-[#1A1B62] px-3 py-2 text-xs text-gray-100 outline-none min-h-[180px] resize-y focus:ring-1 focus:ring-[#EC1B23]"
+          className="field-ui min-h-[180px] w-full resize-y"
           value={state.knowledgeBase}
           onChange={(e) => setState((s) => ({ ...s, knowledgeBase: e.target.value }))}
           placeholder="Exemplo:&#10;- Prazos de entrega por UF...&#10;- Tipos de carga proibidos...&#10;- Como responder sobre TAD, EM BUSCA, CRÍTICO..."
         />
         <input
-          className="w-full rounded-lg bg-[#080816] border border-[#1A1B62] px-3 py-2 text-xs text-gray-100 outline-none"
+          className="field-ui w-full"
           value={state.escalationKeywords}
           onChange={(e) => setState((s) => ({ ...s, escalationKeywords: e.target.value }))}
           placeholder="Palavras para escalar para humano (separadas por vírgula)"
         />
         <input
-          className="w-full rounded-lg bg-[#080816] border border-[#1A1B62] px-3 py-2 text-xs text-gray-100 outline-none"
+          className="field-ui w-full"
           value={state.blockedTopics}
           onChange={(e) => setState((s) => ({ ...s, blockedTopics: e.target.value }))}
           placeholder="Tópicos bloqueados para auto (ex: JURIDICO, EXTRAVIO)"
         />
         <input
-          className="w-full rounded-lg bg-[#080816] border border-[#1A1B62] px-3 py-2 text-xs text-gray-100 outline-none"
+          className="field-ui w-full"
           value={state.blockedStatuses}
           onChange={(e) => setState((s) => ({ ...s, blockedStatuses: e.target.value }))}
           placeholder="Status bloqueados (ex: PERDIDO, CONCLUIDO)"
         />
-        <p className="text-[11px] text-gray-400">
+        <p className="text-[11px] text-slate-600">
           Dica: mantenha <strong>AGUARDANDO_RETORNO_AGENCIA</strong> bloqueado para a Sofia não responder em fluxos que dependem de retorno da agência.
         </p>
         <div>
-          <label className="text-[11px] text-gray-300 uppercase tracking-wide">Instruções do Supervisor (Prompt Base)</label>
-          <p className="text-[11px] text-gray-400">Regras fixas de linguagem, compliance e conduta da Sofia.</p>
+          <label className="text-ui-label">Instruções do Supervisor (Prompt Base)</label>
+          <p className="text-[11px] text-slate-600">Regras fixas de linguagem, compliance e conduta da Sofia.</p>
           <textarea
-            className="w-full rounded-lg bg-[#080816] border border-[#1A1B62] px-3 py-2 text-xs text-gray-100 outline-none min-h-[100px] resize-y focus:ring-1 focus:ring-[#EC1B23]"
+            className="field-ui min-h-[100px] w-full resize-y"
             value={state.systemInstructions}
             onChange={(e) => setState((s) => ({ ...s, systemInstructions: e.target.value }))}
             placeholder="Ex: Nunca informar prazo final sem confirmar status atual do CTE no histórico."
           />
         </div>
         <div>
-          <label className="text-[11px] text-gray-300 uppercase tracking-wide">Mensagem de fallback</label>
-          <p className="text-[11px] text-gray-400">Usada quando a OpenAI não responder a tempo ou vier vazia.</p>
+          <label className="text-ui-label">Mensagem de fallback</label>
+          <p className="text-[11px] text-slate-600">Usada quando a OpenAI não responder a tempo ou vier vazia.</p>
           <textarea
-            className="w-full rounded-lg bg-[#080816] border border-[#1A1B62] px-3 py-2 text-xs text-gray-100 outline-none min-h-[70px] resize-y focus:ring-1 focus:ring-[#EC1B23]"
+            className="field-ui min-h-[70px] w-full resize-y"
             value={state.fallbackMessage}
             onChange={(e) => setState((s) => ({ ...s, fallbackMessage: e.target.value }))}
           />
         </div>
         <div>
-          <label className="text-[11px] text-gray-300 uppercase tracking-wide">Mensagem de handoff (escalonamento)</label>
-          <p className="text-[11px] text-gray-400">Mensagem padrão quando a governança bloquear autoenvio e passar para humano.</p>
+          <label className="text-ui-label">Mensagem de handoff (escalonamento)</label>
+          <p className="text-[11px] text-slate-600">Mensagem padrão quando a governança bloquear autoenvio e passar para humano.</p>
           <textarea
-            className="w-full rounded-lg bg-[#080816] border border-[#1A1B62] px-3 py-2 text-xs text-gray-100 outline-none min-h-[70px] resize-y focus:ring-1 focus:ring-[#EC1B23]"
+            className="field-ui min-h-[70px] w-full resize-y"
             value={state.handoffMessage}
             onChange={(e) => setState((s) => ({ ...s, handoffMessage: e.target.value }))}
           />
@@ -497,7 +497,7 @@ const SofiaSettings: React.FC = () => {
           type="button"
           onClick={applyOfficialTemplate}
           disabled={saving}
-          className="mr-2 px-4 py-2 rounded-lg border border-[#2B2F8F] bg-[#080A2A] text-white text-xs font-semibold hover:border-[#EC1B23]"
+          className="btn-ui-secondary mr-2 px-4 py-2"
         >
           {saving ? 'Aplicando...' : 'Aplicar manual oficial'}
         </button>
@@ -505,15 +505,15 @@ const SofiaSettings: React.FC = () => {
           type="button"
           onClick={handleSaveServer}
           disabled={saving}
-          className="px-4 py-2 rounded-lg bg-[#1A1B62] text-white text-xs font-semibold hover:bg-[#EC1B23]"
+          className="btn-ui-primary px-4 py-2"
         >
           {saving ? 'Salvando...' : 'Salvar no servidor'}
         </button>
       </div>
 
-      <p className="text-[11px] text-gray-500">As configurações são persistidas no servidor (banco) ao clicar em "Salvar no servidor".</p>
+      <p className="text-[11px] text-slate-600">As configurações são persistidas no servidor (banco) ao clicar em "Salvar no servidor".</p>
       {loading && (
-        <div className="fixed bottom-4 right-4 z-40 rounded-lg border border-[#2B2F8F] bg-[#070A20] px-3 py-2 text-xs text-gray-100 shadow-[0_0_18px_rgba(0,0,0,0.8)]">
+        <div className="fixed bottom-4 right-4 z-40 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-800 shadow-[0_0_18px_rgba(0,0,0,0.8)]">
           Carregando configurações da Sofia...
         </div>
       )}

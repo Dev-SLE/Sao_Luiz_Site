@@ -100,10 +100,9 @@ const AlertOverlay: React.FC<Props> = ({ onOpenCte }) => {
   const isTad = alertType === 'TAD';
 
   return (
-    <div className={
-        `fixed inset-0 z-[100] flex items-center justify-center backdrop-blur-sm animate-pulse 
-        ${isTad ? 'bg-violet-900/90' : 'bg-red-900/90'}`
-    }>
+    <div
+      className={`fixed inset-0 z-[100] flex animate-pulse items-center justify-center bg-slate-900/60 backdrop-blur-sm`}
+    >
       <div className={`bg-white p-8 rounded-lg shadow-2xl max-w-md text-center border-4 ${isTad ? 'border-violet-500' : 'border-red-500'}`}>
         <div className="relative">
              {isTad ? (

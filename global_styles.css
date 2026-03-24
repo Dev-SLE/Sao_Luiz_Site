@@ -9,7 +9,7 @@ html, body, #root {
   margin: 0;
   padding: 0;
   overflow-x: hidden;
-  background-color: #f8fafc; /* Slate-50 */
+  background-color: #cfd9e8;
   font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
@@ -29,10 +29,10 @@ html, body, #root {
   color: #0284c7;
 }
 
-/* Scrollbars: align to app dark theme */
+/* Scrollbars — tema claro corporativo */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #1E226F #070A20;
+  scrollbar-color: #cbd5e1 #f1f5f9;
 }
 
 *::-webkit-scrollbar {
@@ -41,28 +41,28 @@ html, body, #root {
 }
 
 *::-webkit-scrollbar-track {
-  background: #070A20;
+  background: #e8edf5;
 }
 
 *::-webkit-scrollbar-thumb {
-  background-color: #1E226F;
+  background: linear-gradient(180deg, #64748b, #475569);
   border-radius: 9999px;
-  border: 2px solid #070A20;
+  border: 2px solid #e8edf5;
 }
 
 *::-webkit-scrollbar-thumb:hover {
-  background-color: #2B2F8F;
+  background-color: #94a3b8;
 }
 
-/* Select (dark dropdown) */
+/* Select padrão claro (telas legadas sem classe própria) */
 select {
-  background-color: #070A20 !important;
-  color: #E5E7EB !important;
+  background-color: #ffffff;
+  color: #1e293b;
 }
 
 select option {
-  background-color: #070A20 !important;
-  color: #E5E7EB !important;
+  background-color: #ffffff;
+  color: #1e293b;
 }
 
 select:focus {

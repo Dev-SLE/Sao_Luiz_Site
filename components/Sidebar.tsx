@@ -24,12 +24,12 @@ import { useData } from '../context/DataContext';
 interface Props {
   currentPage: Page;
   setPage: (p: Page) => void;
-  logout: () => void; // Mantido por compatibilidade, agora usado apenas no header
+  logout: () => void;
 }
 
-const Sidebar: React.FC<Props> = ({ currentPage, setPage, logout }) => {
+const Sidebar: React.FC<Props> = ({ currentPage, setPage }) => {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [pinned, setPinned] = useState(false);
+  const [pinned, setPinned] = useState(true);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
     operacional: true,
     crm: true,
@@ -46,12 +46,7 @@ const Sidebar: React.FC<Props> = ({ currentPage, setPage, logout }) => {
           id: Page.DASHBOARD,
           label: 'Visão Geral',
           icon: Home,
-          count:
-            counts.pendencias +
-            counts.criticos +
-            counts.emBusca +
-            counts.tad +
-            counts.concluidos,
+          count: 0,
         },
         hasPermission('VIEW_PENDENCIAS') && {
           id: Page.PENDENCIAS,
@@ -159,6 +154,12 @@ const Sidebar: React.FC<Props> = ({ currentPage, setPage, logout }) => {
     setOpenSections((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
+  const formatCount = (value: number) => {
+    if (value >= 1000000) return `${(value / 1000000).toFixed(1).replace('.0', '')}M`;
+    if (value >= 1000) return `${(value / 1000).toFixed(1).replace('.0', '')}k`;
+    return String(value);
+  };
+
   const renderSection = (sectionId: string, isMobile: boolean, isPinned: boolean) => {
     const section = allSections.find((s) => s.id === sectionId);
     if (!section || section.items.length === 0) return null;
@@ -169,23 +170,23 @@ const Sidebar: React.FC<Props> = ({ currentPage, setPage, logout }) => {
       <div
         key={section.id}
         className={clsx(
-          'mt-4',
-          !isMobile && !isPinned && 'mt-2 group-hover:mt-4'
+          'mt-3 rounded-xl border border-slate-200/90 bg-white/95 p-2 shadow-sm',
+          !isMobile && !isPinned && 'mt-2 group-hover:mt-3',
         )}
       >
         <button
           type="button"
           onClick={() => toggleSection(section.id)}
           className={clsx(
-            'flex w-full items-center justify-between px-4 py-1 text-[10px] font-bold uppercase tracking-[0.2em] text-[#4B4FA8]',
+            'flex w-full items-center justify-between rounded-lg px-2 py-2 text-[10px] font-bold uppercase tracking-[0.18em] text-[#2c348c]',
             !isMobile &&
               (isPinned
-                ? 'opacity-100 translate-x-0'
-                : 'h-0 py-0 opacity-0 -translate-x-4 overflow-hidden pointer-events-none group-hover:h-auto group-hover:py-1 group-hover:opacity-100 group-hover:translate-x-0 group-hover:pointer-events-auto transition-all duration-300')
+                ? 'translate-x-0 opacity-100'
+                : 'pointer-events-none h-0 -translate-x-4 overflow-hidden py-0 opacity-0 transition-all duration-300 group-hover:pointer-events-auto group-hover:h-auto group-hover:translate-x-0 group-hover:py-1 group-hover:opacity-100'),
           )}
         >
           <span>{section.label}</span>
-          <span className="ml-2 text-[9px] text-[#6E71DA]">
+          <span className="ml-2 flex h-6 w-6 items-center justify-center rounded-md bg-slate-100 text-xs font-bold text-[#2c348c]">
             {isOpen ? '−' : '+'}
           </span>
         </button>
@@ -193,7 +194,7 @@ const Sidebar: React.FC<Props> = ({ currentPage, setPage, logout }) => {
           <nav
             className={clsx(
               'mt-2 space-y-1',
-              !isMobile && !isPinned && 'mt-0 space-y-0 group-hover:mt-2 group-hover:space-y-1'
+              !isMobile && !isPinned && 'mt-0 space-y-0 group-hover:mt-2 group-hover:space-y-1',
             )}
           >
             {section.items.map((item) => {
@@ -201,44 +202,37 @@ const Sidebar: React.FC<Props> = ({ currentPage, setPage, logout }) => {
               return (
                 <button
                   key={item.id}
+                  type="button"
                   onClick={() => {
                     setPage(item.id);
                     setMobileOpen(false);
                   }}
                   className={clsx(
-                    'relative w-full flex items-center rounded-xl py-3 text-sm text-gray-200 transition-all duration-300',
+                    'relative flex w-full items-center rounded-xl py-2.5 text-sm font-semibold transition-all duration-200',
                     isMobile
                       ? 'px-3'
                       : isPinned
                         ? 'px-3'
-                        : 'px-2 justify-center group-hover:px-3 group-hover:justify-start',
-                    'hover:bg-[#131437]',
-                    active && 'bg-[#131437] text-white'
+                        : 'justify-center px-2 group-hover:justify-start group-hover:px-3',
+                    'sle-nav-tab',
+                    active && 'sle-nav-tab-active',
                   )}
                 >
-                  {active && (
-                    <div className="absolute inset-y-1 left-0 w-1 rounded-r-full bg-[#FF1744] shadow-[0_0_12px_rgba(255,23,68,0.8)]" />
-                  )}
+                  {active && <div className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full bg-[#e42424]" />}
                   <div
                     className={clsx(
-                      'relative flex items-center gap-3 w-full',
-                      !isMobile && !isPinned && 'justify-center group-hover:justify-start'
+                      'relative flex w-full items-center gap-3',
+                      !isMobile && !isPinned && 'justify-center group-hover:justify-start',
                     )}
                   >
-                    <item.icon
-                      size={20}
-                      className={clsx(
-                        'shrink-0 text-[#6E71DA]',
-                        active && 'text-[#FF4D4D]'
-                      )}
-                    />
+                    <item.icon size={20} className="shrink-0 text-white" />
                     <span
                       className={clsx(
-                        'text-xs font-medium whitespace-nowrap',
+                        'whitespace-nowrap text-xs font-semibold tracking-tight text-white',
                         !isMobile &&
                           (isPinned
-                            ? 'opacity-100 translate-x-0'
-                            : 'opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300')
+                            ? 'translate-x-0 opacity-100'
+                            : '-translate-x-2 opacity-0 transition-all duration-300 group-hover:translate-x-0 group-hover:opacity-100'),
                       )}
                     >
                       {item.label}
@@ -246,17 +240,17 @@ const Sidebar: React.FC<Props> = ({ currentPage, setPage, logout }) => {
                     {item.count > 0 && (
                       <span
                         className={clsx(
-                          'ml-auto text-[10px] font-black px-2 py-0.5 rounded-full',
-                          active
-                            ? 'bg-[#FF1744] text-white shadow-[0_0_8px_rgba(255,23,68,0.7)]'
-                            : 'bg-[#1A1B62] text-[#C7CBFF]',
+                          'ml-auto min-w-[2.6rem] shrink-0 rounded-full border px-2.5 py-0.5 text-center text-[10px] font-black leading-none tabular-nums',
+                            active
+                            ? 'border-white/30 bg-[#e42424] text-white shadow-sm'
+                            : 'border-white/25 bg-white/15 text-white',
                           !isMobile &&
                             (isPinned
                               ? 'opacity-100'
-                              : 'opacity-0 group-hover:opacity-100 transition-opacity duration-300')
+                              : 'opacity-0 transition-opacity duration-300 group-hover:opacity-100'),
                         )}
                       >
-                        {item.count}
+                        {formatCount(item.count)}
                       </span>
                     )}
                   </div>
@@ -270,53 +264,36 @@ const Sidebar: React.FC<Props> = ({ currentPage, setPage, logout }) => {
   };
 
   const desktopSidebar = (
-    <div className="hidden md:flex h-screen">
-      <div className="group flex h-full bg-[#070B1A]">
+    <div className="hidden h-screen md:flex">
+      <div className="group relative flex h-full overflow-hidden">
         <aside
           className={clsx(
-            'relative flex h-full bg-[#0B1226]/95 border-r border-[#1E2A44] shadow-[8px_0_24px_rgba(0,0,0,0.35)] transition-[width] duration-300 ease-out overflow-x-hidden',
-            pinned ? 'w-64' : 'w-20 group-hover:w-64'
+            'relative z-10 flex h-full overflow-x-hidden sle-sidebar-panel transition-[width] duration-300 ease-out',
+            pinned ? 'w-64' : 'w-20 group-hover:w-64',
           )}
         >
-          <div className="flex flex-col h-full w-full py-5">
-            <div className="px-3 mb-6">
+          <div className="flex h-full w-full flex-col py-4">
+            <div className="mb-4 px-3">
               <div
                 className={clsx(
-                  'flex items-center w-full',
-                  pinned ? 'justify-start' : 'justify-center group-hover:justify-start'
+                  'flex w-full items-center gap-3',
+                  pinned ? 'justify-start' : 'justify-center group-hover:justify-start',
                 )}
               >
-                {/* Collapsed: only compact logo */}
-                <div
-                  className={clsx(
-                    'relative h-10 w-10 items-center justify-center rounded-xl bg-[#1A2742] border border-[#2F466F] overflow-hidden',
-                    pinned ? 'hidden' : 'flex group-hover:hidden'
-                  )}
-                >
+                <div className="sle-logo-bar flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl">
                   <img
                     src="/logo_transparente.png"
                     alt="São Luiz Express"
-                    className="h-8 w-8 object-contain"
+                    className="h-9 w-9 object-contain"
                     draggable={false}
                   />
-                  <div className="pointer-events-none absolute inset-0 ring-1 ring-white/5" />
                 </div>
 
-                {/* Expanded (hover or pinned): only big logo */}
-                <div
-                  className={clsx(
-                    'min-w-0 flex-1',
-                    pinned ? 'block' : 'hidden group-hover:block'
-                  )}
-                >
-                  <div className="rounded-xl bg-gradient-to-br from-[#121E39] via-[#0E172D] to-[#0B1327] border border-[#2E456E]/80 px-1.5 py-1.5 flex items-center justify-center overflow-visible">
-                    <img
-                      src="/logo_transparente.png"
-                      alt="São Luiz Express"
-                      className="h-14 w-full object-contain scale-[2.35] translate-y-[6.5px]"
-                      draggable={false}
-                    />
-                  </div>
+                <div className={clsx('min-w-0', pinned ? 'block' : 'hidden group-hover:block')}>
+                  <p className="truncate text-[11px] font-semibold uppercase tracking-[0.18em] text-[#2c348c]">
+                    São Luiz Express
+                  </p>
+                  <p className="truncate text-sm font-bold text-[#06183e]">Plataforma</p>
                 </div>
               </div>
             </div>
@@ -325,36 +302,27 @@ const Sidebar: React.FC<Props> = ({ currentPage, setPage, logout }) => {
               className={clsx(
                 'flex-1 overflow-x-hidden overflow-y-auto',
                 !pinned &&
-                  '[-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:w-0 [&::-webkit-scrollbar]:h-0'
+                  '[-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:h-0 [&::-webkit-scrollbar]:w-0',
               )}
             >
-              {/* Compact mode (collapsed): icons only, no section headers/spacing */}
               {!pinned && (
-                <div className="block group-hover:hidden px-2">
+                <div className="block px-2 group-hover:hidden">
                   <nav className="space-y-1">
                     {compactItems.map((item) => {
                       const active = currentPage === item.id;
                       return (
                         <button
                           key={item.id}
-                          onClick={() => setPage(item.id)}
+                          type="button"
                           title={item.label}
+                          onClick={() => setPage(item.id)}
                           className={clsx(
-                            'relative w-full flex items-center justify-center rounded-xl py-3 text-sm text-gray-200 transition-all duration-300',
-                            'hover:bg-[#121D39]',
-                            active && 'bg-[#121D39] text-white'
+                            'relative flex w-full items-center justify-center rounded-xl py-3 text-sm transition-all duration-200',
+                            'sle-nav-tab',
+                            active && 'sle-nav-tab-active',
                           )}
                         >
-                          {active && (
-                            <div className="absolute inset-y-1 left-0 w-1 rounded-r-full bg-[#4B6FA8]" />
-                          )}
-                          <item.icon
-                            size={20}
-                            className={clsx(
-                              'shrink-0 text-[#6E71DA]',
-                              active && 'text-[#8FB3E8]'
-                            )}
-                          />
+                          <item.icon size={20} className="shrink-0 text-white" />
                         </button>
                       );
                     })}
@@ -362,7 +330,6 @@ const Sidebar: React.FC<Props> = ({ currentPage, setPage, logout }) => {
                 </div>
               )}
 
-              {/* Expanded mode (hover or pinned): full menu */}
               <div className={clsx(pinned ? 'block' : 'hidden group-hover:block')}>
                 {renderSection('operacional', false, pinned)}
                 {renderSection('crm', false, pinned)}
@@ -371,27 +338,24 @@ const Sidebar: React.FC<Props> = ({ currentPage, setPage, logout }) => {
               </div>
             </div>
 
-            <div className="mt-4 px-3 pb-2">
-              <div className="flex items-center justify-between">
-                <div className="h-px flex-1 bg-gradient-to-r from-transparent via-[#2F3278] to-transparent" />
+            <div className="mt-auto px-3 pb-3 pt-2">
+              <div className="flex items-center justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => setPinned((v) => !v)}
-                  className="ml-2 inline-flex h-7 w-7 items-center justify-center rounded-full border border-[#2E456E] bg-[#0B1226] text-[#8FB3E8] hover:border-[#4B6FA8] hover:text-white transition-all"
-                  title={pinned ? 'Desafixar menu' : 'Fixar menu'}
+                  className="sle-pin-btn inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-all"
+                  title={pinned ? 'Recolher menu' : 'Expandir menu'}
                 >
-                  {pinned ? <ChevronsLeft size={16} /> : <ChevronsRight size={16} />}
+                  {pinned ? <ChevronsLeft size={18} strokeWidth={2.5} /> : <ChevronsRight size={18} strokeWidth={2.5} />}
                 </button>
               </div>
               <p
                 className={clsx(
-                  'mt-3 text-[9px] text-[#6B6FBE] uppercase tracking-[0.25em]',
-                  pinned
-                    ? 'opacity-100'
-                    : 'opacity-0 group-hover:opacity-100 transition-opacity duration-300'
+                  'mt-2 text-[9px] uppercase tracking-[0.2em] text-[#2c348c]/70',
+                  pinned ? 'opacity-100' : 'opacity-100 transition-opacity duration-300 group-hover:opacity-100',
                 )}
               >
-                Gestão Inteligente
+                Gestão inteligente
               </p>
             </div>
           </div>
@@ -402,40 +366,40 @@ const Sidebar: React.FC<Props> = ({ currentPage, setPage, logout }) => {
 
   const mobileSidebar = (
     <>
-      {/* Mobile Trigger */}
-      <div className="md:hidden fixed top-0 left-0 p-4 z-50">
+      <div className="fixed left-0 top-0 z-50 p-4 md:hidden">
         <button
+          type="button"
           onClick={() => setMobileOpen(true)}
-          className="bg-[#080816] text-white p-2 rounded-lg shadow-[0_0_20px_rgba(0,0,0,0.6)] border border-[#1A1B62]"
+          className="sle-pin-btn rounded-xl p-2.5 shadow-md"
         >
           <Menu size={22} />
         </button>
       </div>
 
-      {/* Mobile Drawer */}
       {mobileOpen && (
-        <div className="fixed inset-0 z-50 flex">
-          <div className="w-72 h-full bg-[#0B1226] border-r border-[#1E2A44] shadow-2xl flex flex-col">
-            <div className="flex items-center justify-between px-4 py-4 border-b border-[#1E2A44]">
-              <div className="flex items-center gap-2">
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#1A2742] border border-[#2F466F] overflow-hidden">
+        <div className="fixed inset-0 z-50 flex md:hidden">
+          <div className="flex h-full w-72 flex-col sle-sidebar-panel shadow-2xl shadow-slate-900/15">
+            <div className="flex items-center justify-between border-b border-slate-200/90 bg-white/80 px-3 py-3">
+              <div className="flex min-w-0 flex-1 items-center gap-3">
+                <div className="sle-logo-bar flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-lg">
                   <img
                     src="/logo_transparente.png"
-                    alt="São Luiz Express"
-                    className="h-7 w-7 object-contain"
+                    alt=""
+                    className="h-9 w-9 object-contain"
                     draggable={false}
                   />
                 </div>
-                <div className="flex flex-col">
-                  <span className="text-xs font-semibold text-gray-100">São Luiz Express</span>
-                  <span className="text-[10px] text-[#6E71DA] uppercase tracking-[0.2em]">Pendências</span>
+                <div className="min-w-0 flex flex-col">
+                  <span className="truncate text-xs font-bold text-[#06183e]">São Luiz Express</span>
+                  <span className="text-[10px] uppercase tracking-[0.18em] text-[#2c348c]/80">Plataforma</span>
                 </div>
               </div>
               <button
+                type="button"
                 onClick={() => setMobileOpen(false)}
-                className="p-1.5 rounded-full bg-white/5 text-gray-300 hover:bg-white/10"
+                className="rounded-lg p-2 text-[#2c348c] hover:bg-slate-100"
               >
-                <X size={18} />
+                <X size={20} />
               </button>
             </div>
 
@@ -446,7 +410,7 @@ const Sidebar: React.FC<Props> = ({ currentPage, setPage, logout }) => {
               {adminSection && renderSection('admin', true, true)}
             </div>
           </div>
-          <div className="flex-1 bg-black/60" onClick={() => setMobileOpen(false)} />
+          <div className="flex-1 bg-slate-900/40 backdrop-blur-[2px]" onClick={() => setMobileOpen(false)} />
         </div>
       )}
     </>

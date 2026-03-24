@@ -399,22 +399,22 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
   const timelineEmpty = !selected?.timeline?.length;
 
   return (
-    <div className="space-y-4 animate-in fade-in duration-500 text-white">
+    <div className="space-y-4 animate-in fade-in duration-500 text-slate-900">
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="rounded-lg bg-[#0F103A] p-2 text-[#EC1B23] border border-[#1A1B62] shadow-[0_0_18px_rgba(236,27,35,0.4)]">
+          <div className="rounded-lg bg-slate-100 p-2 text-[#e42424] border border-slate-200 shadow-[0_0_18px_rgba(236,27,35,0.4)]">
             <MapPin size={20} />
           </div>
           <div>
             <h1 className="text-xl md:text-2xl font-black">Rastreio Operacional</h1>
-            <p className="text-xs text-gray-400">Acompanhamento estilo “Em Busca” com timeline e atualização manual.</p>
+            <p className="text-xs text-slate-600">Acompanhamento estilo “Em Busca” com timeline e atualização manual.</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={() => fetchItems()}
-            className="inline-flex items-center gap-2 rounded-xl bg-[#1A1B62] px-4 py-2 text-xs font-semibold text-white shadow-[0_0_18px_rgba(26,27,98,0.7)] hover:bg-[#EC1B23] transition-all"
+            className="inline-flex items-center gap-2 rounded-xl bg-[#2c348c] px-4 py-2 text-xs font-semibold text-white shadow-md transition-all hover:bg-[#e42424]"
             disabled={loadingItems}
           >
             {loadingItems ? <Loader2 size={14} className="animate-spin" /> : "Atualizar"}
@@ -423,18 +423,18 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
       </div>
 
       {/* Filtros (cards, sem tabela) */}
-      <div className="bg-[#070A20] border border-[#1E226F] rounded-2xl p-3 shadow-[0_0_22px_rgba(0,0,0,0.6)]">
+      <div className="rounded-2xl border border-[#2c348c]/20 bg-gradient-to-b from-white to-[#f4f7ff] p-3 shadow-[0_12px_26px_rgba(15,23,42,0.12)]">
         <div className="flex flex-col md:flex-row md:items-center md:gap-3">
           <div className="flex-1 relative">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <Search className="text-gray-400" size={18} />
+              <Search className="text-slate-500" size={18} />
             </div>
             <input
               type="text"
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Buscar por CTE, série, destino, coleta, destinatário e rastreio..."
-              className="w-full pl-10 pr-4 py-2 rounded-xl bg-[#080816] border border-[#1A1B62] text-xs text-gray-100 outline-none focus:ring-1 focus:ring-[#EC1B23]"
+              className="w-full pl-10 pr-4 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-[#2c348c]/25 focus:border-[#2c348c]/40"
             />
           </div>
 
@@ -442,7 +442,7 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
             <select
               value={unit}
               onChange={(e) => setUnit(e.target.value)}
-              className="appearance-none rounded-xl bg-[#080816] border border-[#1A1B62] px-3 py-2 text-xs text-gray-100 outline-none focus:ring-1 focus:ring-[#EC1B23]"
+              className="appearance-none rounded-xl bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-[#2c348c]/25 focus:border-[#2c348c]/40"
             >
               <option value="">Todas unidades</option>
               {unitOptions.map((u) => (
@@ -455,13 +455,13 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
               type="date"
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
-              className="appearance-none rounded-xl bg-[#080816] border border-[#1A1B62] px-3 py-2 text-xs text-gray-100 outline-none focus:ring-1 focus:ring-[#EC1B23]"
+              className="appearance-none rounded-xl bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-[#2c348c]/25 focus:border-[#2c348c]/40"
             />
             <input
               type="date"
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
-              className="appearance-none rounded-xl bg-[#080816] border border-[#1A1B62] px-3 py-2 text-xs text-gray-100 outline-none focus:ring-1 focus:ring-[#EC1B23]"
+              className="appearance-none rounded-xl bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-[#2c348c]/25 focus:border-[#2c348c]/40"
             />
 
             <button
@@ -470,7 +470,7 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
                 setPage(1);
                 fetchItems();
               }}
-              className="px-4 py-2 text-xs rounded-xl bg-[#1A1B62] text-white font-semibold hover:bg-[#0F1440]"
+              className="rounded-xl bg-[#2c348c] px-4 py-2 text-xs font-semibold text-white hover:bg-[#243a7a]"
             >
               Aplicar
             </button>
@@ -481,7 +481,7 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
       {/* Lista de rastreios */}
       <div className="flex flex-col gap-3">
         {items.length === 0 && !loadingItems && (
-          <div className="bg-[#070A20] border border-[#1E226F] rounded-xl p-6 text-gray-300 text-sm">
+          <div className="bg-white border border-slate-200 rounded-xl p-6 text-slate-600 text-sm">
             Nenhum rastreio encontrado para os filtros.
           </div>
         )}
@@ -489,33 +489,33 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
         {items.map((i) => (
           <div
             key={`${i.CTE}-${i.SERIE}`}
-            className="bg-[#070A20] border border-[#1E226F] rounded-2xl p-4 shadow-[0_0_18px_rgba(0,0,0,0.35)]"
+            className="bg-white border border-slate-200 rounded-2xl p-4 shadow-[0_8px_24px_rgba(15,23,42,0.10)] transition-all duration-200 hover:-translate-y-[1px] hover:border-[#2c348c]/35 hover:shadow-[0_14px_30px_rgba(44,52,140,0.16)]"
           >
             <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
               <div className="min-w-0">
-                <div className="text-sm font-bold text-white flex items-center gap-2">
-                  <span className="px-2 py-0.5 rounded-lg bg-[#0F103A] border border-[#1A1B62] text-gray-200">
+                <div className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <span className="px-2 py-0.5 rounded-lg bg-slate-100 border border-slate-200 text-slate-700">
                     {i.CTE} / {i.SERIE}
                   </span>
                   {i.STATUS_CALCULADO && (
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#080816] border border-[#1A1B62] text-gray-200">
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-50 border border-slate-200 text-slate-700">
                       {i.STATUS_CALCULADO}
                     </span>
                   )}
                 </div>
 
-                <div className="mt-2 text-xs text-gray-300 space-y-1">
+                <div className="mt-2 text-xs text-slate-600 space-y-1">
                   <div>
-                    <span className="text-gray-400">Coleta:</span> <span className="font-semibold">{i.COLETA || "—"}</span>
+                    <span className="text-slate-500">Coleta:</span> <span className="font-semibold">{i.COLETA || "—"}</span>
                   </div>
                   <div>
-                    <span className="text-gray-400">Destino:</span> <span className="font-semibold">{i.ENTREGA || "—"}</span>
+                    <span className="text-slate-500">Destino:</span> <span className="font-semibold">{i.ENTREGA || "—"}</span>
                   </div>
                   <div>
-                    <span className="text-gray-400">Cliente:</span> <span className="font-semibold">{i.DESTINATARIO || "—"}</span>
+                    <span className="text-slate-500">Cliente:</span> <span className="font-semibold">{i.DESTINATARIO || "—"}</span>
                   </div>
                   <div>
-                    <span className="text-gray-400">Última atualização:</span>{" "}
+                    <span className="text-slate-500">Última atualização:</span>{" "}
                     <span className="font-semibold">{i.LAST_UPDATE_AT || "—"}</span>
                   </div>
                 </div>
@@ -525,14 +525,14 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
                 <button
                   type="button"
                   onClick={() => fetchDetail(i.CTE, i.SERIE)}
-                  className="px-4 py-2 text-xs rounded-xl bg-[#1A1B62] text-white font-semibold hover:bg-[#0F1440] border border-[#2B2F8F]"
+                  className="rounded-xl border border-[#2c348c]/40 bg-[#2c348c] px-4 py-2 text-xs font-semibold text-white hover:bg-[#243a7a]"
                 >
                   Abrir rastreio
                 </button>
                 <button
                   type="button"
                   onClick={() => handleOpenMapsForList(i)}
-                  className="px-3 py-2 text-xs rounded-xl bg-[#080816] text-gray-100 font-semibold hover:bg-[#0F1440] border border-[#1A1B62] inline-flex items-center gap-2"
+                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"
                 >
                   <MapPin size={14} />
                   Mapa
@@ -543,7 +543,7 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
         ))}
 
         {loadingDetail && selected && (
-          <div className="bg-[#070A20] border border-[#1E226F] rounded-xl p-4 text-gray-300 text-sm">
+          <div className="bg-white border border-slate-200 rounded-xl p-4 text-slate-600 text-sm">
             Carregando detalhe...
           </div>
         )}
@@ -553,18 +553,18 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
           <div className="flex items-center justify-between gap-2 pt-2">
             <button
               type="button"
-              className="px-3 py-1 rounded-xl bg-[#080816] border border-[#1A1B62] text-xs text-gray-200 disabled:opacity-40"
+              className="px-3 py-1 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700 disabled:opacity-40"
               disabled={page <= 1}
               onClick={() => setPage((p) => Math.max(1, p - 1))}
             >
               Anterior
             </button>
-            <div className="text-xs text-gray-300">
+            <div className="text-xs text-slate-600">
               Página {page} (total: {total})
             </div>
             <button
               type="button"
-              className="px-3 py-1 rounded-xl bg-[#080816] border border-[#1A1B62] text-xs text-gray-200 disabled:opacity-40"
+              className="px-3 py-1 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700 disabled:opacity-40"
               disabled={page * limit >= total}
               onClick={() => setPage((p) => p + 1)}
             >
@@ -576,64 +576,64 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
 
       {/* Drawer de detalhes */}
       {selected && (
-        <div className="fixed inset-y-0 right-0 z-40 w-full sm:w-[380px] md:w-[450px] bg-[#070A20] border-l border-[#1E226F] shadow-[0_0_40px_rgba(0,0,0,0.92)] flex flex-col">
-          <div className="px-4 py-3 border-b border-[#1A1B62] flex items-center justify-between">
+        <div className="fixed inset-y-0 right-0 z-40 w-full sm:w-[380px] md:w-[450px] bg-white border-l border-slate-200 shadow-[-12px_0_30px_rgba(15,23,42,0.18)] flex flex-col">
+          <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
             <div className="min-w-0">
-              <h2 className="text-sm font-bold text-white truncate">
+              <h2 className="text-sm font-bold text-slate-900 truncate">
                 {selected.item.CTE} / {selected.item.SERIE}
               </h2>
-              <p className="text-[11px] text-gray-400 truncate">
+              <p className="text-[11px] text-slate-500 truncate">
                 {selected.item.COLETA} &rarr; {selected.item.ENTREGA}
               </p>
             </div>
             <button
               type="button"
               onClick={() => setSelected(null)}
-              className="text-gray-400 hover:text-white text-xs"
+              className="text-slate-500 hover:text-slate-900 text-xs"
             >
               Fechar
             </button>
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-4 flex flex-col">
-            <div className="bg-[#080816] border border-[#1A1B62] rounded-xl p-3 space-y-1">
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-1">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wide">Mapa</span>
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Mapa</span>
                 <button
                   type="button"
                   onClick={() => openMapsForItem(selected)}
-                  className="px-3 py-1.5 text-[11px] rounded-lg bg-[#1A1B62] text-white hover:bg-[#0F1440]"
+                  className="rounded-lg bg-[#2c348c] px-3 py-1.5 text-[11px] text-white hover:bg-[#243a7a]"
                 >
                   Abrir destino
                 </button>
               </div>
-              <div className="mt-1 text-xs text-gray-300">
+              <div className="mt-1 text-xs text-slate-600">
                 <div>
-                  <span className="text-gray-400">Cliente:</span> <span className="font-semibold">{selected.item.DESTINATARIO || "—"}</span>
+                  <span className="text-slate-500">Cliente:</span> <span className="font-semibold">{selected.item.DESTINATARIO || "—"}</span>
                 </div>
                 <div>
-                  <span className="text-gray-400">Status:</span> <span className="font-semibold">{selected.item.STATUS_CALCULADO || "—"}</span>
+                  <span className="text-slate-500">Status:</span> <span className="font-semibold">{selected.item.STATUS_CALCULADO || "—"}</span>
                 </div>
               </div>
             </div>
 
             {selected.stops?.length ? (
-              <div className="bg-[#080816] border border-[#1A1B62] rounded-xl p-3 space-y-2">
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wide">Paradas</span>
-                  <span className="text-[11px] text-gray-500">{selected.stops.length}</span>
+                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Paradas</span>
+                  <span className="text-[11px] text-slate-600">{selected.stops.length}</span>
                 </div>
                 <div className="space-y-2">
                   {selected.stops.slice(0, 6).map((s, idx) => (
                     <div key={`${s.stop_name}-${idx}`} className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
-                        <div className="text-xs font-bold text-white truncate">{s.stop_name}</div>
-                        <div className="text-[11px] text-gray-400 truncate">{s.at}</div>
+                        <div className="text-xs font-bold text-slate-900 truncate">{s.stop_name}</div>
+                        <div className="text-[11px] text-slate-500 truncate">{s.at}</div>
                       </div>
                       <button
                         type="button"
                         onClick={() => openMapsForStop(selected.item, s)}
-                        className="px-2 py-1 text-[11px] rounded-lg bg-[#1A1B62] text-white hover:bg-[#0F1440] border border-[#2B2F8F]"
+                        className="rounded-lg border border-[#2c348c]/40 bg-[#2c348c] px-2 py-1 text-[11px] text-white hover:bg-[#243a7a]"
                       >
                         Mapa
                       </button>
@@ -644,54 +644,54 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
             ) : null}
 
             {/* Timeline */}
-            <div className="bg-[#080816] border border-[#1A1B62] rounded-xl p-3 space-y-2 order-3">
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2 order-3">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wide">Eventos</span>
-                <span className="text-[11px] text-gray-500">{selected.timeline.length}</span>
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Eventos</span>
+                <span className="text-[11px] text-slate-600">{selected.timeline.length}</span>
               </div>
               {timelineEmpty ? (
-                <div className="text-[11px] text-gray-500">Nenhum evento ainda.</div>
+                <div className="text-[11px] text-slate-600">Nenhum evento ainda.</div>
               ) : (
                 <div className="space-y-3">
                   {selected.timeline.slice(0, 18).map((t) => (
-                    <div key={t.id} className="border border-[#1A1B62] rounded-xl p-3 bg-[#070A20]">
+                    <div key={t.id} className="border border-slate-200 rounded-xl p-3 bg-white transition-colors hover:bg-slate-50/80">
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <div className="text-xs font-bold text-white truncate">
+                          <div className="text-xs font-bold text-slate-900 truncate">
                             {t.source === "NOTA" ? "Nota" : t.source === "EVENTO_MANUAL" ? "Atualização manual" : "Processo"}
                           </div>
-                          <div className="text-[11px] text-gray-400">{t.time}</div>
+                          <div className="text-[11px] text-slate-500">{t.time}</div>
                         </div>
                         {t.option ? (
-                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#080816] border border-[#1A1B62] text-gray-200 whitespace-nowrap">
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-50 border border-slate-200 text-slate-700 whitespace-nowrap">
                             {t.option}
                           </span>
                         ) : null}
                       </div>
 
                       {t.bus_name ? (
-                        <div className="text-[11px] text-gray-300 mt-2">
-                          <span className="text-gray-400">Ônibus:</span> {t.bus_name}
+                        <div className="text-[11px] text-slate-600 mt-2">
+                          <span className="text-slate-500">Ônibus:</span> {t.bus_name}
                         </div>
                       ) : null}
                       {t.stop_name ? (
-                        <div className="text-[11px] text-gray-300 mt-1">
-                          <span className="text-gray-400">Parada:</span> {t.stop_name}
+                        <div className="text-[11px] text-slate-600 mt-1">
+                          <span className="text-slate-500">Parada:</span> {t.stop_name}
                         </div>
                       ) : null}
                       {t.location_text ? (
-                        <div className="text-[11px] text-gray-300 mt-1">
-                          <span className="text-gray-400">Local:</span> {t.location_text}
+                        <div className="text-[11px] text-slate-600 mt-1">
+                          <span className="text-slate-500">Local:</span> {t.location_text}
                         </div>
                       ) : null}
 
                       {t.observation ? (
-                        <div className="text-[11px] text-gray-200 mt-2 whitespace-pre-wrap">{t.observation}</div>
+                        <div className="text-[11px] text-slate-700 mt-2 whitespace-pre-wrap">{t.observation}</div>
                       ) : null}
 
                       {t.photos?.length ? (
                         <div className="mt-3">
-                          <div className="text-[11px] text-gray-400 mb-2">Fotos</div>
+                          <div className="text-[11px] text-slate-500 mb-2">Fotos</div>
                           <div className="flex flex-wrap gap-2">
                             {t.photos.slice(0, 6).map((url, idx) => (
                               <a
@@ -699,7 +699,7 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
                                 href={url}
                                 target="_blank"
                                 rel="noreferrer"
-                                className="inline-flex items-center justify-center w-16 h-16 rounded-xl bg-[#070A20] border border-[#1A1B62] overflow-hidden"
+                                className="inline-flex items-center justify-center w-16 h-16 rounded-xl bg-white border border-slate-200 overflow-hidden"
                               >
                                 {isGoogleDriveUrl(url) ? (
                                   <iframe
@@ -723,15 +723,15 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
             </div>
 
             {/* Form manual */}
-            <div className="bg-[#080816] border border-[#1A1B62] rounded-xl p-3 space-y-3 order-2">
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-3 order-2">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wide">Atualização Manual</span>
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Atualização Manual</span>
                 {!canManage ? (
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-900/30 text-red-200 border border-red-500/50">
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200">
                     Sem permissão
                   </span>
                 ) : (
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#0F103A] text-gray-200 border border-[#1A1B62]">
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 font-semibold">
                     Agência
                   </span>
                 )}
@@ -743,7 +743,7 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
                   onClick={() => setMode("ROTA")}
                   className={clsx(
                     "flex-1 px-3 py-2 text-xs rounded-lg border transition-colors",
-                    mode === "ROTA" ? "bg-[#1A1B62] border-[#2B2F8F] text-white" : "bg-[#070A20] border-[#1A1B62] text-gray-200 hover:bg-[#0F1440]"
+                    mode === "ROTA" ? "border-[#2c348c]/40 bg-[#2c348c] text-white" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-100"
                   )}
                   disabled={!canManage}
                 >
@@ -754,7 +754,7 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
                   onClick={() => setMode("DESCARGA")}
                   className={clsx(
                     "flex-1 px-3 py-2 text-xs rounded-lg border transition-colors",
-                    mode === "DESCARGA" ? "bg-[#1A1B62] border-[#2B2F8F] text-white" : "bg-[#070A20] border-[#1A1B62] text-gray-200 hover:bg-[#0F1440]"
+                    mode === "DESCARGA" ? "border-[#2c348c]/40 bg-[#2c348c] text-white" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-100"
                   )}
                   disabled={!canManage}
                 >
@@ -765,11 +765,11 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
               {mode === "ROTA" ? (
                 <>
                   <div>
-                    <label className="text-[11px] font-bold text-gray-300 uppercase tracking-wide">Ação</label>
+                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide">Ação</label>
                     <select
                       value={rotaAction}
                       onChange={(e) => setRotaAction(e.target.value as RotaAction)}
-                      className="mt-1 w-full rounded-lg bg-[#080816] border border-[#1A1B62] px-2 py-2 text-xs text-gray-100 outline-none focus:ring-1 focus:ring-[#EC1B23]"
+                      className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-[#2c348c]/25 focus:border-[#2c348c]/40"
                       disabled={!canManage}
                     >
                       <option value="OBSERVACAO_GERAL">Observação geral</option>
@@ -781,9 +781,9 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
 
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="text-[11px] font-bold text-gray-300 uppercase tracking-wide">Ônibus (opcional)</label>
+                      <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide">Ônibus (opcional)</label>
                       <input
-                        className="mt-1 w-full rounded-lg bg-[#080816] border border-[#1A1B62] px-3 py-2 text-xs text-gray-100 outline-none focus:ring-1 focus:ring-[#EC1B23]"
+                        className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-[#2c348c]/25 focus:border-[#2c348c]/40"
                         value={busName}
                         onChange={(e) => setBusName(e.target.value)}
                         disabled={!canManage}
@@ -791,9 +791,9 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
                       />
                     </div>
                     <div>
-                      <label className="text-[11px] font-bold text-gray-300 uppercase tracking-wide">Parada (opcional)</label>
+                      <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide">Parada (opcional)</label>
                       <input
-                        className="mt-1 w-full rounded-lg bg-[#080816] border border-[#1A1B62] px-3 py-2 text-xs text-gray-100 outline-none focus:ring-1 focus:ring-[#EC1B23]"
+                        className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-[#2c348c]/25 focus:border-[#2c348c]/40"
                         value={stopName}
                         onChange={(e) => setStopName(e.target.value)}
                         disabled={!canManage}
@@ -803,9 +803,9 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
                   </div>
 
                   <div>
-                    <label className="text-[11px] font-bold text-gray-300 uppercase tracking-wide">Local (opcional)</label>
+                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide">Local (opcional)</label>
                     <input
-                      className="mt-1 w-full rounded-lg bg-[#080816] border border-[#1A1B62] px-3 py-2 text-xs text-gray-100 outline-none focus:ring-1 focus:ring-[#EC1B23]"
+                      className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-[#2c348c]/25 focus:border-[#2c348c]/40"
                       value={locationText}
                       onChange={(e) => setLocationText(e.target.value)}
                       disabled={!canManage}
@@ -816,11 +816,11 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
               ) : (
                 <>
                   <div>
-                    <label className="text-[11px] font-bold text-gray-300 uppercase tracking-wide">Status do descarregamento</label>
+                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide">Status do descarregamento</label>
                     <select
                       value={descStatus}
                       onChange={(e) => setDescStatus(e.target.value as DescargaStatus)}
-                      className="mt-1 w-full rounded-lg bg-[#080816] border border-[#1A1B62] px-2 py-2 text-xs text-gray-100 outline-none focus:ring-1 focus:ring-[#EC1B23]"
+                      className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-[#2c348c]/25 focus:border-[#2c348c]/40"
                       disabled={!canManage}
                     >
                       <option value="RECEBIDO">Recebido</option>
@@ -832,9 +832,9 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
 
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="text-[11px] font-bold text-gray-300 uppercase tracking-wide">Ônibus (opcional)</label>
+                      <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide">Ônibus (opcional)</label>
                       <input
-                        className="mt-1 w-full rounded-lg bg-[#080816] border border-[#1A1B62] px-3 py-2 text-xs text-gray-100 outline-none focus:ring-1 focus:ring-[#EC1B23]"
+                        className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-[#2c348c]/25 focus:border-[#2c348c]/40"
                         value={busName}
                         onChange={(e) => setBusName(e.target.value)}
                         disabled={!canManage}
@@ -842,7 +842,7 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
                       />
                     </div>
                     <div>
-                      <label className="text-[11px] font-bold text-gray-300 uppercase tracking-wide">Destino (rodoviária)</label>
+                      <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide">Destino (rodoviária)</label>
                       <select
                         value={destinoSelectValue}
                         onChange={(e) => {
@@ -851,7 +851,7 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
                           setStopName(v);
                           setLocationText(v);
                         }}
-                        className="mt-1 w-full rounded-lg bg-[#080816] border border-[#1A1B62] px-2 py-2 text-xs text-gray-100 outline-none focus:ring-1 focus:ring-[#EC1B23]"
+                        className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-[#2c348c]/25 focus:border-[#2c348c]/40"
                         disabled={!canManage}
                       >
                         <option value="">Selecione</option>
@@ -865,7 +865,7 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
 
                       {destinoSelectValue === "__CUSTOM__" && (
                         <input
-                          className="mt-1 w-full rounded-lg bg-[#080816] border border-[#1A1B62] px-3 py-2 text-xs text-gray-100 outline-none focus:ring-1 focus:ring-[#EC1B23]"
+                          className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-[#2c348c]/25 focus:border-[#2c348c]/40"
                           value={stopName}
                           onChange={(e) => {
                             setStopName(e.target.value);
@@ -881,9 +881,9 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
               )}
 
               <div>
-                <label className="text-[11px] font-bold text-gray-300 uppercase tracking-wide">Observação</label>
+                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide">Observação</label>
                 <textarea
-                  className="mt-1 w-full rounded-lg bg-[#080816] border border-[#1A1B62] px-3 py-2 text-xs text-gray-100 outline-none focus:ring-1 focus:ring-[#EC1B23] min-h-[72px] resize-none"
+                  className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-[#2c348c]/25 focus:border-[#2c348c]/40 min-h-[72px] resize-none"
                   value={observation}
                   onChange={(e) => setObservation(e.target.value)}
                   disabled={!canManage}
@@ -893,7 +893,7 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
 
               {/* Photos */}
               <div>
-                <label className="text-[11px] font-bold text-gray-300 uppercase tracking-wide inline-flex items-center gap-2">
+                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide inline-flex items-center gap-2">
                   <Camera size={14} />
                   Fotos da carga (opcional)
                 </label>
@@ -912,7 +912,7 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={!canManage}
-                    className="px-4 py-2 text-xs rounded-lg bg-[#070A20] border border-[#1E226F] text-gray-200 hover:bg-[#0F1440] transition-colors inline-flex items-center gap-2"
+                    className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs text-slate-700 transition-colors hover:bg-slate-100"
                   >
                     <Camera size={14} />
                     Escolher / Camera
@@ -926,13 +926,13 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
                       if (fileInputRef.current) fileInputRef.current.value = '';
                     }}
                     disabled={!canManage || isUploading || photos.length === 0}
-                    className="px-4 py-2 text-xs rounded-lg bg-red-900/30 border border-red-500/40 text-red-200 hover:bg-red-900/50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-xs text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     Limpar
                   </button>
                 </div>
                 {photos.length > 0 && (
-                  <div className="mt-2 text-[11px] text-gray-400">
+                  <div className="mt-2 text-[11px] text-slate-500">
                     {photos.length} foto(s) selecionada(s). Upload ocorrerá ao salvar.
                   </div>
                 )}
@@ -945,7 +945,7 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
                         href={url}
                         target="_blank"
                         rel="noreferrer"
-                        className="inline-flex items-center justify-center w-16 h-16 rounded-xl bg-[#070A20] border border-[#1A1B62] overflow-hidden"
+                        className="inline-flex items-center justify-center w-16 h-16 rounded-xl bg-white border border-slate-200 overflow-hidden"
                       >
                         {isGoogleDriveUrl(url) ? (
                           <iframe
@@ -967,7 +967,7 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
                 <button
                   type="button"
                   onClick={() => resetForm()}
-                  className="flex-1 px-3 py-2 text-xs rounded-lg bg-[#070A20] border border-[#1A1B62] text-gray-200 hover:bg-[#0F1440]"
+                  className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 hover:bg-slate-100"
                   disabled={!canManage || isSaving || isUploading}
                 >
                   Limpar
@@ -976,7 +976,7 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
                   type="button"
                   onClick={handleSaveEvent}
                   disabled={!canManage || isSaving || isUploading || !selected.item.CTE}
-                  className="flex-1 px-3 py-2 text-xs rounded-lg bg-[#1A1B62] text-white font-semibold hover:bg-[#EC1B23] shadow-[0_0_18px_rgba(26,27,98,0.7)] transition-all disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
+                  className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#2c348c] px-3 py-2 text-xs font-semibold text-white shadow-md transition-all hover:bg-[#e42424] disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
                   {isSaving ? "Salvando..." : "Salvar evento"}

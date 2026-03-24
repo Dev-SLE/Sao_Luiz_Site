@@ -53,15 +53,15 @@ interface Message {
 const channelConfig: Record<Channel, { label: string; className: string }> = {
   WHATSAPP: {
     label: 'WhatsApp',
-    className: 'bg-emerald-900/40 text-emerald-200 border-emerald-500/70',
+    className: 'bg-emerald-50 text-emerald-700 border-emerald-300',
   },
   IA: {
     label: 'IA',
-    className: 'bg-sky-900/40 text-sky-200 border-sky-500/70',
+    className: 'bg-sky-50 text-sky-700 border-sky-300',
   },
   INTERNO: {
     label: 'Interno',
-    className: 'bg-slate-800 text-slate-200 border-slate-500/60',
+    className: 'bg-slate-100 text-slate-700 border-slate-300',
   },
 };
 
@@ -781,38 +781,38 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
   return (
     <div className="grid grid-cols-12 gap-4 h-full min-h-0">
       {/* Lista de conversas */}
-      <aside className="col-span-12 md:col-span-3 bg-[#070A20] border border-[#1E226F] rounded-xl flex flex-col min-h-0">
-        <div className="px-3 py-3 border-b border-[#1A1B62] flex items-center justify-between">
+      <aside className="col-span-12 md:col-span-3 bg-gradient-to-b from-white to-[#f7faff] border border-[#2c348c]/20 rounded-xl flex flex-col min-h-0 shadow-[0_10px_24px_rgba(15,23,42,0.10)]">
+        <div className="px-3 py-3 border-b border-slate-200 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="rounded-lg bg-[#0F103A] p-1.5 text-[#EC1B23] border border-[#1A1B62]">
+            <div className="rounded-lg bg-slate-100 p-1.5 text-[#e42424] border border-slate-200">
               <MessageSquare size={18} />
             </div>
             <div>
-              <h2 className="text-xs font-bold uppercase tracking-wider text-gray-200">
+              <h2 className="text-ui-label">
                 Conversas
               </h2>
-              <p className="text-[10px] text-gray-500">
+              <p className="text-[11px] text-ui-muted">
                 {conversations.length} atendimentos ativos
               </p>
             </div>
           </div>
-          <button className="inline-flex items-center gap-1 text-[11px] text-gray-300 px-2 py-1 rounded-lg border border-[#1A1B62] hover:border-[#6E71DA] hover:text-white">
+          <button className="btn-ui-secondary px-2 py-1 text-[11px]">
             <Filter size={12} />
             Filtros
           </button>
         </div>
-        <div className="px-3 py-2 border-b border-[#1A1B62]">
-          <div className="flex items-center gap-2 bg-[#080816] border border-[#1A1B62] rounded-lg px-2 py-1.5 text-[11px] text-gray-300">
-            <Hash size={12} className="text-[#6E71DA]" />
+        <div className="px-3 py-2 border-b border-slate-200">
+          <div className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-[11px] text-slate-700">
+            <Hash size={12} className="text-[#2c348c]/70" />
             <input
               placeholder="Buscar por nome ou CTE..."
-              className="bg-transparent outline-none flex-1 text-[11px] placeholder-gray-500"
+              className="flex-1 bg-transparent text-[11px] text-slate-800 outline-none placeholder:text-slate-500"
             />
           </div>
         </div>
         <div className="flex-1 min-h-0 overflow-y-auto">
           {conversationsLoading && (
-            <div className="px-3 py-2 text-[11px] text-gray-400">Atualizando conversas...</div>
+            <div className="px-3 py-2 text-[11px] text-slate-500">Atualizando conversas...</div>
           )}
           {conversations.map((conv) => {
             const active = conv.id === selectedConversationId;
@@ -838,26 +838,26 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                   }
                 }}
                 className={clsx(
-                  'w-full px-3 py-2.5 text-left flex gap-2 border-b border-[#080816] hover:bg-[#080816] transition-colors',
-                  active && 'bg-[#080816]'
+                  'flex w-full gap-2 border-b border-slate-200 px-3 py-2.5 text-left transition-all duration-150 hover:bg-slate-50 hover:pl-4',
+                  active && 'bg-slate-50 border-l-2 border-l-[#2c348c]'
                 )}
               >
                 <div className="mt-1">
                   <UserCircle2
                     size={26}
-                    className={active ? 'text-[#EC1B23]' : 'text-[#6E71DA]'}
+                    className={active ? 'text-[#e42424]' : 'text-[#2c348c]/70'}
                   />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-1">
-                    <span className="text-xs font-semibold text-white truncate">
+                    <span className="truncate text-xs font-semibold text-slate-900">
                       {conv.leadName}
                     </span>
-                    <span className="text-[10px] text-gray-500 whitespace-nowrap">
+                    <span className="text-[10px] text-slate-600 whitespace-nowrap">
                       {conv.lastAt}
                     </span>
                   </div>
-                  <p className="text-[11px] text-gray-400 truncate mt-0.5">
+                  <p className="mt-0.5 truncate text-[11px] text-slate-500">
                     {conv.lastMessage}
                   </p>
                   <div className="flex items-center gap-1 mt-1">
@@ -870,7 +870,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                       {channel.label}
                     </span>
                     {conv.unread > 0 && (
-                      <span className="ml-auto inline-flex items-center justify-center w-4 h-4 rounded-full bg-[#EC1B23] text-[9px] font-bold text-white">
+                      <span className="ml-auto inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#e42424] text-[9px] font-bold text-white">
                         {conv.unread}
                       </span>
                     )}
@@ -883,14 +883,14 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
       </aside>
 
       {/* Chat */}
-      <section className="col-span-12 md:col-span-6 bg-[#070A20] border border-[#1E226F] rounded-xl flex flex-col min-h-0">
-        <div className="px-4 py-3 border-b border-[#1A1B62] flex items-center justify-between">
+      <section className="col-span-12 md:col-span-6 bg-gradient-to-b from-white to-[#f7faff] border border-[#2c348c]/20 rounded-xl flex flex-col min-h-0 shadow-[0_10px_24px_rgba(15,23,42,0.10)]">
+        <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
           <div>
-            <h2 className="text-sm font-bold text-white">
+            <h2 className="title-ui-section">
               {selectedConversation?.leadName || 'Selecione um atendimento'}
             </h2>
-            <div className="flex items-center gap-2 mt-0.5">
-              <span className="text-[10px] text-gray-400 flex items-center gap-1">
+            <div className="mt-0.5 flex items-center gap-2">
+              <span className="flex items-center gap-1 text-[11px] text-ui-muted">
                 <MessageCircle size={11} />
                 Atendimento em andamento
               </span>
@@ -906,7 +906,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
           </div>
           <div className="flex items-center gap-2">
             {selectedConversation?.topic && (
-              <span className="px-2 py-1 rounded-full border border-[#2B2F8F] text-[10px] text-gray-100 bg-[#0F103A]">
+              <span className="px-2 py-1 rounded-full border border-slate-300 text-[10px] text-slate-800 bg-slate-100">
                 Tema: {selectedConversation.topic}
               </span>
             )}
@@ -915,20 +915,20 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                 className={clsx(
                   'px-2 py-1 rounded-full border text-[10px]',
                   selectedConversation?.slaBreachedAt
-                    ? 'border-red-500 text-red-300 bg-red-900/30'
-                    : 'border-amber-500 text-amber-300 bg-amber-900/20'
+                    ? 'border-red-200 bg-red-50 text-red-800'
+                    : 'border-amber-200 bg-amber-50 text-amber-900'
                 )}
               >
                 SLA: {selectedConversation?.slaBreachedAt ? 'estourado' : 'ativo'}
               </span>
             )}
             {routingHint?.targetUsername && (
-              <span className="px-2 py-1 rounded-full border border-emerald-600 text-[10px] text-emerald-300 bg-emerald-900/20">
+              <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] text-emerald-900">
                 IA sugere: {routingHint.targetUsername}
               </span>
             )}
           <button
-            className="inline-flex items-center gap-1 rounded-full bg-[#080816] border border-[#1A1B62] px-3 py-1 text-[11px] text-gray-200 hover:border-[#6E71DA]"
+            className="inline-flex items-center gap-1 rounded-full bg-slate-50 border border-slate-200 px-3 py-1 text-[11px] text-slate-700 hover:border-[#2c348c]/40"
             onClick={() => {
               if (selectedConversation?.leadPhone) {
                 window.open(`tel:${String(selectedConversation.leadPhone).replace(/\s/g, '')}`);
@@ -941,15 +941,15 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
           </div>
         </div>
 
-        <div className="flex-1 min-h-0 overflow-y-auto px-3 py-3 space-y-2">
+        <div className="flex-1 min-h-0 overflow-y-auto bg-gradient-to-b from-white to-slate-50/70 px-3 py-3 space-y-2">
           {messagesLoading && (
-            <div className="text-[11px] text-gray-400">Atualizando mensagens...</div>
+            <div className="text-[11px] text-slate-500">Atualizando mensagens...</div>
           )}
           {messages.map((m) => {
             const isMe = m.from === 'AGENTE' || m.from === 'IA';
             const bubbleClass = isMe
-              ? 'bg-gradient-to-br from-[#1A1B62] to-[#EC1B23]'
-              : 'bg-[#111827]';
+              ? 'bg-gradient-to-br from-[#2c348c] to-[#e42424] border-transparent'
+              : 'border-slate-300 bg-white';
             return (
               <div
                 key={m.id}
@@ -960,28 +960,43 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
               >
                 <div
                   className={clsx(
-                    'max-w-[75%] rounded-2xl px-3 py-2 text-xs shadow-md',
+                    'max-w-[75%] rounded-2xl px-3 py-2 text-xs shadow-[0_6px_14px_rgba(15,23,42,0.10)] border',
                     bubbleClass
                   )}
                 >
-                  <div className="text-[11px] font-semibold mb-0.5 text-white/80">
+                  <div
+                    className={clsx(
+                      'mb-0.5 text-[11px] font-semibold',
+                      isMe ? 'text-white/90' : 'text-slate-600'
+                    )}
+                  >
                     {m.from === 'CLIENTE'
                       ? 'Cliente'
                       : m.from === 'IA'
                       ? 'IA'
                       : 'Atendente'}
                   </div>
-                  <div className="text-[12px] text-white leading-relaxed whitespace-pre-wrap">
+                  <div
+                    className={clsx(
+                      'whitespace-pre-wrap text-[12px] leading-relaxed',
+                      isMe ? 'text-white' : 'text-slate-800'
+                    )}
+                  >
                     {m.text}
                   </div>
                   {Array.isArray(m.attachments) && m.attachments.length > 0 && (
-                    <div className="mt-1 text-[10px] text-white/70">
+                    <div className={clsx('mt-1 text-[10px]', isMe ? 'text-white/70' : 'text-slate-500')}>
                       {m.attachments.map((a, idx) => (
                         <div key={idx}>Anexo: {a.filename || a.type || 'arquivo'}</div>
                       ))}
                     </div>
                   )}
-                  <div className="mt-1 flex items-center justify-between text-[10px] text-white/70">
+                  <div
+                    className={clsx(
+                      'mt-1 flex items-center justify-between text-[10px]',
+                      isMe ? 'text-white/70' : 'text-slate-500'
+                    )}
+                  >
                     <span>{m.time}</span>
                     <div className="flex items-center gap-1">
                       <span className="text-[9px]">
@@ -1015,7 +1030,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
           })}
         </div>
 
-        <div className="px-4 py-3 border-t border-[#1A1B62] flex flex-col gap-2">
+        <div className="px-4 py-3 border-t border-slate-200 flex flex-col gap-2">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
             <select
               value={selectedConversation?.assignedUsername || ''}
@@ -1026,7 +1041,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                   assignmentMode: 'MANUAL',
                 });
               }}
-              className="rounded-lg bg-[#080816] border border-[#1A1B62] px-2 py-2 text-[11px] text-gray-100 outline-none focus:ring-1 focus:ring-[#4B6FA8]"
+              className="rounded-lg bg-white border border-slate-300 px-2 py-2 text-[11px] text-slate-900 outline-none focus:border-[#2c348c]/45 focus:ring-2 focus:ring-[#2c348c]/25"
             >
               <option value="">Sem responsável</option>
               {agents.map((a) => (
@@ -1045,13 +1060,13 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                     lockMinutes: 20,
                   })
                 }
-                className="flex-1 rounded-lg bg-[#080816] border border-[#1A1B62] px-2 py-2 text-[11px] text-gray-100 hover:border-[#6E71DA]"
+                className="flex-1 rounded-lg bg-slate-50 border border-slate-200 px-2 py-2 text-[11px] text-slate-800 hover:border-[#2c348c]/40"
               >
                 {selectedConversation?.lockedBy ? `Desbloquear (${selectedConversation.lockedBy})` : 'Assumir conversa'}
               </button>
             </div>
           </div>
-          <div className="flex items-center justify-between text-[11px] text-gray-400">
+          <div className="flex items-center justify-between text-[11px] text-slate-500">
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_6px_rgba(16,185,129,0.9)]" />
               <span>Conectado • Fluxo de chat CRM</span>
@@ -1060,8 +1075,8 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
               className={clsx(
                 'px-2 py-0.5 rounded-full border text-[9px] font-semibold',
                 sofiaActiveToday
-                  ? 'border-emerald-500 text-emerald-300'
-                  : 'border-gray-600 text-gray-300'
+                  ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
+                  : 'border-slate-300 bg-slate-100 text-slate-600'
               )}
             >
               {sofiaActiveToday ? `${sofiaName} ativa hoje` : `${sofiaName} apenas suporte`}
@@ -1070,7 +1085,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
           <div className="flex items-end gap-2">
             <button
               type="button"
-              className="p-2 rounded-full bg-[#080816] border border-[#1A1B62] text-gray-300 hover:text-white hover:border-[#6E71DA]"
+              className="p-2 rounded-full bg-slate-50 border border-slate-200 text-slate-600 hover:text-[#2c348c] hover:border-[#2c348c]/40"
               onClick={() => {
                 setEmojiOpen((v) => !v);
               }}
@@ -1079,7 +1094,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
             </button>
             <button
               type="button"
-              className="px-2 py-1 rounded-lg bg-[#080816] border border-[#1A1B62] text-[10px] text-gray-200 hover:border-[#6E71DA]"
+              className="px-2 py-1 rounded-lg bg-slate-50 border border-slate-200 text-[10px] text-slate-700 hover:border-[#2c348c]/40"
               onClick={handleSofiaSuggest}
               disabled={sofiaSuggesting}
             >
@@ -1087,7 +1102,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
             </button>
             <button
               type="button"
-              className="px-2 py-1 rounded-lg bg-[#1A1B62] border border-[#2B2F8F] text-[10px] text-white hover:bg-[#EC1B23]"
+              className="px-2 py-1 rounded-lg bg-[#2c348c] border border-slate-300 text-[10px] text-white hover:bg-[#e42424]"
               onClick={handleSofiaAutoReply}
               disabled={sofiaAutoRunning}
             >
@@ -1095,7 +1110,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
             </button>
             <button
               type="button"
-              className="p-2 rounded-full bg-[#080816] border border-[#1A1B62] text-gray-300 hover:text-white hover:border-[#6E71DA]"
+              className="p-2 rounded-full bg-slate-50 border border-slate-200 text-slate-600 hover:text-[#2c348c] hover:border-[#2c348c]/40"
               onClick={() => fileInputRef.current?.click()}
             >
               <Paperclip size={18} />
@@ -1113,20 +1128,20 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 placeholder="Digite sua mensagem..."
-                className="w-full bg-[#080816] border border-[#1A1B62] rounded-2xl px-4 py-2 text-xs text-gray-100 placeholder-gray-500 outline-none resize-none focus:ring-1 focus:ring-[#EC1B23]"
+                className="w-full resize-none rounded-2xl border border-slate-300 bg-white px-4 py-2 text-xs text-slate-900 outline-none placeholder:text-slate-500 focus:border-[#2c348c]/45 focus:ring-2 focus:ring-[#2c348c]/25"
               />
             </div>
             <button
               type="button"
               onClick={handleSend}
               disabled={sendingAttachment}
-              className="p-2.5 rounded-full bg-[#1A1B62] text-white hover:bg-[#EC1B23] shadow-[0_0_18px_rgba(26,27,98,0.8)] disabled:opacity-60"
+              className="rounded-full bg-[#2c348c] p-2.5 text-white shadow-md transition-colors hover:bg-[#e42424] disabled:opacity-60"
             >
               <Send size={18} />
             </button>
           </div>
           {emojiOpen && (
-            <div className="rounded-xl border border-[#1A1B62] bg-[#080816] p-2 grid grid-cols-8 gap-1">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-2 grid grid-cols-8 gap-1">
               {['😀','😁','😂','😊','😉','😍','🤝','🙏','👍','✅','📦','🚚','📍','⏰','⚠️','📞'].map((emoji) => (
                 <button
                   key={emoji}
@@ -1135,7 +1150,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                     setInput((prev) => `${prev}${prev ? ' ' : ''}${emoji}`);
                     setEmojiOpen(false);
                   }}
-                  className="h-8 rounded-lg hover:bg-[#0F103A] text-lg"
+                  className="h-8 rounded-lg hover:bg-slate-100 text-lg"
                 >
                   {emoji}
                 </button>
@@ -1143,7 +1158,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
             </div>
           )}
           {attachmentFiles.length > 0 && (
-            <div className="text-[10px] text-gray-400">
+            <div className="text-[10px] text-slate-500">
               {attachmentFiles.length} arquivo(s) pronto(s) para envio
             </div>
           )}
@@ -1151,11 +1166,11 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
       </section>
 
       {/* Dados do cliente */}
-      <aside className="col-span-12 md:col-span-3 bg-[#070A20] border border-[#1E226F] rounded-xl p-4 flex flex-col space-y-3 min-h-0 overflow-y-auto">
+      <aside className="col-span-12 md:col-span-3 bg-gradient-to-b from-white to-[#f7faff] border border-[#2c348c]/20 rounded-xl p-4 flex flex-col space-y-3 min-h-0 overflow-y-auto shadow-[0_10px_24px_rgba(15,23,42,0.10)]">
         <div className="flex items-center justify-between mb-1">
           <div>
-            <h2 className="text-sm font-bold text-white">Dados do Cliente</h2>
-            <p className="text-[11px] text-gray-400">Resumo rápido do lead</p>
+            <h2 className="title-ui-section">Dados do Cliente</h2>
+            <p className="text-[11px] text-ui-muted">Resumo rápido do lead</p>
           </div>
         </div>
         <div className="flex gap-2 text-[10px]">
@@ -1171,7 +1186,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                 'px-2 py-1 rounded-full border text-[9px] font-bold uppercase tracking-wide',
                 statusAtendimento === st
                   ? 'bg-emerald-600 text-white border-emerald-500'
-                  : 'bg-[#080816] text-gray-300 border-[#1A1B62] hover:border-[#6E71DA]'
+                  : 'bg-slate-50 text-slate-600 border-slate-200 hover:border-[#2c348c]/40'
               )}
             >
               {st === 'PENDENTE' && 'Pendente'}
@@ -1181,15 +1196,15 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
             </button>
           ))}
         </div>
-        <div className="flex gap-2 text-[11px] border-b border-[#1A1B62] pb-2">
+        <div className="flex gap-2 text-[11px] border-b border-slate-200 pb-2">
           <button
             type="button"
             onClick={() => setInfoTab('detalhes')}
             className={clsx(
               'px-2 py-1 rounded-md',
               infoTab === 'detalhes'
-                ? 'bg-[#1A1B62] text-white'
-                : 'text-gray-300 hover:bg-[#080816]'
+                ? 'bg-[#2c348c] text-white'
+                : 'text-slate-600 hover:bg-slate-50'
             )}
           >
             Detalhes
@@ -1200,8 +1215,8 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
             className={clsx(
               'px-2 py-1 rounded-md',
               infoTab === 'midia'
-                ? 'bg-[#1A1B62] text-white'
-                : 'text-gray-300 hover:bg-[#080816]'
+                ? 'bg-[#2c348c] text-white'
+                : 'text-slate-600 hover:bg-slate-50'
             )}
           >
             Mídia
@@ -1212,8 +1227,8 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
             className={clsx(
               'px-2 py-1 rounded-md',
               infoTab === 'resumo'
-                ? 'bg-[#1A1B62] text-white'
-                : 'text-gray-300 hover:bg-[#080816]'
+                ? 'bg-[#2c348c] text-white'
+                : 'text-slate-600 hover:bg-slate-50'
             )}
           >
             Resumo
@@ -1222,59 +1237,59 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
 
         {infoTab === 'detalhes' && (
           <div className="space-y-3">
-            <div className="bg-[#080816] border border-[#1A1B62] rounded-xl p-3 space-y-2">
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2">
               <div className="flex items-center gap-2">
-                <UserCircle2 size={28} className="text-[#EC1B23]" />
+                <UserCircle2 size={28} className="text-[#e42424]" />
                 <div>
-                  <p className="text-xs font-semibold text-white">
+                  <p className="text-xs font-semibold text-slate-900">
                     {selectedConversation?.leadName || '—'}
                   </p>
-                  <p className="text-[11px] text-gray-400">
+                  <p className="text-[11px] text-slate-500">
                     Código interno #{(selectedConversation?.id || '').padStart(4, '0')}
                   </p>
                 </div>
               </div>
               <div className="flex flex-wrap gap-1.5 pt-1">
-                <span className="px-2 py-0.5 rounded-full bg-emerald-900/40 text-emerald-200 text-[10px] border border-emerald-500/60">
+                <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] text-emerald-800">
                   Frete recorrente
                 </span>
-                <span className="px-2 py-0.5 rounded-full bg-sky-900/40 text-sky-200 text-[10px] border border-sky-500/60">
+                <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] text-sky-800">
                   Rastreio ativo
                 </span>
               </div>
             </div>
-            <div className="bg-[#080816] border border-[#1A1B62] rounded-xl p-3 space-y-2">
-              <p className="text-[11px] text-gray-400 uppercase tracking-wide">
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2">
+              <p className="text-[11px] text-slate-500 uppercase tracking-wide">
                 Informações de contato
               </p>
               <div className="space-y-1">
-                <label className="text-[10px] text-gray-400">Telefone</label>
+                <label className="text-[11px] font-semibold text-slate-700">Telefone</label>
                 <input
-                  className="w-full rounded-lg bg-[#080816] border border-[#1E226F] px-2 py-1 text-[11px] text-gray-100 outline-none focus:ring-1 focus:ring-[#EC1B23]"
+                  className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-900 outline-none focus:border-[#2c348c]/45 focus:ring-2 focus:ring-[#2c348c]/25"
                   value={clientePhone}
                   onChange={(e) => setClientePhone(e.target.value)}
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-[10px] text-gray-400">E-mail</label>
+                <label className="text-[11px] font-semibold text-slate-700">E-mail</label>
                 <input
-                  className="w-full rounded-lg bg-[#080816] border border-[#1E226F] px-2 py-1 text-[11px] text-gray-100 outline-none focus:ring-1 focus:ring-[#EC1B23]"
+                  className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-900 outline-none focus:border-[#2c348c]/45 focus:ring-2 focus:ring-[#2c348c]/25"
                   value={clienteEmail}
                   onChange={(e) => setClienteEmail(e.target.value)}
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-[10px] text-gray-400">Observações</label>
+                <label className="text-[11px] font-semibold text-slate-700">Observações</label>
                 <textarea
-                  className="w-full rounded-lg bg-[#080816] border border-[#1E226F] px-2 py-1 text-[11px] text-gray-100 outline-none min-h-[70px] resize-none focus:ring-1 focus:ring-[#EC1B23]"
+                  className="min-h-[70px] w-full resize-none rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-900 outline-none focus:border-[#2c348c]/45 focus:ring-2 focus:ring-[#2c348c]/25"
                   value={observacoes}
                   onChange={(e) => setObservacoes(e.target.value)}
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-[10px] text-gray-400">Unidade de destino</label>
+                <label className="text-[11px] font-semibold text-slate-700">Unidade de destino</label>
                 <select
-                  className="w-full rounded-lg bg-[#080816] border border-[#1E226F] px-2 py-1 text-[11px] text-gray-100 outline-none focus:ring-1 focus:ring-[#EC1B23]"
+                  className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-900 outline-none focus:border-[#2c348c]/45 focus:ring-2 focus:ring-[#2c348c]/25"
                   value={clienteDestino}
                   onChange={(e) => setClienteDestino(e.target.value)}
                 >
@@ -1285,9 +1300,9 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                 </select>
               </div>
               <div className="space-y-1">
-                <label className="text-[10px] text-gray-400">Canal preferido</label>
+                <label className="text-[11px] font-semibold text-slate-700">Canal preferido</label>
                 <select
-                  className="w-full rounded-lg bg-[#080816] border border-[#1E226F] px-2 py-1 text-[11px] text-gray-100 outline-none focus:ring-1 focus:ring-[#EC1B23]"
+                  className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-900 outline-none focus:border-[#2c348c]/45 focus:ring-2 focus:ring-[#2c348c]/25"
                   value={clientePreferencia}
                   onChange={(e) => setClientePreferencia(e.target.value as any)}
                 >
@@ -1300,23 +1315,23 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                 type="button"
                 onClick={handleSaveClientData}
                 disabled={savingClientData || !selectedConversation?.leadId}
-                className="w-full mt-1 rounded-lg bg-[#1A1B62] border border-[#2B2F8F] px-2 py-1.5 text-[11px] text-white hover:bg-[#EC1B23] disabled:opacity-60"
+                className="w-full mt-1 rounded-lg bg-[#2c348c] border border-slate-300 px-2 py-1.5 text-[11px] text-white hover:bg-[#e42424] disabled:opacity-60"
               >
                 {savingClientData ? 'Salvando dados...' : 'Salvar dados do cliente'}
               </button>
             </div>
-            <div className="bg-[#080816] border border-[#1A1B62] rounded-xl p-3 space-y-1">
-              <p className="text-[11px] text-gray-400 uppercase tracking-wide mb-1">
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-1">
+              <p className="text-[11px] text-slate-500 uppercase tracking-wide mb-1">
                 Último rastreio
               </p>
-              <p className="text-xs text-gray-200">
+              <p className="text-xs text-slate-700">
                 {ultimoRastreio || 'Nenhum CTE consultado ainda nesta conversa.'}
               </p>
               {!!selectedConversation?.cte && onOpenTracking && (
                 <button
                   type="button"
                   onClick={() => onOpenTracking(selectedConversation.cte || '')}
-                  className="mt-2 px-2 py-1 text-[11px] rounded bg-[#1A1B62] text-white hover:bg-[#EC1B23]"
+                  className="mt-2 px-2 py-1 text-[11px] rounded bg-[#2c348c] text-white hover:bg-[#e42424]"
                 >
                   Abrir detalhe do rastreio
                 </button>
@@ -1327,10 +1342,10 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
 
         {infoTab === 'midia' && (
           <div className="space-y-2">
-            <p className="text-[11px] text-gray-400 uppercase tracking-wide">
+            <p className="text-[11px] text-slate-500 uppercase tracking-wide">
               Mídia da conversa
             </p>
-            <p className="text-[11px] text-gray-500">
+            <p className="text-[11px] text-slate-600">
               (Demo) Aqui você verá imagens, PDFs, áudios e outros anexos trocados nesta
               conversa.
             </p>
@@ -1339,24 +1354,24 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
 
         {infoTab === 'resumo' && (
           <div className="space-y-3">
-            <p className="text-[11px] text-gray-400 uppercase tracking-wide">
+            <p className="text-[11px] text-slate-500 uppercase tracking-wide">
               Resumo da conversa para IA
             </p>
-            <p className="text-xs text-gray-200">
+            <p className="text-xs text-slate-700">
               {sofiaName} pode usar este resumo como contexto para responder de forma mais
               humana e alinhada às regras da São Luiz Express.
             </p>
-            <div className="bg-[#080816] border border-[#1A1B62] rounded-xl p-3 space-y-1">
-              <p className="text-[11px] text-gray-400 uppercase tracking-wide mb-1">
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-1">
+              <p className="text-[11px] text-slate-500 uppercase tracking-wide mb-1">
                 Estatísticas rápidas
               </p>
-              <p className="text-[11px] text-gray-200">
+              <p className="text-[11px] text-slate-700">
                 Mensagens totais: {messages.length}
               </p>
-              <p className="text-[11px] text-gray-200">
+              <p className="text-[11px] text-slate-700">
                 Respostas IA: {messages.filter((m) => m.from === 'IA').length}
               </p>
-              <p className="text-[11px] text-gray-200">
+              <p className="text-[11px] text-slate-700">
                 Última interação: {messages[messages.length - 1]?.time || '--'}
               </p>
             </div>

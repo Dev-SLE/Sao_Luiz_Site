@@ -297,37 +297,37 @@ const Reports: React.FC = () => {
 
   if (!canExport) {
     return (
-      <div className="bg-[#070A20] border border-[#1E226F] rounded-xl p-6 shadow-sm text-white">
+      <div className="rounded-xl border border-slate-200 bg-white p-6 text-slate-900 shadow-sm">
         <h3 className="text-lg font-bold">Sem permissão</h3>
-        <p className="text-sm text-gray-400 mt-1">Seu perfil não possui acesso aos relatórios.</p>
+        <p className="mt-1 text-sm text-slate-500">Seu perfil não possui acesso aos relatórios.</p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-4 animate-in fade-in duration-500 text-white">
+    <div className="space-y-4 animate-in fade-in duration-500 text-slate-900">
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="rounded-lg bg-[#0F103A] p-2 text-[#EC1B23] border border-[#1A1B62] shadow-[0_0_18px_rgba(236,27,35,0.4)]">
+          <div className="rounded-lg bg-slate-100 p-2 text-[#e42424] border border-slate-200 shadow-[0_0_18px_rgba(236,27,35,0.4)]">
             <SlidersHorizontal size={20} />
           </div>
           <div>
             <h1 className="text-xl md:text-2xl font-black">Relatórios</h1>
-            <p className="text-xs text-gray-400">{reportLabel}</p>
+            <p className="text-xs text-slate-500">{reportLabel}</p>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
           <button
             onClick={exportCsv}
-            className="inline-flex items-center gap-2 rounded-xl bg-[#1A1B62] px-4 py-2 text-xs font-semibold text-white shadow-[0_0_18px_rgba(26,27,98,0.7)] hover:bg-[#EC1B23] transition-all"
+            className="inline-flex items-center gap-2 rounded-xl bg-[#2c348c] px-4 py-2 text-xs font-semibold text-white shadow-sm transition-all hover:bg-[#e42424]"
             disabled={loading || exportBaseRows.length === 0}
           >
             <Download size={14} /> CSV
           </button>
           <button
             onClick={exportXlsx}
-            className="inline-flex items-center gap-2 rounded-xl bg-[#1A1B62] px-4 py-2 text-xs font-semibold text-white shadow-[0_0_18px_rgba(26,27,98,0.7)] hover:bg-[#EC1B23] transition-all"
+            className="inline-flex items-center gap-2 rounded-xl bg-[#2c348c] px-4 py-2 text-xs font-semibold text-white shadow-sm transition-all hover:bg-[#e42424]"
             disabled={loading || exportBaseRows.length === 0}
           >
             <FileSpreadsheet size={14} /> Excel
@@ -362,8 +362,8 @@ const Reports: React.FC = () => {
             className={clsx(
               'px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors',
               kind === k
-                ? 'bg-white text-[#1A1B62] border-white'
-                : 'bg-[#080816] border-[#1A1B62] text-gray-300 hover:border-[#6E71DA]'
+                ? 'border-[#2c348c] bg-[#2c348c] text-white'
+                : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-[#2c348c]/40'
             )}
           >
             {label}
@@ -373,12 +373,12 @@ const Reports: React.FC = () => {
 
       {/* Filtros */}
       <div className="flex flex-col lg:flex-row lg:items-center gap-3 lg:justify-between">
-        <div className="flex items-center gap-2 bg-[#070A20] border border-[#1E226F] rounded-xl px-3 py-2">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-gray-300">Unidade</span>
+        <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-2">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600">Unidade</span>
           <select
             value={unit}
             onChange={(e) => setUnit(e.target.value)}
-            className="appearance-none bg-[#070A20] border border-[#1E226F] text-gray-100 text-xs font-bold px-2 py-1 rounded-lg outline-none focus:ring-2 focus:ring-[#EC1B23]/60"
+            className="appearance-none rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-[#2c348c]/30"
           >
             <option value="">Todas as Unidades</option>
             {units.map(u => (
@@ -388,26 +388,26 @@ const Reports: React.FC = () => {
             ))}
           </select>
         </div>
-        <div className="flex items-center gap-2 bg-[#070A20] border border-[#1E226F] rounded-xl px-3 py-2">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-gray-300">
+        <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-2">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600">
             {kind === 'concluidos' ? 'Data baixa' : 'Data emissão'}
           </span>
           <input
             type="date"
             value={draftDateFrom}
             onChange={(e) => setDraftDateFrom(e.target.value)}
-            className="bg-[#070A20] border border-[#1E226F] text-gray-100 text-xs font-bold px-2 py-1 rounded-lg outline-none focus:ring-2 focus:ring-[#EC1B23]/60"
+            className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-[#2c348c]/30"
           />
           <input
             type="date"
             value={draftDateTo}
             onChange={(e) => setDraftDateTo(e.target.value)}
-            className="bg-[#070A20] border border-[#1E226F] text-gray-100 text-xs font-bold px-2 py-1 rounded-lg outline-none focus:ring-2 focus:ring-[#EC1B23]/60"
+            className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-[#2c348c]/30"
           />
           <button
             type="button"
             onClick={() => { setAppliedDateFrom(draftDateFrom); setAppliedDateTo(draftDateTo); }}
-            className="inline-flex items-center gap-1 rounded-lg bg-[#2B2F8F] border border-[#6E71DA] px-3 py-1 text-[11px] font-black text-white hover:bg-[#3A3FB0] transition-colors"
+            className="inline-flex items-center gap-1 rounded-lg border border-[#2c348c]/40 bg-[#2c348c] px-3 py-1 text-[11px] font-black text-white transition-colors hover:bg-[#243a7a]"
           >
             <CalendarCheck2 size={12} />
             Aplicar
@@ -415,33 +415,33 @@ const Reports: React.FC = () => {
           <button
             type="button"
             onClick={() => { setDraftDateFrom(''); setDraftDateTo(''); setAppliedDateFrom(''); setAppliedDateTo(''); }}
-            className="rounded-lg bg-[#080816] border border-[#1A1B62] px-3 py-1 text-[11px] font-bold text-gray-200 hover:bg-[#0F103A] transition-colors"
+            className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-bold text-slate-700 transition-colors hover:bg-slate-100"
           >
             Limpar
           </button>
         </div>
 
-        <div className="text-[11px] text-gray-400">
+        <div className="text-[11px] text-slate-500">
           {loading ? (
             <span className="inline-flex items-center gap-2">
               <Loader2 size={14} className="animate-spin" /> Carregando...
             </span>
           ) : (
             <span>
-              Linhas: <span className="font-bold text-gray-200">{filteredRows.length}</span> (total: {total})
+              Linhas: <span className="font-bold text-slate-800">{filteredRows.length}</span> (total: {total})
             </span>
           )}
         </div>
       </div>
 
       {/* Colunas */}
-      <div className="bg-[#070A20] border border-[#1E226F] rounded-xl p-3">
+      <div className="bg-white border border-slate-200 rounded-xl p-3">
         <div className="flex items-center justify-between gap-3 mb-2">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-gray-300">Colunas</span>
+          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600">Colunas</span>
           <button
             type="button"
             onClick={() => setSelectedColumns(ALL_COLUMNS.map(c => c.key))}
-            className="text-[11px] font-bold text-primary-300 hover:text-primary-200"
+            className="text-[11px] font-bold text-[#2c348c] hover:text-[#243a7a]"
           >
             Selecionar todas
           </button>
@@ -462,8 +462,8 @@ const Reports: React.FC = () => {
                 className={clsx(
                   'px-3 py-1 rounded-lg text-xs font-bold border transition-colors',
                   checked
-                    ? 'bg-[#EC1B23]/15 border-[#EC1B23] text-[#FF8A8A]'
-                    : 'bg-[#080816] border-[#1A1B62] text-gray-300 hover:border-[#6E71DA]'
+                    ? 'border-red-200 bg-red-50 text-red-800'
+                    : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-[#2c348c]/40'
                 )}
               >
                 {c.label}
@@ -474,18 +474,18 @@ const Reports: React.FC = () => {
       </div>
 
       {/* Preview mínimo */}
-      <div className="bg-[#070A20] border border-[#1E226F] rounded-xl overflow-hidden">
-        <div className="px-4 py-3 border-b border-[#1E226F] flex items-center justify-between">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-gray-300">
+      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+        <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600">
             Preview (primeiras 50 linhas)
           </span>
-          <span className="text-[11px] text-gray-400">
+          <span className="text-[11px] text-slate-500">
             {filteredRows.slice(0, 50).length}/{filteredRows.length}
           </span>
         </div>
         <div className="max-h-[340px] overflow-auto">
           <table className="w-full text-sm text-left">
-            <thead className="bg-[#080816] text-gray-200 uppercase font-bold text-xs">
+            <thead className="bg-slate-100 text-xs font-bold uppercase text-slate-700">
               <tr>
                 {selectedColumns.map(c => (
                   <th key={c} className="px-3 py-2">
@@ -494,11 +494,11 @@ const Reports: React.FC = () => {
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#1A1B62]">
+            <tbody className="divide-y divide-slate-200">
               {filteredRows.slice(0, 50).map((r, idx) => (
-                <tr key={idx} className="hover:bg-[#0F1440]/60">
+                <tr key={idx} className="hover:bg-slate-50/80">
                   {selectedColumns.map(c => (
-                    <td key={c} className="px-3 py-2 text-gray-100 whitespace-nowrap">
+                    <td key={c} className="whitespace-nowrap px-3 py-2 text-slate-800">
                       {(() => {
                         switch (c) {
                           case 'STATUS_CALCULADO':
