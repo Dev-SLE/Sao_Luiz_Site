@@ -27,6 +27,263 @@ function lastN(input: string, n: number) {
   return d.slice(-n);
 }
 
+function extractProfilePhotoUrl(item: any): string | null {
+  if (!item || typeof item !== "object") return null;
+  const candidates = [
+    item.profilePicUrl,
+    item.profilePictureUrl,
+    item.pictureUrl,
+    item.avatarUrl,
+    item.contactPhotoUrl,
+    item?.data?.profilePicUrl,
+    item?.data?.profilePictureUrl,
+    item?.data?.pictureUrl,
+    item?.data?.avatarUrl,
+    item?.data?.contactPhotoUrl,
+  ];
+  for (const c of candidates) {
+    const u = String(c || "").trim();
+    if (u && /^https?:\/\//i.test(u)) return u;
+  }
+  return null;
+}
+
+function parseLast10ListFromEnv(raw: string | undefined): Set<string> {
+  const out = new Set<string>();
+  const parts = String(raw || "")
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean);
+  for (const p of parts) {
+    const d = p.replace(/\D/g, "");
+    if (!d) continue;
+    out.add(lastN(d, 10));
+  }
+  return out;
+}
+
+async function callOpenAiForIntake(prompt: string): Promise<string | null> {
+  const apiKey = process.env.OPENAI_API_KEY;
+  const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
+  if (!apiKey) return null;
+  const resp = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      temperature: 0.2,
+      messages: [
+        {
+          role: "system",
+          content:
+            "Classifique contato para CRM logístico. Responda somente CREATE, WAIT ou SKIP.",
+        },
+        { role: "user", content: prompt },
+      ],
+    }),
+  });
+  if (!resp.ok) return null;
+  const json = await resp.json().catch(() => ({}));
+  return json?.choices?.[0]?.message?.content ? String(json.choices[0].message.content) : null;
+}
+
+async function callGeminiForIntake(prompt: string): Promise<string | null> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  const model = process.env.GEMINI_MODEL || "gemini-1.5-flash";
+  if (!apiKey) return null;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+    model
+  )}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      generationConfig: { temperature: 0.2 },
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+    }),
+  });
+  if (!resp.ok) return null;
+  const json = await resp.json().catch(() => ({}));
+  const text = json?.candidates?.[0]?.content?.parts?.[0]?.text;
+  return text ? String(text) : null;
+}
+
+async function aiIntakeDecision(prompt: string): Promise<"CREATE" | "WAIT" | "SKIP" | null> {
+  const provider = String(process.env.AI_PROVIDER || "OPENAI").toUpperCase();
+  const raw =
+    provider === "GEMINI" ? await callGeminiForIntake(prompt) : await callOpenAiForIntake(prompt);
+  if (!raw) return null;
+  const t = raw.toUpperCase();
+  if (t.includes("CREATE")) return "CREATE";
+  if (t.includes("SKIP")) return "SKIP";
+  if (t.includes("WAIT")) return "WAIT";
+  return null;
+}
+
+async function loadIntakeSettings(pool: any) {
+  const res = await pool.query(
+    `
+      SELECT lead_filter_mode, ai_enabled, min_messages_before_create, allowlist_last10, denylist_last10
+      FROM pendencias.crm_evolution_intake_settings
+      WHERE id = 1
+      LIMIT 1
+    `
+  );
+  const row = res.rows?.[0] || {};
+  const mode = String(
+    row.lead_filter_mode || process.env.CRM_EVOLUTION_LEAD_FILTER_MODE || "BUSINESS_ONLY"
+  )
+    .trim()
+    .toUpperCase();
+  const aiEnabled =
+    row.ai_enabled != null
+      ? row.ai_enabled === true
+      : String(process.env.CRM_EVOLUTION_INTAKE_AI_ENABLED || "true").toLowerCase() === "true";
+  const minMessagesBeforeCreate = Math.max(
+    1,
+    Math.min(10, Number(row.min_messages_before_create || 2))
+  );
+  const allowlist = parseLast10ListFromEnv(
+    row.allowlist_last10 || process.env.CRM_EVOLUTION_LEAD_ALLOWLIST_LAST10
+  );
+  const denylist = parseLast10ListFromEnv(
+    row.denylist_last10 || process.env.CRM_EVOLUTION_LEAD_DENYLIST_LAST10
+  );
+  return { mode, aiEnabled, minMessagesBeforeCreate, allowlist, denylist };
+}
+
+async function upsertIntakeBuffer(pool: any, args: {
+  inboxId: string;
+  phoneLast10: string;
+  phoneDigits: string;
+  profileName: string | null;
+  text: string;
+  businessSignal: boolean;
+}) {
+  const res = await pool.query(
+    `
+      INSERT INTO pendencias.crm_evolution_intake_buffer (
+        inbox_id, phone_last10, phone_digits, profile_name, message_count, sample_text, business_score,
+        last_decision, first_seen_at, last_seen_at, updated_at
+      )
+      VALUES ($1::uuid, $2, $3, $4, 1, LEFT($5, 2000), $6, 'WAIT', NOW(), NOW(), NOW())
+      ON CONFLICT (inbox_id, phone_last10) DO UPDATE
+      SET
+        phone_digits = EXCLUDED.phone_digits,
+        profile_name = COALESCE(EXCLUDED.profile_name, pendencias.crm_evolution_intake_buffer.profile_name),
+        message_count = pendencias.crm_evolution_intake_buffer.message_count + 1,
+        sample_text = LEFT(
+          COALESCE(pendencias.crm_evolution_intake_buffer.sample_text, '') || E'\n' || EXCLUDED.sample_text,
+          2000
+        ),
+        business_score = pendencias.crm_evolution_intake_buffer.business_score + EXCLUDED.business_score,
+        last_seen_at = NOW(),
+        updated_at = NOW()
+      RETURNING id, message_count, sample_text, business_score
+    `,
+    [args.inboxId, args.phoneLast10, args.phoneDigits, args.profileName, args.text, args.businessSignal ? 1 : 0]
+  );
+  return res.rows?.[0] || null;
+}
+
+function hasBusinessSignals(input: { text: string; profileName: string | null; cteDetected: string | null }) {
+  if (input.cteDetected) return true;
+  const text = String(input.text || "").toLowerCase();
+  const name = String(input.profileName || "").toLowerCase();
+  const bag = `${text} ${name}`;
+  const keywords = [
+    "cte",
+    "coleta",
+    "entrega",
+    "rastrei",
+    "mercadoria",
+    "nf",
+    "nota fiscal",
+    "romaneio",
+    "cotacao",
+    "cotação",
+    "frete",
+    "transport",
+    "logistica",
+    "logística",
+    "ltda",
+    "eireli",
+    "mei",
+    "agencia",
+    "agência",
+    "filial",
+    "cliente",
+    "embarque",
+    "descarga",
+  ];
+  return keywords.some((k) => bag.includes(k));
+}
+
+async function findAgencyByLast10(pool: any, last10: string): Promise<{ id: string; name: string } | null> {
+  const agRes = await pool.query(
+    `
+      SELECT id, name
+      FROM pendencias.crm_agencies
+      WHERE
+        RIGHT(regexp_replace(COALESCE(whatsapp, ''), '\\D', '', 'g'), 10) = $1
+        OR RIGHT(regexp_replace(COALESCE(phone, ''), '\\D', '', 'g'), 10) = $1
+      ORDER BY created_at DESC
+      LIMIT 1
+    `,
+    [last10]
+  );
+  const row = agRes.rows?.[0];
+  if (!row?.id) return null;
+  return { id: String(row.id), name: String(row.name || "Agência") };
+}
+
+async function shouldCreateLeadForNewContact(input: {
+  mode: string;
+  isFromMe: boolean;
+  isAgencyContact: boolean;
+  allowlisted: boolean;
+  denylisted: boolean;
+  text: string;
+  profileName: string | null;
+  cteDetected: string | null;
+  aiEnabled: boolean;
+  minMessagesBeforeCreate: number;
+  bufferedMessageCount: number;
+  bufferedText: string;
+}) {
+  if (input.denylisted) return false;
+  if (input.allowlisted || input.isAgencyContact) return true;
+  if (input.mode === "OFF") return true;
+  if (input.mode === "AGENCY_ONLY") return false;
+  // BUSINESS_ONLY (padrão): evita poluição por contatos pessoais.
+  if (input.isFromMe) return false;
+  const basicSignal = hasBusinessSignals({
+    text: input.text,
+    profileName: input.profileName,
+    cteDetected: input.cteDetected,
+  });
+  if (basicSignal) return true;
+  if (input.bufferedMessageCount < input.minMessagesBeforeCreate) return false;
+  const bufferedSignal = hasBusinessSignals({
+    text: input.bufferedText,
+    profileName: input.profileName,
+    cteDetected: input.cteDetected,
+  });
+  if (bufferedSignal) return true;
+  if (!input.aiEnabled) return false;
+  const decision = await aiIntakeDecision([
+    "Contexto: triagem de novo contato no CRM logístico.",
+    "Responda apenas CREATE, WAIT ou SKIP.",
+    `Mensagem atual: ${input.text}`,
+    `Histórico curto: ${input.bufferedText}`,
+    "Regra: CREATE só se parecer conversa de negócio (rastreio/cte/coleta/entrega/cotação/agência).",
+  ].join("\n"));
+  return decision === "CREATE";
+}
+
 function verifyEvolutionWebhook(req: Request): boolean {
   const secret = String(process.env.EVOLUTION_WEBHOOK_TOKEN ?? "").trim();
   if (!secret) return true;
@@ -231,9 +488,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Funil CRM não disponível" }, { status: 500 });
     }
 
+    const intakeSettings = await loadIntakeSettings(pool);
+
     for (const item of items) {
       const key = item?.key || item;
-      if (!key || key.fromMe === true) continue;
+      if (!key) continue;
+      const isFromMe = key.fromMe === true;
 
       const remoteJid = String(key.remoteJid || key.remoteJidAlt || "").trim();
       if (!remoteJid || remoteJid.includes("@g.us")) continue;
@@ -247,11 +507,13 @@ export async function POST(req: Request) {
       const cteDetected = extractCteFromText(text);
       const last10 = lastN(phoneDigits, 10);
       const pushName = String(item.pushName || item.verifiedBizName || "").trim();
+      const profilePhotoUrl = extractProfilePhotoUrl(item);
       const profileName = pushName || null;
+      const agencyContact = await findAgencyByLast10(pool, last10);
 
       const leadRes = await pool.query(
         `
-          SELECT id, title, contact_phone
+          SELECT id, title, contact_phone, contact_avatar_url
           FROM pendencias.crm_leads
           WHERE contact_phone IS NOT NULL
             AND RIGHT(regexp_replace(contact_phone, '\\D', '', 'g'), 10) = $1
@@ -275,7 +537,62 @@ export async function POST(req: Request) {
           ]);
           leadTitle = upgradedTitle;
         }
+        if (profilePhotoUrl && String(leadRes.rows[0].contact_avatar_url || "").trim() !== profilePhotoUrl) {
+          await pool.query(
+            `UPDATE pendencias.crm_leads SET contact_avatar_url = $1, updated_at = NOW() WHERE id = $2`,
+            [profilePhotoUrl, leadId]
+          );
+        }
       } else {
+        const allowlisted = intakeSettings.allowlist.has(last10);
+        const denylisted = intakeSettings.denylist.has(last10);
+        const preSignal = hasBusinessSignals({
+          text,
+          profileName,
+          cteDetected,
+        });
+        const bufferRow = await upsertIntakeBuffer(pool, {
+          inboxId,
+          phoneLast10: last10,
+          phoneDigits,
+          profileName,
+          text,
+          businessSignal: preSignal,
+        });
+        const shouldCreate = await shouldCreateLeadForNewContact({
+          mode: intakeSettings.mode,
+          isFromMe,
+          isAgencyContact: !!agencyContact,
+          allowlisted,
+          denylisted,
+          text,
+          profileName,
+          cteDetected,
+          aiEnabled: intakeSettings.aiEnabled,
+          minMessagesBeforeCreate: intakeSettings.minMessagesBeforeCreate,
+          bufferedMessageCount: Number(bufferRow?.message_count || 1),
+          bufferedText: String(bufferRow?.sample_text || text),
+        });
+        if (!shouldCreate) {
+          await pool.query(
+            `
+              UPDATE pendencias.crm_evolution_intake_buffer
+              SET last_decision = 'WAIT', updated_at = NOW()
+              WHERE inbox_id = $1::uuid AND phone_last10 = $2
+            `,
+            [inboxId, last10]
+          );
+          if (process.env.NODE_ENV === "development") {
+            console.log("[evolution-webhook] lead ignorado por filtro", {
+              instance,
+              phone: phoneDigits,
+              profileName,
+              mode: intakeSettings.mode,
+            });
+          }
+          continue;
+        }
+
         leadTitle = profileName
           ? `${profileName} (${last10})`
           : `WhatsApp ${last10}`;
@@ -294,14 +611,36 @@ export async function POST(req: Request) {
           `
             INSERT INTO pendencias.crm_leads (
               pipeline_id, stage_id, title, contact_phone, cte_number, cte_serie,
-              frete_value, source, priority, current_location, owner_username, position, created_at, updated_at
+              frete_value, source, priority, current_location, owner_username, position,
+              agency_id, contact_avatar_url, created_at, updated_at
             )
-            VALUES ($1,$2,$3,$4,$5,NULL,NULL,'WHATSAPP_WEB','MEDIA',NULL,NULL,$6,NOW(),NOW())
+            VALUES ($1,$2,$3,$4,$5,NULL,NULL,$6,'MEDIA',NULL,NULL,$7,$8::uuid,$9,NOW(),NOW())
             RETURNING id
           `,
-          [defaultIds.pipelineId, defaultIds.stageId, leadTitle, phoneDigits, cteDetected || null, position]
+          [
+            defaultIds.pipelineId,
+            defaultIds.stageId,
+            leadTitle,
+            phoneDigits,
+            cteDetected || null,
+            agencyContact ? "AGENCIA_WHATSAPP_WEB" : "WHATSAPP_WEB",
+            position,
+            agencyContact?.id || null,
+            profilePhotoUrl,
+          ]
         );
         leadId = insertLead.rows?.[0]?.id as string;
+        await pool.query(
+          `
+            UPDATE pendencias.crm_evolution_intake_buffer
+            SET
+              last_decision = 'CREATED',
+              created_lead_id = $3::uuid,
+              updated_at = NOW()
+            WHERE inbox_id = $1::uuid AND phone_last10 = $2
+          `,
+          [inboxId, last10, leadId]
+        );
 
         await pool.query(
           `
@@ -341,16 +680,33 @@ export async function POST(req: Request) {
 
       const hasMedia = msgObj && Object.keys(msgObj).some((k) => !["conversation", "extendedTextMessage"].includes(k));
       const msgId = String(key.id || "");
+      if (msgId) {
+        const dup = await pool.query(
+          `
+            SELECT id
+            FROM pendencias.crm_messages
+            WHERE conversation_id = $1
+              AND (
+                metadata->>'message_id' = $2
+                OR metadata#>>'{outbound_whatsapp,message_id}' = $2
+              )
+            LIMIT 1
+          `,
+          [conversationId, msgId]
+        );
+        if (dup.rows?.[0]?.id) continue;
+      }
 
       await pool.query(
         `
           INSERT INTO pendencias.crm_messages (
             conversation_id, sender_type, body, has_attachments, metadata, created_at
           )
-          VALUES ($1, 'CLIENT', $2, $3, $4::jsonb, NOW())
+          VALUES ($1, $2, $3, $4, $5::jsonb, NOW())
         `,
         [
           conversationId,
+          isFromMe ? "AGENT" : "CLIENT",
           text,
           hasMedia,
           JSON.stringify({
@@ -368,9 +724,13 @@ export async function POST(req: Request) {
       await pool.query(
         `
           INSERT INTO pendencias.crm_activities (lead_id, user_username, type, description, data, created_at)
-          VALUES ($1, NULL, 'EVENT', 'Mensagem recebida (WhatsApp Web)', $2::jsonb, NOW())
+          VALUES ($1, NULL, 'EVENT', $2, $3::jsonb, NOW())
         `,
-        [leadId, JSON.stringify({ inbox: instance, from: phoneDigits })]
+        [
+          leadId,
+          isFromMe ? "Mensagem enviada fora do CRM (WhatsApp Web)" : "Mensagem recebida (WhatsApp Web)",
+          JSON.stringify({ inbox: instance, from: phoneDigits }),
+        ]
       );
 
       if (cteDetected) {
@@ -384,16 +744,18 @@ export async function POST(req: Request) {
         );
       }
 
-      try {
-        await applyInboundRouting({
-          leadId,
-          conversationId,
-          text,
-          title: leadTitle,
-          cte: cteDetected,
-        });
-      } catch (e) {
-        console.error("[evolution-webhook] applyInboundRouting:", e);
+      if (!isFromMe) {
+        try {
+          await applyInboundRouting({
+            leadId,
+            conversationId,
+            text,
+            title: leadTitle,
+            cte: cteDetected,
+          });
+        } catch (e) {
+          console.error("[evolution-webhook] applyInboundRouting:", e);
+        }
       }
     }
 

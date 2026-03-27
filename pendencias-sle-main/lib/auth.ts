@@ -534,6 +534,23 @@ export class NeonDataClient {
     return this.postJson('/crm/whatsapp-inboxes', payload);
   }
 
+  async getCrmEvolutionIntakeSettings(): Promise<any> {
+    const url = this.makeApiUrl('/crm/evolution-intake-settings');
+    const resp = await fetch(url);
+    if (!resp.ok) throw await this.buildHttpError('Erro ao buscar triagem Evolution', resp);
+    return resp.json();
+  }
+
+  async saveCrmEvolutionIntakeSettings(payload: {
+    leadFilterMode: "OFF" | "BUSINESS_ONLY" | "AGENCY_ONLY";
+    aiEnabled: boolean;
+    minMessagesBeforeCreate: number;
+    allowlistLast10?: string;
+    denylistLast10?: string;
+  }): Promise<any> {
+    return this.postJson('/crm/evolution-intake-settings', payload);
+  }
+
   async saveCrmTeam(payload: any): Promise<any> {
     return this.postJson("/crm/teams", { ...payload, action: "UPSERT_TEAM" });
   }

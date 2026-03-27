@@ -39,16 +39,25 @@ const CrmOpsAdmin: React.FC = () => {
     teamId: "",
   });
   const [webhookHint, setWebhookHint] = useState("");
+  const [intakeSettings, setIntakeSettings] = useState({
+    leadFilterMode: "BUSINESS_ONLY",
+    aiEnabled: true,
+    minMessagesBeforeCreate: 2,
+    allowlistLast10: "",
+    denylistLast10: "",
+  });
+  const [pendingIntakeCount, setPendingIntakeCount] = useState(0);
 
   const loadAll = async () => {
     setLoading(true);
     setErrorText(null);
     try {
-      const [t, a, r, w] = await Promise.all([
+      const [t, a, r, w, intake] = await Promise.all([
         authClient.getCrmTeams(),
         authClient.getCrmAgents(),
         authClient.getCrmRoutingRules(),
         authClient.getCrmWhatsappInboxes().catch(() => ({ inboxes: [] })),
+        authClient.getCrmEvolutionIntakeSettings().catch(() => ({ settings: null, pendingBufferCount: 0 })),
       ]);
       const s = await authClient.getCrmSlaRules();
       setTeams(Array.isArray(t?.teams) ? t.teams : []);
@@ -56,6 +65,16 @@ const CrmOpsAdmin: React.FC = () => {
       setRules(Array.isArray(r?.rules) ? r.rules : []);
       setSlaRules(Array.isArray(s?.items) ? s.items : []);
       setWaInboxes(Array.isArray(w?.inboxes) ? w.inboxes : []);
+      if (intake?.settings) {
+        setIntakeSettings({
+          leadFilterMode: String(intake.settings.leadFilterMode || "BUSINESS_ONLY"),
+          aiEnabled: intake.settings.aiEnabled !== false,
+          minMessagesBeforeCreate: Number(intake.settings.minMessagesBeforeCreate || 2),
+          allowlistLast10: String(intake.settings.allowlistLast10 || ""),
+          denylistLast10: String(intake.settings.denylistLast10 || ""),
+        });
+      }
+      setPendingIntakeCount(Number(intake?.pendingBufferCount || 0));
     } catch (err) {
       setErrorText(err instanceof Error ? err.message : "Falha ao carregar operação CRM.");
     } finally {
@@ -251,6 +270,14 @@ const CrmOpsAdmin: React.FC = () => {
                   <span className="text-[10px]">{ib.evolutionApiKeyLast4 || "—"}</span>
                 </div>
                 <div className="flex gap-2">
+                  <a
+                    href={`/evolution-pairing?instance=${encodeURIComponent(String(ib.evolutionInstanceName || ""))}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[11px] text-emerald-700 hover:underline"
+                  >
+                    Conectar QR
+                  </a>
                   <button
                     type="button"
                     className="text-[11px] text-[#2c348c] hover:underline"
@@ -280,6 +307,76 @@ const CrmOpsAdmin: React.FC = () => {
                 </div>
               </div>
             ))}
+        </div>
+      </div>
+
+      <div className="surface-card-strong p-4 border border-violet-200/60 bg-gradient-to-br from-violet-50/40 to-white">
+        <h3 className="text-sm font-bold text-slate-900">Triagem de novos contatos (anti-poluição)</h3>
+        <p className="mt-1 text-[11px] text-slate-600">
+          Evita criar lead para amigo/família/contato pessoal. Números de agência cadastrados continuam entrando.
+          Pendentes na triagem: <strong>{pendingIntakeCount}</strong>.
+        </p>
+        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2">
+          <select
+            className="rounded bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800"
+            value={intakeSettings.leadFilterMode}
+            onChange={(e) => setIntakeSettings((s) => ({ ...s, leadFilterMode: e.target.value }))}
+          >
+            <option value="OFF">OFF (cria lead para todo contato novo)</option>
+            <option value="BUSINESS_ONLY">BUSINESS_ONLY (recomendado)</option>
+            <option value="AGENCY_ONLY">AGENCY_ONLY (só agências)</option>
+          </select>
+          <input
+            type="number"
+            min={1}
+            max={10}
+            className="rounded bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800"
+            value={intakeSettings.minMessagesBeforeCreate}
+            onChange={(e) =>
+              setIntakeSettings((s) => ({
+                ...s,
+                minMessagesBeforeCreate: Number(e.target.value) || 2,
+              }))
+            }
+            placeholder="Mensagens mínimas para decidir"
+          />
+          <label className="inline-flex items-center gap-2 text-xs text-slate-700">
+            <input
+              type="checkbox"
+              checked={!!intakeSettings.aiEnabled}
+              onChange={(e) => setIntakeSettings((s) => ({ ...s, aiEnabled: e.target.checked }))}
+            />
+            IA ativa para decidir contato novo duvidoso
+          </label>
+          <div />
+          <textarea
+            className="rounded bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800 md:col-span-2 min-h-[60px]"
+            placeholder="Allowlist (últimos 10 dígitos), separados por vírgula"
+            value={intakeSettings.allowlistLast10}
+            onChange={(e) => setIntakeSettings((s) => ({ ...s, allowlistLast10: e.target.value }))}
+          />
+          <textarea
+            className="rounded bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800 md:col-span-2 min-h-[60px]"
+            placeholder="Denylist (últimos 10 dígitos), separados por vírgula"
+            value={intakeSettings.denylistLast10}
+            onChange={(e) => setIntakeSettings((s) => ({ ...s, denylistLast10: e.target.value }))}
+          />
+          <button
+            type="button"
+            className="pressable-3d rounded bg-gradient-to-r from-violet-700 to-violet-600 text-xs text-white font-bold px-3 py-2"
+            onClick={async () => {
+              await authClient.saveCrmEvolutionIntakeSettings({
+                leadFilterMode: intakeSettings.leadFilterMode as any,
+                aiEnabled: !!intakeSettings.aiEnabled,
+                minMessagesBeforeCreate: Number(intakeSettings.minMessagesBeforeCreate || 2),
+                allowlistLast10: intakeSettings.allowlistLast10 || "",
+                denylistLast10: intakeSettings.denylistLast10 || "",
+              });
+              await loadAll();
+            }}
+          >
+            Salvar triagem
+          </button>
         </div>
       </div>
 

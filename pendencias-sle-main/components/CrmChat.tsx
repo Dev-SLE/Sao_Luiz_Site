@@ -22,6 +22,7 @@ interface ConversationSummary {
   leadName: string;
   leadPhone?: string | null;
   leadEmail?: string | null;
+  leadAvatarUrl?: string | null;
   cte?: string | null;
   leadId?: string;
   lastMessage: string;
@@ -51,6 +52,17 @@ interface Message {
   status?: 'pending' | 'sent' | 'delivered' | 'read' | 'failed' | string;
   attachments?: Array<{ type?: string; filename?: string | null }>;
   optimistic?: boolean;
+}
+
+interface RelatedLeadHistoryItem {
+  messageId: string;
+  conversationId: string;
+  body: string;
+  senderType: 'CLIENTE' | 'AGENTE' | 'IA' | string;
+  channel: Channel | string;
+  inboxName?: string | null;
+  createdAt: string;
+  time: string;
 }
 
 const channelConfig: Record<Channel, { label: string; className: string }> = {
@@ -168,6 +180,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [relatedLeadHistory, setRelatedLeadHistory] = useState<RelatedLeadHistoryItem[]>([]);
   const [conversationsLoading, setConversationsLoading] = useState(false);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [input, setInput] = useState('');
@@ -203,6 +216,15 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
   const conversationsFetchLock = useRef(false);
   const conversationsPollInFlight = useRef(false);
   const messagesRequestSeq = useRef(0);
+
+  const applyMessagesResponse = (resp: any) => {
+    setMessages((resp?.messages || []) as Message[]);
+    setRelatedLeadHistory(
+      Array.isArray(resp?.relatedLeadHistory)
+        ? (resp.relatedLeadHistory as RelatedLeadHistoryItem[])
+        : []
+    );
+  };
 
   useLayoutEffect(() => {
     const el = messageInputRef.current;
@@ -243,7 +265,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
         const msgsResp = await authClient.getCrmMessages(selectedConversationId);
         const next = msgsResp?.messages || [];
         if (cancelled || reqSeq !== messagesRequestSeq.current) return;
-        setMessages(next);
+        applyMessagesResponse(msgsResp);
         crmChatCache = {
           leadId: leadId || null,
           conversations: crmChatCache?.conversations || [],
@@ -394,7 +416,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
       const nextConversationId = resp?.conversationId || selectedConversationId;
       if (nextConversationId) {
         const msgsResp = await authClient.getCrmMessages(nextConversationId);
-        setMessages(msgsResp.messages || []);
+        applyMessagesResponse(msgsResp);
       }
       setConversations((prev) =>
         prev.map((c) =>
@@ -491,7 +513,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
       });
 
       const msgsResp = await authClient.getCrmMessages(selectedConversationId);
-      setMessages(msgsResp.messages || []);
+      applyMessagesResponse(msgsResp);
       setInput('');
       alert('Sofia respondeu automaticamente com governança aplicada.');
     } catch (e) {
@@ -543,6 +565,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
       setSelectedConversationId(crmChatCache.selectedConversationId);
       if (crmChatCache.selectedConversationId) {
         setMessages(crmChatCache.messagesByConversation[crmChatCache.selectedConversationId] || []);
+        setRelatedLeadHistory([]);
       }
     }
 
@@ -581,9 +604,10 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
         setSelectedConversationId(preferredId);
         if (preferredId) {
           const msgResp = await authClient.getCrmMessages(preferredId);
-          if (!cancelled) setMessages(msgResp?.messages || []);
+          if (!cancelled) applyMessagesResponse(msgResp);
         } else {
           setMessages([]);
+          setRelatedLeadHistory([]);
         }
         crmChatCache = {
           leadId: leadId || null,
@@ -621,6 +645,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
     const run = async () => {
       if (!selectedConversationId) {
         setMessages([]);
+        setRelatedLeadHistory([]);
         return;
       }
       const cachedMessages = crmChatCache?.messagesByConversation?.[selectedConversationId];
@@ -636,7 +661,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
         const msgs: Message[] = resp?.messages || [];
         // Ignora resposta antiga quando o usuário troca de conversa rapidamente.
         if (cancelled || reqSeq !== messagesRequestSeq.current) return;
-        setMessages(msgs);
+        applyMessagesResponse(resp);
         crmChatCache = {
           leadId: leadId || null,
           conversations: crmChatCache?.conversations || [],
@@ -675,7 +700,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
         const msgsResp = await authClient.getCrmMessages(selectedConversationId);
         const next = msgsResp?.messages || [];
         if (reqSeq !== messagesRequestSeq.current) return;
-        setMessages(next);
+        applyMessagesResponse(msgsResp);
         crmChatCache = {
           leadId: leadId || null,
           conversations: crmChatCache?.conversations || [],
@@ -864,14 +889,19 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                   const cached = crmChatCache?.messagesByConversation?.[conv.id];
                   if (cached) {
                     setMessages(cached);
+                    setRelatedLeadHistory([]);
                     setMessagesLoading(false);
                   } else {
                     setMessages([]);
+                    setRelatedLeadHistory([]);
                     setMessagesLoading(true);
                     authClient
                       .getCrmMessages(conv.id)
-                      .then((resp) => setMessages(resp?.messages || []))
-                      .catch(() => setMessages([]))
+                      .then((resp) => applyMessagesResponse(resp))
+                      .catch(() => {
+                        setMessages([]);
+                        setRelatedLeadHistory([]);
+                      })
                       .finally(() => setMessagesLoading(false));
                   }
                 }}
@@ -881,10 +911,21 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                 )}
               >
                 <div className="mt-1">
-                  <UserCircle2
-                    size={26}
-                    className={active ? 'text-[#e42424]' : 'text-[#2c348c]/70'}
-                  />
+                  {conv.leadAvatarUrl ? (
+                    <img
+                      src={conv.leadAvatarUrl}
+                      alt={`Foto de ${conv.leadName}`}
+                      className="h-[26px] w-[26px] rounded-full border border-slate-200 object-cover"
+                      onError={(e) => {
+                        (e.currentTarget as HTMLImageElement).style.display = 'none';
+                      }}
+                    />
+                  ) : (
+                    <UserCircle2
+                      size={26}
+                      className={active ? 'text-[#e42424]' : 'text-[#2c348c]/70'}
+                    />
+                  )}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-1">
@@ -934,7 +975,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
       <section className="col-span-12 md:col-span-6 bg-gradient-to-b from-white to-[#f7faff] border border-[#2c348c]/20 rounded-xl flex flex-col min-h-0 shadow-[0_10px_24px_rgba(15,23,42,0.10)]">
         <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
           <div>
-            <h2 className="title-ui-section">
+              <h2 className="title-ui-section">
               {selectedConversation?.leadName || 'Selecione um atendimento'}
             </h2>
             <div className="mt-0.5 flex items-center gap-2">
@@ -1315,7 +1356,18 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
           <div className="space-y-3">
             <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2">
               <div className="flex items-center gap-2">
-                <UserCircle2 size={28} className="text-[#e42424]" />
+                {selectedConversation?.leadAvatarUrl ? (
+                  <img
+                    src={selectedConversation.leadAvatarUrl}
+                    alt={`Foto de ${selectedConversation?.leadName || "contato"}`}
+                    className="h-7 w-7 rounded-full border border-slate-200 object-cover"
+                    onError={(e) => {
+                      (e.currentTarget as HTMLImageElement).style.display = 'none';
+                    }}
+                  />
+                ) : (
+                  <UserCircle2 size={28} className="text-[#e42424]" />
+                )}
                 <div>
                   <p className="text-xs font-semibold text-slate-900">
                     {selectedConversation?.leadName || '—'}
@@ -1411,6 +1463,31 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                 >
                   Abrir detalhe do rastreio
                 </button>
+              )}
+            </div>
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-1">
+              <p className="text-[11px] text-slate-500 uppercase tracking-wide mb-1">
+                Contexto do lead (outras conversas)
+              </p>
+              {relatedLeadHistory.length === 0 ? (
+                <p className="text-[11px] text-slate-600">
+                  Sem histórico recente em outras conversas deste lead.
+                </p>
+              ) : (
+                <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
+                  {relatedLeadHistory.slice(0, 8).map((h) => (
+                    <div key={h.messageId} className="rounded border border-slate-200 bg-white px-2 py-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[10px] font-semibold text-slate-700">
+                          {h.senderType} · {h.channel}
+                          {h.inboxName ? ` · ${h.inboxName}` : ""}
+                        </span>
+                        <span className="text-[10px] text-slate-500">{h.time}</span>
+                      </div>
+                      <p className="text-[11px] text-slate-700 line-clamp-2">{h.body || "[Sem texto]"}</p>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           </div>

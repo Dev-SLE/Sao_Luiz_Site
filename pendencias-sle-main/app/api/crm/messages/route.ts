@@ -178,6 +178,61 @@ export async function GET(req: Request) {
       [conversationId]
     );
 
+    const convInfo = await pool.query(
+      `
+        SELECT lead_id
+        FROM pendencias.crm_conversations
+        WHERE id = $1
+        LIMIT 1
+      `,
+      [conversationId]
+    );
+    const leadId = convInfo.rows?.[0]?.lead_id as string | undefined;
+
+    let relatedLeadHistory: Array<{
+      messageId: string;
+      conversationId: string;
+      body: string;
+      senderType: string;
+      channel: string;
+      inboxName: string | null;
+      createdAt: string;
+      time: string;
+    }> = [];
+
+    if (leadId) {
+      const relatedRes = await pool.query(
+        `
+          SELECT
+            m.id AS message_id,
+            m.conversation_id,
+            m.body,
+            m.sender_type,
+            c.channel,
+            wi.name AS inbox_name,
+            m.created_at
+          FROM pendencias.crm_messages m
+          JOIN pendencias.crm_conversations c ON c.id = m.conversation_id
+          LEFT JOIN pendencias.crm_whatsapp_inboxes wi ON wi.id = c.whatsapp_inbox_id
+          WHERE c.lead_id = $1::uuid
+            AND c.id <> $2::uuid
+          ORDER BY m.created_at DESC
+          LIMIT 12
+        `,
+        [leadId, conversationId]
+      );
+      relatedLeadHistory = (relatedRes.rows || []).map((r: any) => ({
+        messageId: String(r.message_id),
+        conversationId: String(r.conversation_id),
+        body: String(r.body || ""),
+        senderType: mapSenderFromDb(String(r.sender_type || "")),
+        channel: String(r.channel || "WHATSAPP"),
+        inboxName: r.inbox_name ? String(r.inbox_name) : null,
+        createdAt: r.created_at ? new Date(r.created_at).toISOString() : "",
+        time: formatTime(r.created_at ? new Date(r.created_at) : null),
+      }));
+    }
+
     const messages = (result.rows || []).map((r: any) => {
       const meta = safeJsonParse(r.metadata);
       const outbound = meta?.outbound_whatsapp;
@@ -201,7 +256,7 @@ export async function GET(req: Request) {
     };
     });
 
-    return NextResponse.json({ messages });
+    return NextResponse.json({ messages, relatedLeadHistory });
   } catch (error) {
     console.error("CRM messages GET error:", error);
     return NextResponse.json({ error: "Erro interno" }, { status: 500 });

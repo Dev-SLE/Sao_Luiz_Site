@@ -27,6 +27,15 @@ export default function EvolutionPairingPage() {
     }
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const usp = new URLSearchParams(window.location.search || "");
+    const instanceParam = String(usp.get("instance") || "").trim();
+    const numberParam = String(usp.get("number") || "").trim();
+    if (instanceParam) setInstance(instanceParam);
+    if (numberParam) setNumber(numberParam);
+  }, []);
+
   /** Brasil: 10–11 dígitos sem DDI → prefixa 55 (ex.: 6299… → 556299…). */
   function digitsForEvolution(raw: string): string {
     let d = raw.replace(/\D/g, "");

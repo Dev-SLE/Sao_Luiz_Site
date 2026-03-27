@@ -39,6 +39,34 @@ function norm(v: string | null | undefined) {
   return String(v || "").trim().toLowerCase();
 }
 
+function parsePermissions(value: any): string[] {
+  if (Array.isArray(value)) return value.map((x) => String(x));
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) return parsed.map((x) => String(x));
+    } catch {
+      return value
+        .split(",")
+        .map((x) => x.trim())
+        .filter(Boolean);
+    }
+  }
+  return [];
+}
+
+function canAttendCrm(role: string, permissions: any): boolean {
+  const roleLower = String(role || "").toLowerCase();
+  const perms = parsePermissions(permissions);
+  return (
+    roleLower === "admin" ||
+    perms.includes("VIEW_CRM_CHAT") ||
+    perms.includes("CRM_SCOPE_SELF") ||
+    perms.includes("CRM_SCOPE_TEAM") ||
+    perms.includes("CRM_SCOPE_ALL")
+  );
+}
+
 export async function resolveRoutingByRules(input: {
   text?: string | null;
   title?: string | null;
@@ -105,17 +133,19 @@ export async function pickFallbackAgent(conversationId: string) {
   const pool = getPool();
   const usersRes = await pool.query(
     `
-      SELECT username, role
-      FROM pendencias.users
+      SELECT u.username, u.role, p.permissions
+      FROM pendencias.users u
+      LEFT JOIN pendencias.profiles p ON LOWER(p.name) = LOWER(u.role)
       WHERE COALESCE(TRIM(username), '') <> ''
     `
   );
   const users = (usersRes.rows || [])
-    .map((r: any) => ({ username: String(r.username), role: String(r.role || "") }))
-    .filter((u) => {
-      const role = u.role.toLowerCase();
-      return role.includes("atend") || role.includes("vended") || role.includes("comercial") || role === "admin";
-    });
+    .map((r: any) => ({
+      username: String(r.username),
+      role: String(r.role || ""),
+      permissions: r.permissions,
+    }))
+    .filter((u) => canAttendCrm(u.role, u.permissions));
 
   if (!users.length) return null;
 
@@ -161,13 +191,18 @@ export async function pickAgentFromTeam(teamId: string, conversationId: string) 
   const pool = getPool();
   const membersRes = await pool.query(
     `
-      SELECT username
-      FROM pendencias.crm_team_members
-      WHERE team_id = $1 AND is_active = true
+      SELECT tm.username, u.role, p.permissions
+      FROM pendencias.crm_team_members tm
+      JOIN pendencias.users u ON LOWER(u.username) = LOWER(tm.username)
+      LEFT JOIN pendencias.profiles p ON LOWER(p.name) = LOWER(u.role)
+      WHERE tm.team_id = $1 AND tm.is_active = true
     `,
     [teamId]
   );
-  const members = (membersRes.rows || []).map((r: any) => String(r.username)).filter(Boolean);
+  const members = (membersRes.rows || [])
+    .filter((r: any) => canAttendCrm(String(r.role || ""), r.permissions))
+    .map((r: any) => String(r.username))
+    .filter(Boolean);
   if (!members.length) return null;
 
   const loadRes = await pool.query(

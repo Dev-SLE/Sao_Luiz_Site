@@ -29,6 +29,30 @@ function parsePermissions(value: any): string[] {
   return [];
 }
 
+async function isCrmAttendantUsername(pool: any, username: string): Promise<boolean> {
+  const res = await pool.query(
+    `
+      SELECT u.role, p.permissions
+      FROM pendencias.users u
+      LEFT JOIN pendencias.profiles p ON LOWER(p.name) = LOWER(u.role)
+      WHERE LOWER(u.username) = LOWER($1)
+      LIMIT 1
+    `,
+    [username]
+  );
+  const row = res.rows?.[0];
+  if (!row) return false;
+  const role = String(row.role || "").toLowerCase();
+  const perms = parsePermissions(row.permissions);
+  return (
+    role === "admin" ||
+    perms.includes("VIEW_CRM_CHAT") ||
+    perms.includes("CRM_SCOPE_SELF") ||
+    perms.includes("CRM_SCOPE_TEAM") ||
+    perms.includes("CRM_SCOPE_ALL")
+  );
+}
+
 export async function GET(req: Request) {
   try {
     await ensureCrmSchemaTables();
@@ -108,6 +132,7 @@ export async function GET(req: Request) {
           l.title AS lead_name,
           l.contact_phone,
           l.contact_email,
+          l.contact_avatar_url,
           l.cte_number,
           l.cte_serie,
           l.priority,
@@ -194,6 +219,7 @@ export async function GET(req: Request) {
         leadName: r.lead_name as string,
         leadPhone: r.contact_phone as string | null,
         leadEmail: r.contact_email as string | null,
+        leadAvatarUrl: r.contact_avatar_url as string | null,
         cte: r.cte_number as string | null,
         cteSerie: r.cte_serie as string | null,
         lastMessage: r.last_message_body ? String(r.last_message_body) : "Sem mensagens ainda.",
@@ -348,6 +374,17 @@ export async function PATCH(req: Request) {
     );
     const current = currentRes.rows?.[0];
     if (!current) return NextResponse.json({ error: "conversa não encontrada" }, { status: 404 });
+
+    if (assignInBody && assignRaw != null && String(assignRaw).trim() !== "") {
+      const assignedCandidate = String(assignRaw).trim();
+      const allowed = await isCrmAttendantUsername(pool, assignedCandidate);
+      if (!allowed) {
+        return NextResponse.json(
+          { error: "assignedUsername inválido para atendimento CRM" },
+          { status: 400 }
+        );
+      }
+    }
 
     await pool.query(
       `
