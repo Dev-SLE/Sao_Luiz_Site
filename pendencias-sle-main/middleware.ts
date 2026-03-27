@@ -18,5 +18,8 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: [DUPLICATE_WEBHOOK, `${DUPLICATE_WEBHOOK}/`],
+  matcher: [
+    "/api/whatsapp/evolution/api/whatsapp/evolution/webhook",
+    "/api/whatsapp/evolution/api/whatsapp/evolution/webhook/",
+  ],
 };
