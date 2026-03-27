@@ -94,6 +94,16 @@ const sourceConfig: Record<Source, { label: string; className: string }> = {
   },
 };
 
+function getPriorityUi(priorityRaw: unknown): { label: string; className: string } {
+  const key = String(priorityRaw || "").toUpperCase() as Priority;
+  return priorityConfig[key] || priorityConfig.MEDIA;
+}
+
+function getSourceUi(sourceRaw: unknown): { label: string; className: string } {
+  const key = String(sourceRaw || "").toUpperCase() as Source;
+  return sourceConfig[key] || sourceConfig.MANUAL;
+}
+
 interface Props {
   onGoToChat?: (leadId: string) => void;
   onOpenTracking?: (cte: string, serie?: string) => void;
@@ -873,8 +883,8 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
               </div>
               <div className="p-2 space-y-2">
                 {stageLeads.map((lead) => {
-                  const priority = priorityConfig[lead.priority];
-                  const source = sourceConfig[lead.source];
+                  const priority = getPriorityUi(lead.priority);
+                  const source = getSourceUi(lead.source);
                   return (
                     <div
                       key={lead.id}
