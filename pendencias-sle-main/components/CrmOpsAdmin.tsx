@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { authClient } from "../lib/auth";
+import Papa from "papaparse";
+import * as XLSX from "xlsx";
 
 const CrmOpsAdmin: React.FC = () => {
   const [teams, setTeams] = useState<any[]>([]);
@@ -47,6 +49,136 @@ const CrmOpsAdmin: React.FC = () => {
     denylistLast10: "",
   });
   const [pendingIntakeCount, setPendingIntakeCount] = useState(0);
+
+  const normalizeLast10 = (raw: unknown): string => {
+    const digits = String(raw || "").replace(/\D/g, "");
+    if (!digits) return "";
+    return digits.length <= 10 ? digits : digits.slice(-10);
+  };
+
+  const mergeLast10List = (current: string, incoming: string[]) => {
+    const set = new Set<string>();
+    String(current || "")
+      .split(",")
+      .map((x) => normalizeLast10(x))
+      .filter(Boolean)
+      .forEach((n) => set.add(n));
+    incoming.map((x) => normalizeLast10(x)).filter(Boolean).forEach((n) => set.add(n));
+    return Array.from(set).join(", ");
+  };
+
+  const extractNumbersFromRows = (rows: any[]): string[] => {
+    const out: string[] = [];
+    for (const row of rows || []) {
+      if (row == null) continue;
+      if (typeof row === "string" || typeof row === "number") {
+        const n = normalizeLast10(row);
+        if (n) out.push(n);
+        continue;
+      }
+      if (Array.isArray(row)) {
+        for (const cell of row) {
+          const n = normalizeLast10(cell);
+          if (n) {
+            out.push(n);
+            break;
+          }
+        }
+        continue;
+      }
+      const candidates = [
+        row.last10,
+        row.ultimo10,
+        row.numero,
+        row.number,
+        row.telefone,
+        row.phone,
+      ];
+      let picked = "";
+      for (const c of candidates) {
+        const n = normalizeLast10(c);
+        if (n) {
+          picked = n;
+          break;
+        }
+      }
+      if (!picked) {
+        for (const v of Object.values(row)) {
+          const n = normalizeLast10(v);
+          if (n) {
+            picked = n;
+            break;
+          }
+        }
+      }
+      if (picked) out.push(picked);
+    }
+    return out;
+  };
+
+  const importListFile = async (file: File, target: "ALLOW" | "DENY") => {
+    const name = file.name.toLowerCase();
+    let numbers: string[] = [];
+    if (name.endsWith(".csv")) {
+      const text = await file.text();
+      const parsed = Papa.parse(text, { header: true, skipEmptyLines: true });
+      numbers = extractNumbersFromRows((parsed.data as any[]) || []);
+    } else if (name.endsWith(".xlsx") || name.endsWith(".xls")) {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: "array" });
+      const wsName = wb.SheetNames[0];
+      const ws = wb.Sheets[wsName];
+      const json = XLSX.utils.sheet_to_json(ws, { defval: "" });
+      numbers = extractNumbersFromRows(json as any[]);
+    } else {
+      alert("Formato não suportado. Use CSV, XLSX ou XLS.");
+      return;
+    }
+    if (!numbers.length) {
+      alert("Nenhum número válido encontrado no arquivo.");
+      return;
+    }
+    setIntakeSettings((s) => {
+      if (target === "ALLOW") {
+        return {
+          ...s,
+          allowlistLast10: mergeLast10List(s.allowlistLast10, numbers),
+        };
+      }
+      return {
+        ...s,
+        denylistLast10: mergeLast10List(s.denylistLast10, numbers),
+      };
+    });
+    alert(`${numbers.length} número(s) importado(s) para ${target === "ALLOW" ? "allowlist" : "denylist"}.`);
+  };
+
+  const downloadTemplateCsv = () => {
+    const sample = [
+      ["numero", "last10", "nome", "tipo"],
+      ["+55 62 99999-1111", "2999991111", "Agencia Exemplo", "ALLOW"],
+      ["+55 11 98888-2222", "1988882222", "Contato Pessoal", "DENY"],
+    ];
+    const csv = sample.map((r) => r.join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "template_triagem_whatsapp.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const downloadTemplateXlsx = () => {
+    const rows = [
+      { numero: "+55 62 99999-1111", last10: "2999991111", nome: "Agencia Exemplo", tipo: "ALLOW" },
+      { numero: "+55 11 98888-2222", last10: "1988882222", nome: "Contato Pessoal", tipo: "DENY" },
+    ];
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "triagem");
+    XLSX.writeFile(wb, "template_triagem_whatsapp.xlsx");
+  };
 
   const loadAll = async () => {
     setLoading(true);
@@ -355,12 +487,56 @@ const CrmOpsAdmin: React.FC = () => {
             value={intakeSettings.allowlistLast10}
             onChange={(e) => setIntakeSettings((s) => ({ ...s, allowlistLast10: e.target.value }))}
           />
+          <div className="md:col-span-2 flex flex-wrap gap-2">
+            <label className="text-[11px] rounded border border-slate-200 bg-white px-2 py-1 cursor-pointer hover:bg-slate-50">
+              Importar CSV/XLSX (allowlist)
+              <input
+                type="file"
+                accept=".csv,.xlsx,.xls"
+                className="hidden"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (file) await importListFile(file, "ALLOW");
+                  e.currentTarget.value = "";
+                }}
+              />
+            </label>
+          </div>
           <textarea
             className="rounded bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800 md:col-span-2 min-h-[60px]"
             placeholder="Denylist (últimos 10 dígitos), separados por vírgula"
             value={intakeSettings.denylistLast10}
             onChange={(e) => setIntakeSettings((s) => ({ ...s, denylistLast10: e.target.value }))}
           />
+          <div className="md:col-span-2 flex flex-wrap gap-2">
+            <label className="text-[11px] rounded border border-slate-200 bg-white px-2 py-1 cursor-pointer hover:bg-slate-50">
+              Importar CSV/XLSX (denylist)
+              <input
+                type="file"
+                accept=".csv,.xlsx,.xls"
+                className="hidden"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (file) await importListFile(file, "DENY");
+                  e.currentTarget.value = "";
+                }}
+              />
+            </label>
+            <button
+              type="button"
+              className="text-[11px] rounded border border-slate-200 bg-white px-2 py-1 hover:bg-slate-50"
+              onClick={downloadTemplateCsv}
+            >
+              Baixar template CSV
+            </button>
+            <button
+              type="button"
+              className="text-[11px] rounded border border-slate-200 bg-white px-2 py-1 hover:bg-slate-50"
+              onClick={downloadTemplateXlsx}
+            >
+              Baixar template XLSX
+            </button>
+          </div>
           <button
             type="button"
             className="pressable-3d rounded bg-gradient-to-r from-violet-700 to-violet-600 text-xs text-white font-bold px-3 py-2"

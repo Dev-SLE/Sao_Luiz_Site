@@ -80,6 +80,11 @@ const channelConfig: Record<Channel, { label: string; className: string }> = {
   },
 };
 
+function getChannelUi(channelRaw: unknown): { label: string; className: string } {
+  const key = String(channelRaw || "").toUpperCase() as Channel;
+  return channelConfig[key] || channelConfig.WHATSAPP;
+}
+
 const mockConversations: ConversationSummary[] = [
   {
     id: '1',
@@ -879,7 +884,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
           )}
           {conversations.map((conv) => {
             const active = conv.id === selectedConversationId;
-            const channel = channelConfig[conv.channel];
+            const channel = getChannelUi(conv.channel);
             return (
               <button
                 key={conv.id}
@@ -986,10 +991,10 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
               <span
                 className={clsx(
                   'px-1.5 py-0.5 rounded-full text-[9px] font-bold border',
-                  channelConfig[(selectedConversation?.channel || 'WHATSAPP') as Channel].className
+                  getChannelUi(selectedConversation?.channel || 'WHATSAPP').className
                 )}
               >
-                {channelConfig[(selectedConversation?.channel || 'WHATSAPP') as Channel].label}
+                {getChannelUi(selectedConversation?.channel || 'WHATSAPP').label}
               </span>
               {selectedConversation?.inboxProvider === 'EVOLUTION' && selectedConversation?.inboxName && (
                 <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold border border-emerald-300 bg-emerald-50 text-emerald-900">
@@ -1119,10 +1124,10 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                       <span
                         className={clsx(
                           'px-1 py-0.5 rounded-full border text-[9px]',
-                          channelConfig[m.channel].className
+                          getChannelUi(m.channel).className
                         )}
                       >
-                        {channelConfig[m.channel].label}
+                        {getChannelUi(m.channel).label}
                       </span>
                     </div>
                   </div>
