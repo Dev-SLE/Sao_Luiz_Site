@@ -4,6 +4,37 @@ import { ensureCrmSchemaTables } from "../../../../lib/server/ensureSchema";
 
 export const runtime = "nodejs";
 
+async function evolutionTryCreateInstance(args: {
+  serverUrl: string;
+  apiKey: string;
+  instanceName: string;
+}): Promise<{ ok: boolean; duplicate?: boolean; error?: string }> {
+  const base = String(args.serverUrl || "").replace(/\/+$/, "");
+  const url = `${base}/instance/create`;
+  const body = {
+    instanceName: String(args.instanceName || "").trim(),
+    integration: "WHATSAPP-BAILEYS",
+    qrcode: false,
+  };
+  if (!body.instanceName) return { ok: false, error: "Nome da instância vazio" };
+  try {
+    const r = await fetch(url, {
+      method: "POST",
+      headers: { apikey: args.apiKey, "Content-Type": "application/json", accept: "application/json" },
+      body: JSON.stringify(body),
+    });
+    const j = await r.json().catch(() => ({}));
+    const msg = String((j as any)?.message || (j as any)?.error || "").toLowerCase();
+    if (r.ok) return { ok: true };
+    if (r.status === 409 || msg.includes("already") || msg.includes("exist") || msg.includes("duplicate")) {
+      return { ok: true, duplicate: true };
+    }
+    return { ok: false, error: String((j as any)?.message || (j as any)?.error || `HTTP ${r.status}`) };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+}
+
 function maskKey(key: string | null | undefined): string | null {
   if (!key) return null;
   const s = String(key);
@@ -91,6 +122,7 @@ export async function POST(req: Request) {
     const evolutionApiKey = body?.evolutionApiKey != null ? String(body.evolutionApiKey).trim() : "";
     const teamId =
       body?.teamId != null && String(body.teamId).trim() ? String(body.teamId).trim() : null;
+    const provisionEvolutionInstance = body?.provisionEvolutionInstance === true;
 
     if (!name || !evolutionInstanceName || !evolutionServerUrl) {
       return NextResponse.json({ error: "name, evolutionInstanceName e evolutionServerUrl obrigatórios" }, { status: 400 });
@@ -134,6 +166,20 @@ export async function POST(req: Request) {
 
     if (!evolutionApiKey) {
       return NextResponse.json({ error: "evolutionApiKey obrigatório ao criar inbox" }, { status: 400 });
+    }
+
+    if (provisionEvolutionInstance) {
+      const prov = await evolutionTryCreateInstance({
+        serverUrl: evolutionServerUrl,
+        apiKey: evolutionApiKey,
+        instanceName: evolutionInstanceName,
+      });
+      if (!prov.ok) {
+        return NextResponse.json(
+          { error: `Não foi possível criar a instância na Evolution: ${prov.error || "erro desconhecido"}` },
+          { status: 400 }
+        );
+      }
     }
 
     const ins = await pool.query(

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { authClient } from "../lib/auth";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
+import { EvolutionInboxPairModal, type PairInboxInfo } from "./EvolutionInboxPairModal";
 
 const CrmOpsAdmin: React.FC = () => {
   const [teams, setTeams] = useState<any[]>([]);
@@ -41,6 +42,8 @@ const CrmOpsAdmin: React.FC = () => {
     teamId: "",
   });
   const [webhookHint, setWebhookHint] = useState("");
+  const [provisionEvolutionInstance, setProvisionEvolutionInstance] = useState(false);
+  const [pairInbox, setPairInbox] = useState<PairInboxInfo | null>(null);
   const [intakeSettings, setIntakeSettings] = useState({
     leadFilterMode: "BUSINESS_ONLY",
     aiEnabled: true,
@@ -225,6 +228,8 @@ const CrmOpsAdmin: React.FC = () => {
   }, []);
 
   return (
+    <>
+    <EvolutionInboxPairModal open={Boolean(pairInbox)} onClose={() => setPairInbox(null)} inbox={pairInbox} />
     <div className="space-y-4">
       <div className="surface-card-strong p-4 border border-[#2c348c]/25 bg-gradient-to-br from-[#f8faff] to-white">
         <h3 className="text-sm font-black text-[#06183e]">Multiatendimento (estilo Kommo)</h3>
@@ -299,9 +304,11 @@ const CrmOpsAdmin: React.FC = () => {
           </a>{' '}
           (sem custo de licença). Custo só de hospedagem — em dev use Docker na sua máquina ({' '}
           <code className="text-[10px] bg-slate-100 px-1 rounded">deploy/docker-compose.evolution.yml</code>
-          ). Produção: VM barata, Railway, etc. O mesmo <strong>apikey</strong> do Evolution vai em &quot;Chave API&quot; aqui. No
-          Manager do Evolution, crie uma <strong>instância</strong> (nome único, ex.: <code className="text-[10px]">brenda-sle</code>
-          ), escaneie o QR com o WhatsApp da atendente e configure o webhook:
+          ). Produção: VM barata, Railway, etc. O mesmo <strong>apikey</strong> do Evolution vai em &quot;Chave API&quot; aqui. Ao
+          salvar uma <strong>caixa nova</strong>, você pode marcar <strong>criar instância na Evolution</strong> (API{' '}
+          <code className="text-[10px] bg-slate-100 px-1 rounded">/instance/create</code>) — se o nome já existir, seguimos
+          mesmo assim. Depois use <strong>Parear no site</strong> para ver o QR e o status no próprio CRM. O webhook pode ser
+          aplicado pelo botão no modal ou manualmente no Manager:
         </p>
         <div className="mt-2 rounded-lg border border-slate-200 bg-slate-900 px-3 py-2 text-[10px] text-emerald-100 font-mono break-all">
           {webhookHint ? `${webhookHint}?token=SEU_EVOLUTION_WEBHOOK_TOKEN` : "/api/whatsapp/evolution/webhook?token=..."}
@@ -357,7 +364,19 @@ const CrmOpsAdmin: React.FC = () => {
               </option>
             ))}
           </select>
-          <div className="flex gap-2">
+          <label className="flex items-center gap-2 md:col-span-2 text-[11px] text-slate-700 cursor-pointer">
+            <input
+              type="checkbox"
+              className="rounded border-slate-300"
+              checked={provisionEvolutionInstance}
+              onChange={(e) => setProvisionEvolutionInstance(e.target.checked)}
+              disabled={Boolean(evoForm.id)}
+            />
+            <span>
+              Criar instância na Evolution ao salvar (só caixa nova; se o nome já existir lá, o CRM só registra a caixa)
+            </span>
+          </label>
+          <div className="flex gap-2 md:col-span-2">
             <button
               type="button"
               className="pressable-3d flex-1 rounded bg-gradient-to-r from-emerald-700 to-emerald-600 text-xs text-white font-bold"
@@ -370,6 +389,7 @@ const CrmOpsAdmin: React.FC = () => {
                   evolutionServerUrl: evoForm.evolutionServerUrl,
                   evolutionApiKey: evoForm.evolutionApiKey || undefined,
                   teamId: evoForm.teamId || null,
+                  provisionEvolutionInstance: !evoForm.id && provisionEvolutionInstance,
                 });
                 setEvoForm({
                   id: "",
@@ -379,6 +399,7 @@ const CrmOpsAdmin: React.FC = () => {
                   evolutionApiKey: "",
                   teamId: "",
                 });
+                setProvisionEvolutionInstance(false);
                 await loadAll();
               }}
             >
@@ -402,13 +423,26 @@ const CrmOpsAdmin: React.FC = () => {
                   <span className="text-[10px]">{ib.evolutionApiKeyLast4 || "—"}</span>
                 </div>
                 <div className="flex gap-2">
+                  <button
+                    type="button"
+                    className="text-[11px] text-emerald-700 hover:underline font-semibold"
+                    onClick={() =>
+                      setPairInbox({
+                        id: ib.id,
+                        name: ib.name,
+                        evolutionInstanceName: ib.evolutionInstanceName,
+                      })
+                    }
+                  >
+                    Parear no site
+                  </button>
                   <a
                     href={`/evolution-pairing?instance=${encodeURIComponent(String(ib.evolutionInstanceName || ""))}`}
                     target="_blank"
                     rel="noreferrer"
-                    className="text-[11px] text-emerald-700 hover:underline"
+                    className="text-[11px] text-slate-500 hover:underline"
                   >
-                    Conectar QR
+                    Abrir página /evolution-pairing
                   </a>
                   <button
                     type="button"
@@ -647,6 +681,7 @@ const CrmOpsAdmin: React.FC = () => {
         </div>
       )}
     </div>
+    </>
   );
 };
 
