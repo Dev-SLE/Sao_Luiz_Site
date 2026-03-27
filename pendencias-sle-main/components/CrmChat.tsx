@@ -9,6 +9,11 @@ import {
   Hash,
   Filter,
   MessageSquare,
+  Mic,
+  Image as ImageIcon,
+  Video,
+  FileText,
+  MapPin,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { useData } from '../context/DataContext';
@@ -50,6 +55,7 @@ interface Message {
   time: string;
   channel: Channel;
   status?: 'pending' | 'sent' | 'delivered' | 'read' | 'failed' | string;
+  edited?: boolean;
   attachments?: Array<{ type?: string; filename?: string | null }>;
   optimistic?: boolean;
 }
@@ -83,6 +89,84 @@ const channelConfig: Record<Channel, { label: string; className: string }> = {
 function getChannelUi(channelRaw: unknown): { label: string; className: string } {
   const key = String(channelRaw || "").toUpperCase() as Channel;
   return channelConfig[key] || channelConfig.WHATSAPP;
+}
+
+/** Proxy local evita bloqueio de hotlink (pps.whatsapp.net) no navegador. */
+function profilePhotoSrc(url: string | null | undefined): string | null {
+  const u = String(url || '').trim();
+  if (!u || !/^https?:\/\//i.test(u)) return null;
+  return `/api/crm/profile-photo?u=${encodeURIComponent(u)}`;
+}
+
+function LeadAvatar({
+  url,
+  name,
+  size = 26,
+  active,
+}: {
+  url?: string | null;
+  name: string;
+  size?: number;
+  active?: boolean;
+}) {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    setFailed(false);
+  }, [url]);
+  const src = !failed && url ? profilePhotoSrc(url) : null;
+  return (
+    <div className="shrink-0" style={{ width: size, height: size }}>
+      {src ? (
+        <img
+          src={src}
+          alt={`Foto de ${name}`}
+          width={size}
+          height={size}
+          referrerPolicy="no-referrer"
+          loading="lazy"
+          className="rounded-full border border-slate-200 object-cover"
+          style={{ width: size, height: size }}
+          onError={() => setFailed(true)}
+        />
+      ) : (
+        <UserCircle2
+          size={size}
+          className={active ? 'text-[#e42424]' : 'text-[#2c348c]/70'}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Linha única tipo "[Áudio recebido]" vinda do webhook — mostramos só o cartão, sem repetir o texto. */
+function isSingleLinePlaceholder(text: string): boolean {
+  const t = String(text || '').trim();
+  return /^\[[^\]]+\]$/.test(t) && t.length < 120;
+}
+
+function MediaPlaceholderHint({ text, isMe }: { text: string; isMe: boolean }) {
+  const t = String(text || '');
+  if (!t.startsWith('[') || !t.endsWith(']')) return null;
+  let icon = <Paperclip size={14} className="shrink-0 opacity-90" />;
+  if (t.includes('Áudio')) icon = <Mic size={14} className="shrink-0 opacity-90" />;
+  else if (t.includes('Imagem')) icon = <ImageIcon size={14} className="shrink-0 opacity-90" />;
+  else if (t.includes('Vídeo')) icon = <Video size={14} className="shrink-0 opacity-90" />;
+  else if (t.includes('Documento')) icon = <FileText size={14} className="shrink-0 opacity-90" />;
+  else if (t.includes('Localização')) icon = <MapPin size={14} className="shrink-0 opacity-90" />;
+  const label = t.replace(/^\[|\]$/g, '');
+  return (
+    <div
+      className={clsx(
+        'mb-1.5 flex items-center gap-2 rounded-xl px-2.5 py-2 text-[11px] border',
+        isMe
+          ? 'border-white/25 bg-white/10 text-white'
+          : 'border-slate-200 bg-slate-50 text-slate-700'
+      )}
+    >
+      {icon}
+      <span className="font-medium leading-tight">{label}</span>
+    </div>
+  );
 }
 
 const mockConversations: ConversationSummary[] = [
@@ -916,21 +1000,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                 )}
               >
                 <div className="mt-1">
-                  {conv.leadAvatarUrl ? (
-                    <img
-                      src={conv.leadAvatarUrl}
-                      alt={`Foto de ${conv.leadName}`}
-                      className="h-[26px] w-[26px] rounded-full border border-slate-200 object-cover"
-                      onError={(e) => {
-                        (e.currentTarget as HTMLImageElement).style.display = 'none';
-                      }}
-                    />
-                  ) : (
-                    <UserCircle2
-                      size={26}
-                      className={active ? 'text-[#e42424]' : 'text-[#2c348c]/70'}
-                    />
-                  )}
+                  <LeadAvatar url={conv.leadAvatarUrl} name={conv.leadName} size={26} active={active} />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-1">
@@ -1083,14 +1153,17 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                       ? 'IA'
                       : 'Atendente'}
                   </div>
-                  <div
-                    className={clsx(
-                      'whitespace-pre-wrap text-[12px] leading-relaxed',
-                      isMe ? 'text-white' : 'text-slate-800'
-                    )}
-                  >
-                    {m.text}
-                  </div>
+                  <MediaPlaceholderHint text={m.text} isMe={isMe} />
+                  {!isSingleLinePlaceholder(m.text) && (
+                    <div
+                      className={clsx(
+                        'whitespace-pre-wrap text-[12px] leading-relaxed',
+                        isMe ? 'text-white' : 'text-slate-800'
+                      )}
+                    >
+                      {m.text}
+                    </div>
+                  )}
                   {Array.isArray(m.attachments) && m.attachments.length > 0 && (
                     <div className={clsx('mt-1 text-[10px]', isMe ? 'text-white/70' : 'text-slate-500')}>
                       {m.attachments.map((a, idx) => (
@@ -1104,7 +1177,19 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                       isMe ? 'text-white/70' : 'text-slate-500'
                     )}
                   >
-                    <span>{m.time}</span>
+                    <span className="flex items-center gap-1">
+                      {m.time}
+                      {m.edited && (
+                        <span
+                          className={clsx(
+                            'text-[9px] italic',
+                            isMe ? 'text-white/80' : 'text-slate-400'
+                          )}
+                        >
+                          editada
+                        </span>
+                      )}
+                    </span>
                     <div className="flex items-center gap-1">
                       <span className="text-[9px]">
                         {m.status === 'read'
@@ -1361,18 +1446,12 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
           <div className="space-y-3">
             <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2">
               <div className="flex items-center gap-2">
-                {selectedConversation?.leadAvatarUrl ? (
-                  <img
-                    src={selectedConversation.leadAvatarUrl}
-                    alt={`Foto de ${selectedConversation?.leadName || "contato"}`}
-                    className="h-7 w-7 rounded-full border border-slate-200 object-cover"
-                    onError={(e) => {
-                      (e.currentTarget as HTMLImageElement).style.display = 'none';
-                    }}
-                  />
-                ) : (
-                  <UserCircle2 size={28} className="text-[#e42424]" />
-                )}
+                <LeadAvatar
+                  url={selectedConversation?.leadAvatarUrl}
+                  name={selectedConversation?.leadName || 'contato'}
+                  size={28}
+                  active
+                />
                 <div>
                   <p className="text-xs font-semibold text-slate-900">
                     {selectedConversation?.leadName || '—'}

@@ -3,7 +3,11 @@ import { getPool } from "../../../../../lib/server/db";
 import { ensureCrmSchemaTables } from "../../../../../lib/server/ensureSchema";
 import { applyInboundRouting } from "../../../../../lib/server/crmRouting";
 import { ensureDefaultPipelineAndFirstStage } from "../../../../../lib/server/crmDefaultPipeline";
-import { evolutionNumberDigits, extractEvolutionMessageText } from "../../../../../lib/server/evolutionClient";
+import {
+  evolutionNumberDigits,
+  evolutionFetchProfilePictureUrl,
+  extractEvolutionMessageText,
+} from "../../../../../lib/server/evolutionClient";
 import { evolutionQrCaptureFromWebhook } from "../../../../../lib/server/evolutionLastQr";
 
 export const runtime = "nodejs";
@@ -40,6 +44,8 @@ function extractProfilePhotoUrl(item: any): string | null {
     item?.data?.pictureUrl,
     item?.data?.avatarUrl,
     item?.data?.contactPhotoUrl,
+    item.imgUrl,
+    item?.message?.imgUrl,
   ];
   for (const c of candidates) {
     const u = String(c || "").trim();
@@ -391,6 +397,85 @@ function collectUpsertItems(data: any): any[] {
   return [];
 }
 
+function collectMessageEditItems(data: any): any[] {
+  if (!data) return [];
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data.messages)) return data.messages;
+  if (Array.isArray(data.messageUpdates)) return data.messageUpdates;
+  if (data.key && (data.message || data.editedMessage || data.update)) return [data];
+  return [];
+}
+
+function looksLikeMessageEditEvent(eventNorm: string): boolean {
+  if (!eventNorm) return false;
+  if (eventNorm.includes("messages.edited")) return true;
+  if (eventNorm.includes("message.edited")) return true;
+  return false;
+}
+
+function looksLikeMessagesUpdateEvent(eventNorm: string): boolean {
+  if (!eventNorm) return false;
+  return eventNorm.includes("messages.update");
+}
+
+function hasRenderableEditInPayload(body: Record<string, unknown>): boolean {
+  const items = collectMessageEditItems(body?.data);
+  for (const item of items) {
+    const inner = extractEditedInnerMessage(item);
+    const t = extractEvolutionMessageText(inner);
+    if (t && String(t).trim().length > 0) return true;
+  }
+  return false;
+}
+
+function extractEditedInnerMessage(item: any): any {
+  if (!item || typeof item !== "object") return null;
+  return (
+    item.editedMessage?.message ||
+    item.editedMessage ||
+    item.message ||
+    item.update?.message ||
+    item.update?.editedMessage?.message ||
+    item.update?.editedMessage ||
+    null
+  );
+}
+
+async function applyWhatsAppMessageEdit(pool: any, waMessageId: string, newText: string) {
+  if (!waMessageId || !newText) return 0;
+  const patch = {
+    wa_edited: true,
+    edited_at: new Date().toISOString(),
+  };
+  const res = await pool.query(
+    `
+      UPDATE pendencias.crm_messages
+      SET body = $1,
+          metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb
+      WHERE metadata->>'message_id' = $3
+         OR metadata#>>'{outbound_whatsapp,message_id}' = $3
+      RETURNING id
+    `,
+    [newText, JSON.stringify(patch), waMessageId]
+  );
+  return res.rows?.length || 0;
+}
+
+async function processWebhookMessageEdits(pool: any, body: Record<string, unknown>) {
+  const items = collectMessageEditItems(body?.data);
+  let applied = 0;
+  for (const item of items) {
+    const key = item?.key || item;
+    const waMessageId = String(key?.id || "").trim();
+    if (!waMessageId) continue;
+    const inner = extractEditedInnerMessage(item);
+    const newText = extractEvolutionMessageText(inner);
+    if (!newText || !String(newText).trim()) continue;
+    applied += await applyWhatsAppMessageEdit(pool, waMessageId, newText);
+  }
+  return applied;
+}
+
 export async function POST(req: Request) {
   try {
     if (!verifyEvolutionWebhook(req)) {
@@ -448,6 +533,35 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, qrStored: true });
     }
 
+    /** Mensagens editadas (MESSAGES_EDITED) ou updates com texto novo (evita flood de ACK de leitura). */
+    const editRoute =
+      looksLikeMessageEditEvent(eventNorm) ||
+      (looksLikeMessagesUpdateEvent(eventNorm) && hasRenderableEditInPayload(body));
+
+    if (editRoute) {
+      await ensureCrmSchemaTables();
+      const pool = getPool();
+      if (!instance) {
+        return NextResponse.json({ ok: false, error: "instance ausente" }, { status: 400 });
+      }
+      const inboxEditRes = await pool.query(
+        `
+          SELECT id
+          FROM pendencias.crm_whatsapp_inboxes
+          WHERE is_active = true
+            AND provider = 'EVOLUTION'
+            AND lower(btrim(evolution_instance_name)) = lower(btrim($1))
+          LIMIT 1
+        `,
+        [instance]
+      );
+      if (!inboxEditRes.rows?.[0]?.id) {
+        return NextResponse.json({ ok: true, skipped: "unknown_instance_for_edit" });
+      }
+      const applied = await processWebhookMessageEdits(pool, body);
+      return NextResponse.json({ ok: true, message_edits_applied: applied });
+    }
+
     // Só messages.upsert precisa de inbox no CRM — demais eventos não consultam DB (evita log enganoso e ~15s).
     if (!looksLikeMessagesUpsert(body, eventNorm)) {
       return NextResponse.json({ ok: true, ignored_event: eventRaw || null });
@@ -462,7 +576,7 @@ export async function POST(req: Request) {
 
     const inboxRes = await pool.query(
       `
-        SELECT id, name
+        SELECT id, name, evolution_server_url, evolution_api_key
         FROM pendencias.crm_whatsapp_inboxes
         WHERE is_active = true
           AND provider = 'EVOLUTION'
@@ -507,7 +621,26 @@ export async function POST(req: Request) {
       const cteDetected = extractCteFromText(text);
       const last10 = lastN(phoneDigits, 10);
       const pushName = String(item.pushName || item.verifiedBizName || "").trim();
-      const profilePhotoUrl = extractProfilePhotoUrl(item);
+      let profilePhotoUrl = extractProfilePhotoUrl(item);
+      if (
+        !profilePhotoUrl &&
+        inboxRow.evolution_server_url &&
+        inboxRow.evolution_api_key
+      ) {
+        profilePhotoUrl =
+          (await evolutionFetchProfilePictureUrl({
+            serverUrl: String(inboxRow.evolution_server_url),
+            apiKey: String(inboxRow.evolution_api_key),
+            instanceName: instance,
+            number: remoteJid,
+          })) ||
+          (await evolutionFetchProfilePictureUrl({
+            serverUrl: String(inboxRow.evolution_server_url),
+            apiKey: String(inboxRow.evolution_api_key),
+            instanceName: instance,
+            number: phoneDigits,
+          }));
+      }
       const profileName = pushName || null;
       const agencyContact = await findAgencyByLast10(pool, last10);
 
@@ -678,7 +811,11 @@ export async function POST(req: Request) {
         conversationId = insertConv.rows?.[0]?.id as string;
       }
 
-      const hasMedia = msgObj && Object.keys(msgObj).some((k) => !["conversation", "extendedTextMessage"].includes(k));
+      const hasMedia =
+        msgObj &&
+        Object.keys(msgObj).some(
+          (k) => !["conversation", "extendedTextMessage"].includes(k)
+        );
       const msgId = String(key.id || "");
       if (msgId) {
         const dup = await pool.query(

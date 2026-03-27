@@ -38,7 +38,13 @@ export async function GET(req: Request) {
     url: webhookUrl,
     webhookByEvents: false,
     webhookBase64: true,
-    events: ["QRCODE_UPDATED", "CONNECTION_UPDATE", "MESSAGES_UPSERT"],
+    events: [
+      "QRCODE_UPDATED",
+      "CONNECTION_UPDATE",
+      "MESSAGES_UPSERT",
+      "MESSAGES_UPDATE",
+      "MESSAGES_EDITED",
+    ],
   };
 
   try {

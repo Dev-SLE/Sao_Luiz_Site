@@ -237,11 +237,16 @@ export async function GET(req: Request) {
       const meta = safeJsonParse(r.metadata);
       const outbound = meta?.outbound_whatsapp;
       const senderUpper = String(r.sender_type || "").toUpperCase();
+      const delivered =
+        outbound?.delivered === true ||
+        outbound?.delivered === "true" ||
+        outbound?.status === "sent" ||
+        outbound?.status === "delivered";
       const statusForUi =
         outbound?.status ||
         (senderUpper === "CLIENT"
           ? "received"
-          : outbound?.delivered
+          : delivered
             ? "delivered"
             : "pending");
       return {
@@ -252,6 +257,7 @@ export async function GET(req: Request) {
       time: formatTime(r.created_at ? new Date(r.created_at) : null),
       channel: String(r.channel || "WHATSAPP") as any,
       status: statusForUi,
+      edited: Boolean(meta?.wa_edited || meta?.edited_at),
       attachments: Array.isArray(meta?.attachments) ? meta.attachments : [],
     };
     });
