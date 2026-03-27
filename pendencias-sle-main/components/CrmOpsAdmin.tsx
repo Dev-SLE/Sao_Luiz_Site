@@ -42,8 +42,10 @@ const CrmOpsAdmin: React.FC = () => {
     teamId: "",
   });
   const [webhookHint, setWebhookHint] = useState("");
-  const [provisionEvolutionInstance, setProvisionEvolutionInstance] = useState(false);
+  const [provisionEvolutionInstance, setProvisionEvolutionInstance] = useState(true);
   const [pairInbox, setPairInbox] = useState<PairInboxInfo | null>(null);
+  const [evolutionDefaultsConfigured, setEvolutionDefaultsConfigured] = useState(false);
+  const [evoAdvancedOpen, setEvoAdvancedOpen] = useState(false);
   const [intakeSettings, setIntakeSettings] = useState({
     leadFilterMode: "BUSINESS_ONLY",
     aiEnabled: true,
@@ -191,7 +193,7 @@ const CrmOpsAdmin: React.FC = () => {
         authClient.getCrmTeams(),
         authClient.getCrmAgents(),
         authClient.getCrmRoutingRules(),
-        authClient.getCrmWhatsappInboxes().catch(() => ({ inboxes: [] })),
+        authClient.getCrmWhatsappInboxes().catch(() => ({ inboxes: [], evolutionDefaultsConfigured: false })),
         authClient.getCrmEvolutionIntakeSettings().catch(() => ({ settings: null, pendingBufferCount: 0 })),
       ]);
       const s = await authClient.getCrmSlaRules();
@@ -199,6 +201,7 @@ const CrmOpsAdmin: React.FC = () => {
       setAgents(Array.isArray(a?.agents) ? a.agents : []);
       setRules(Array.isArray(r?.rules) ? r.rules : []);
       setSlaRules(Array.isArray(s?.items) ? s.items : []);
+      setEvolutionDefaultsConfigured(Boolean((w as any)?.evolutionDefaultsConfigured));
       setWaInboxes(Array.isArray(w?.inboxes) ? w.inboxes : []);
       if (intake?.settings) {
         setIntakeSettings({
@@ -293,67 +296,91 @@ const CrmOpsAdmin: React.FC = () => {
       <div className="surface-card-strong p-4 border border-emerald-200/60 bg-gradient-to-br from-emerald-50/40 to-white">
         <h3 className="text-sm font-bold text-slate-900">Caixas WhatsApp Web (Evolution API)</h3>
         <p className="mt-1 text-[11px] text-slate-600 leading-relaxed">
-          Stack sugerida:{' '}
-          <a
-            className="font-semibold text-[#2c348c] underline"
-            href="https://github.com/EvolutionAPI/evolution-api"
-            target="_blank"
-            rel="noreferrer"
-          >
+          <a className="font-semibold text-[#2c348c] underline" href="https://github.com/EvolutionAPI/evolution-api" target="_blank" rel="noreferrer">
             Evolution API
-          </a>{' '}
-          (sem custo de licença). Custo só de hospedagem — em dev use Docker na sua máquina ({' '}
-          <code className="text-[10px] bg-slate-100 px-1 rounded">deploy/docker-compose.evolution.yml</code>
-          ). Produção: VM barata, Railway, etc. O mesmo <strong>apikey</strong> do Evolution vai em &quot;Chave API&quot; aqui. Ao
-          salvar uma <strong>caixa nova</strong>, você pode marcar <strong>criar instância na Evolution</strong> (API{' '}
-          <code className="text-[10px] bg-slate-100 px-1 rounded">/instance/create</code>) — se o nome já existir, seguimos
-          mesmo assim. Depois use <strong>Parear no site</strong> para ver o QR e o status no próprio CRM. O webhook pode ser
-          aplicado pelo botão no modal ou manualmente no Manager:
+          </a>{" "}
+          — <strong>modo rápido</strong>: quem usa o CRM só informa o <strong>nome da linha</strong>; URL e chave da Evolution ficam no servidor (
+          <code className="text-[10px] bg-slate-100 px-1 rounded">EVOLUTION_API_URL</code> +{" "}
+          <code className="text-[10px] bg-slate-100 px-1 rounded">EVOLUTION_API_KEY</code> na Vercel). Depois abrimos o QR aqui mesmo.
         </p>
+        {evolutionDefaultsConfigured ? (
+          <div className="mt-2 rounded-lg border border-emerald-300 bg-emerald-50/80 px-3 py-2 text-[11px] text-emerald-900">
+            Modo rápido <strong>disponível</strong> — URL e chave já estão configuradas no servidor.
+          </div>
+        ) : (
+          <div className="mt-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] text-amber-950">
+            Configure <code className="text-[10px] bg-white/80 px-1 rounded">EVOLUTION_API_URL</code> e{" "}
+            <code className="text-[10px] bg-white/80 px-1 rounded">EVOLUTION_API_KEY</code> na Vercel para liberar o modo rápido, ou use{" "}
+            <strong>Modo TI</strong> abaixo.
+          </div>
+        )}
         <div className="mt-2 rounded-lg border border-slate-200 bg-slate-900 px-3 py-2 text-[10px] text-emerald-100 font-mono break-all">
           {webhookHint ? `${webhookHint}?token=SEU_EVOLUTION_WEBHOOK_TOKEN` : "/api/whatsapp/evolution/webhook?token=..."}
         </div>
         <p className="mt-1 text-[10px] text-slate-500">
-          Defina <code className="bg-slate-100 px-1 rounded">EVOLUTION_WEBHOOK_TOKEN</code> no <code className="bg-slate-100 px-1 rounded">.env</code> do site
-          e use o mesmo valor no query <code className="bg-slate-100 px-1 rounded">token</code>. Eventos:{" "}
-          <strong>MESSAGES_UPSERT</strong> e <strong>QRCODE_UPDATED</strong> (este último para o QR em{" "}
-          <a className="underline font-semibold text-[#2c348c]" href="/evolution-pairing" target="_blank" rel="noreferrer">
-            /evolution-pairing
-          </a>
-          ).
+          Token <code className="bg-slate-100 px-1 rounded">EVOLUTION_WEBHOOK_TOKEN</code> — eventos recomendados:{" "}
+          <strong>MESSAGES_UPSERT</strong>, <strong>QRCODE_UPDATED</strong>, <strong>CONNECTION_UPDATE</strong>.
         </p>
-        <p className="mt-1 text-[10px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
-          <strong>QR em branco no Manager?</strong> O painel <code className="text-[10px]">8080/manager</code> usa WebSocket; no Edge às vezes não aparece nada na rede.
-          Use o fallback: abra <a className="underline font-semibold text-[#2c348c]" href="/evolution-pairing" target="_blank" rel="noreferrer">/evolution-pairing</a> com o Next rodando (precisa{' '}
-          <code className="text-[10px]">EVOLUTION_API_KEY</code> no <code className="text-[10px]">.env</code>) ou tente o pareamento por <strong>código de 8 dígitos</strong> no WhatsApp.
-        </p>
+
+        {!evoForm.id && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={!evolutionDefaultsConfigured}
+              onClick={() => setEvoAdvancedOpen(false)}
+              className={`rounded-full border px-3 py-1.5 text-[11px] font-bold ${
+                !evoAdvancedOpen ? "border-[#2c348c] bg-[#2c348c]/10 text-[#06183e]" : "border-slate-200 bg-white text-slate-600"
+              } disabled:opacity-40`}
+            >
+              Modo rápido
+            </button>
+            <button
+              type="button"
+              onClick={() => setEvoAdvancedOpen(true)}
+              className={`rounded-full border px-3 py-1.5 text-[11px] font-bold ${
+                evoAdvancedOpen ? "border-slate-700 bg-slate-100 text-slate-900" : "border-slate-200 bg-white text-slate-600"
+              }`}
+            >
+              Modo TI (URL e chave)
+            </button>
+          </div>
+        )}
+
         <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2">
           <input
             className="rounded bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800"
-            placeholder="Rótulo (ex.: Brenda - Comercial)"
+            placeholder="Nome desta linha no CRM (ex.: Brenda - Comercial)"
             value={evoForm.name}
             onChange={(e) => setEvoForm((f) => ({ ...f, name: e.target.value }))}
           />
           <input
             className="rounded bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800"
-            placeholder="Nome da instância no Evolution (ex.: brenda-sle)"
+            placeholder={
+              evoForm.id || evoAdvancedOpen
+                ? "Nome da instância na Evolution (ex.: brenda-sle)"
+                : "ID da instância (opcional — vazio = geramos automaticamente)"
+            }
             value={evoForm.evolutionInstanceName}
             onChange={(e) => setEvoForm((f) => ({ ...f, evolutionInstanceName: e.target.value }))}
           />
-          <input
-            className="rounded bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800 md:col-span-2"
-            placeholder="URL do servidor Evolution (ex.: http://localhost:8080 ou https://evo.seudominio.com)"
-            value={evoForm.evolutionServerUrl}
-            onChange={(e) => setEvoForm((f) => ({ ...f, evolutionServerUrl: e.target.value }))}
-          />
-          <input
-            className="rounded bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800 md:col-span-2"
-            placeholder="Chave API (apikey do Evolution) — deixe em branco ao editar para não trocar"
-            value={evoForm.evolutionApiKey}
-            onChange={(e) => setEvoForm((f) => ({ ...f, evolutionApiKey: e.target.value }))}
-          />
+          {(evoForm.id || evoAdvancedOpen) && (
+            <>
+              <input
+                className="rounded bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800 md:col-span-2"
+                placeholder="URL do servidor Evolution"
+                value={evoForm.evolutionServerUrl}
+                onChange={(e) => setEvoForm((f) => ({ ...f, evolutionServerUrl: e.target.value }))}
+              />
+              <input
+                className="rounded bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800 md:col-span-2"
+                placeholder="Chave API Evolution — vazio ao editar mantém a atual"
+                value={evoForm.evolutionApiKey}
+                onChange={(e) => setEvoForm((f) => ({ ...f, evolutionApiKey: e.target.value }))}
+              />
+            </>
+          )}
           <select
-            className="rounded bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800"
+            className="rounded bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800 md:col-span-2"
             value={evoForm.teamId}
             onChange={(e) => setEvoForm((f) => ({ ...f, teamId: e.target.value }))}
           >
@@ -364,47 +391,119 @@ const CrmOpsAdmin: React.FC = () => {
               </option>
             ))}
           </select>
-          <label className="flex items-center gap-2 md:col-span-2 text-[11px] text-slate-700 cursor-pointer">
-            <input
-              type="checkbox"
-              className="rounded border-slate-300"
-              checked={provisionEvolutionInstance}
-              onChange={(e) => setProvisionEvolutionInstance(e.target.checked)}
-              disabled={Boolean(evoForm.id)}
-            />
-            <span>
-              Criar instância na Evolution ao salvar (só caixa nova; se o nome já existir lá, o CRM só registra a caixa)
-            </span>
-          </label>
-          <div className="flex gap-2 md:col-span-2">
+          {!evoForm.id && (
+            <label className="flex items-center gap-2 md:col-span-2 text-[11px] text-slate-700 cursor-pointer">
+              <input
+                type="checkbox"
+                className="rounded border-slate-300"
+                checked={provisionEvolutionInstance}
+                onChange={(e) => setProvisionEvolutionInstance(e.target.checked)}
+              />
+              <span>Criar instância na Evolution ao salvar (recomendado no modo rápido)</span>
+            </label>
+          )}
+          <div className="flex flex-wrap gap-2 md:col-span-2">
             <button
               type="button"
               className="pressable-3d flex-1 rounded bg-gradient-to-r from-emerald-700 to-emerald-600 text-xs text-white font-bold"
               onClick={async () => {
-                await authClient.saveCrmWhatsappInbox({
-                  action: "UPSERT_EVOLUTION",
-                  id: evoForm.id || undefined,
-                  name: evoForm.name,
-                  evolutionInstanceName: evoForm.evolutionInstanceName,
-                  evolutionServerUrl: evoForm.evolutionServerUrl,
-                  evolutionApiKey: evoForm.evolutionApiKey || undefined,
-                  teamId: evoForm.teamId || null,
-                  provisionEvolutionInstance: !evoForm.id && provisionEvolutionInstance,
-                });
-                setEvoForm({
-                  id: "",
-                  name: "",
-                  evolutionInstanceName: "",
-                  evolutionServerUrl: "",
-                  evolutionApiKey: "",
-                  teamId: "",
-                });
-                setProvisionEvolutionInstance(false);
-                await loadAll();
+                try {
+                  const isNew = !evoForm.id;
+                  const useSimple = isNew && evolutionDefaultsConfigured && !evoAdvancedOpen;
+                  if (isNew && !evolutionDefaultsConfigured && !evoAdvancedOpen) {
+                    setErrorText("Configure EVOLUTION_API_URL e EVOLUTION_API_KEY no servidor ou use Modo TI.");
+                    return;
+                  }
+                  const payload: Record<string, unknown> = {
+                    action: "UPSERT_EVOLUTION",
+                    name: evoForm.name.trim(),
+                    teamId: evoForm.teamId || null,
+                  };
+                  if (evoForm.id) payload.id = evoForm.id;
+
+                  if (useSimple) {
+                    payload.simpleConnect = true;
+                    const inst = evoForm.evolutionInstanceName.trim();
+                    if (inst) payload.evolutionInstanceName = inst;
+                    payload.provisionEvolutionInstance = provisionEvolutionInstance;
+                  } else {
+                    payload.simpleConnect = false;
+                    payload.evolutionInstanceName = evoForm.evolutionInstanceName.trim();
+                    payload.evolutionServerUrl = evoForm.evolutionServerUrl.trim();
+                    if (evoForm.evolutionApiKey.trim()) payload.evolutionApiKey = evoForm.evolutionApiKey.trim();
+                    payload.provisionEvolutionInstance = isNew && provisionEvolutionInstance;
+                  }
+
+                  if (!payload.name) {
+                    setErrorText("Informe o nome da linha.");
+                    return;
+                  }
+                  if (!useSimple && isNew) {
+                    if (!payload.evolutionInstanceName || !String(payload.evolutionInstanceName).trim()) {
+                      setErrorText("No modo TI, informe o nome da instância na Evolution.");
+                      return;
+                    }
+                    if (!String(payload.evolutionServerUrl || "").trim()) {
+                      setErrorText("No modo TI, informe a URL do servidor Evolution.");
+                      return;
+                    }
+                  }
+
+                  const res = (await authClient.saveCrmWhatsappInbox(payload as any)) as {
+                    id?: string;
+                    evolutionInstanceName?: string;
+                  };
+
+                  if (useSimple && res?.id) {
+                    setPairInbox({
+                      id: res.id,
+                      name: evoForm.name.trim(),
+                      evolutionInstanceName: res.evolutionInstanceName || evoForm.evolutionInstanceName || null,
+                      autoStartSyncWebhook: true,
+                    });
+                  }
+
+                  setEvoForm({
+                    id: "",
+                    name: "",
+                    evolutionInstanceName: "",
+                    evolutionServerUrl: "",
+                    evolutionApiKey: "",
+                    teamId: "",
+                  });
+                  setProvisionEvolutionInstance(true);
+                  setEvoAdvancedOpen(false);
+                  setErrorText(null);
+                  await loadAll();
+                } catch (err) {
+                  setErrorText(err instanceof Error ? err.message : "Falha ao salvar caixa.");
+                }
               }}
             >
-              Salvar caixa Web
+              {!evoForm.id && evolutionDefaultsConfigured && !evoAdvancedOpen
+                ? "Adicionar número e conectar"
+                : "Salvar caixa Web"}
             </button>
+            {!evoForm.id && (
+              <button
+                type="button"
+                className="rounded border border-slate-200 bg-white px-3 py-2 text-[11px] text-slate-600"
+                onClick={() => {
+                  setEvoForm({
+                    id: "",
+                    name: "",
+                    evolutionInstanceName: "",
+                    evolutionServerUrl: "",
+                    evolutionApiKey: "",
+                    teamId: "",
+                  });
+                  setProvisionEvolutionInstance(true);
+                  setEvoAdvancedOpen(false);
+                }}
+              >
+                Limpar
+              </button>
+            )}
           </div>
         </div>
         <div className="mt-3 space-y-2">
@@ -447,7 +546,8 @@ const CrmOpsAdmin: React.FC = () => {
                   <button
                     type="button"
                     className="text-[11px] text-[#2c348c] hover:underline"
-                    onClick={() =>
+                    onClick={() => {
+                      setEvoAdvancedOpen(true);
                       setEvoForm({
                         id: ib.id,
                         name: ib.name,
@@ -455,8 +555,8 @@ const CrmOpsAdmin: React.FC = () => {
                         evolutionServerUrl: ib.evolutionServerUrl || "",
                         evolutionApiKey: "",
                         teamId: ib.teamId || "",
-                      })
-                    }
+                      });
+                    }}
                   >
                     Editar
                   </button>

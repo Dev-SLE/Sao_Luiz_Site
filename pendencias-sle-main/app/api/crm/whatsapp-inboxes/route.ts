@@ -1,8 +1,27 @@
 import { NextResponse } from "next/server";
 import { getPool } from "../../../../lib/server/db";
 import { ensureCrmSchemaTables } from "../../../../lib/server/ensureSchema";
+import { getEvolutionServerDefaults, slugifyInstancePart } from "../../../../lib/server/evolutionDefaults";
 
 export const runtime = "nodejs";
+
+async function generateUniqueEvolutionInstanceName(pool: any, displayName: string): Promise<string> {
+  const part = slugifyInstancePart(displayName);
+  for (let i = 0; i < 12; i++) {
+    const suffix = Math.random().toString(36).slice(2, 7);
+    const candidate = `sle-${part}-${suffix}`.toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 56);
+    const dup = await pool.query(
+      `
+        SELECT 1 FROM pendencias.crm_whatsapp_inboxes
+        WHERE lower(btrim(evolution_instance_name)) = lower(btrim($1))
+        LIMIT 1
+      `,
+      [candidate]
+    );
+    if (!dup.rows?.length) return candidate;
+  }
+  return `sle-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`.slice(0, 56);
+}
 
 async function evolutionTryCreateInstance(args: {
   serverUrl: string;
@@ -72,6 +91,7 @@ export async function GET(req: Request) {
     query += ` ORDER BY provider ASC, name ASC`;
 
     const res = await pool.query(query, params);
+    const evolutionDefaultsConfigured = Boolean(getEvolutionServerDefaults());
     const inboxes = (res.rows || []).map((r: any) => ({
       id: String(r.id),
       name: String(r.name),
@@ -85,7 +105,7 @@ export async function GET(req: Request) {
       isActive: !!r.is_active,
       createdAt: r.created_at,
     }));
-    return NextResponse.json({ inboxes });
+    return NextResponse.json({ inboxes, evolutionDefaultsConfigured });
   } catch (e) {
     console.error("whatsapp-inboxes GET:", e);
     return NextResponse.json({ error: "Erro interno" }, { status: 500 });
@@ -115,23 +135,61 @@ export async function POST(req: Request) {
 
     const id = body?.id ? String(body.id) : null;
     const name = String(body?.name || "").trim();
-    const evolutionInstanceName = String(body?.evolutionInstanceName || "").trim();
-    const evolutionServerUrl = String(body?.evolutionServerUrl || "")
+    const simpleConnect = body?.simpleConnect === true;
+    let evolutionInstanceName = String(body?.evolutionInstanceName || "").trim();
+    let evolutionServerUrl = String(body?.evolutionServerUrl || "")
       .trim()
       .replace(/\/+$/, "");
-    const evolutionApiKey = body?.evolutionApiKey != null ? String(body.evolutionApiKey).trim() : "";
+    let evolutionApiKey = body?.evolutionApiKey != null ? String(body.evolutionApiKey).trim() : "";
     const teamId =
       body?.teamId != null && String(body.teamId).trim() ? String(body.teamId).trim() : null;
-    const provisionEvolutionInstance = body?.provisionEvolutionInstance === true;
+    const defaults = getEvolutionServerDefaults();
 
-    if (!name || !evolutionInstanceName || !evolutionServerUrl) {
-      return NextResponse.json({ error: "name, evolutionInstanceName e evolutionServerUrl obrigatórios" }, { status: 400 });
+    /** Modo simples: cria instância na Evolution por padrão, salvo se vier explicitamente false. */
+    let provisionEvolutionInstance = body?.provisionEvolutionInstance === true;
+    if (simpleConnect && !id && body?.provisionEvolutionInstance !== false) {
+      provisionEvolutionInstance = true;
+    }
+
+    if (!name) {
+      return NextResponse.json({ error: "name obrigatório" }, { status: 400 });
     }
 
     if (id) {
-      if (evolutionApiKey) {
-        await pool.query(
-          `
+      const cur = await pool.query(
+        `
+          SELECT evolution_server_url, evolution_api_key
+          FROM pendencias.crm_whatsapp_inboxes
+          WHERE id = $1::uuid AND provider = 'EVOLUTION'
+          LIMIT 1
+        `,
+        [id]
+      );
+      const row = cur.rows?.[0];
+      if (!evolutionServerUrl && row?.evolution_server_url) {
+        evolutionServerUrl = String(row.evolution_server_url).trim().replace(/\/+$/, "");
+      }
+      if (!evolutionApiKey && row?.evolution_api_key) {
+        evolutionApiKey = String(row.evolution_api_key).trim();
+      }
+      if (!evolutionServerUrl && defaults?.serverUrl) evolutionServerUrl = defaults.serverUrl;
+      if (!evolutionApiKey && defaults?.apiKey) evolutionApiKey = defaults.apiKey;
+
+      if (!evolutionInstanceName) {
+        return NextResponse.json({ error: "evolutionInstanceName obrigatório" }, { status: 400 });
+      }
+      if (!evolutionServerUrl || !evolutionApiKey) {
+        return NextResponse.json(
+          {
+            error:
+              "URL e chave da Evolution ausentes. Configure EVOLUTION_API_URL e EVOLUTION_API_KEY no servidor ou preencha em modo avançado.",
+          },
+          { status: 400 }
+        );
+      }
+
+      await pool.query(
+        `
           UPDATE pendencias.crm_whatsapp_inboxes
           SET
             name = $2,
@@ -143,29 +201,30 @@ export async function POST(req: Request) {
             updated_at = NOW()
           WHERE id = $1::uuid AND provider = 'EVOLUTION'
         `,
-          [id, name, evolutionInstanceName, evolutionServerUrl, evolutionApiKey, teamId]
-        );
-      } else {
-        await pool.query(
-          `
-          UPDATE pendencias.crm_whatsapp_inboxes
-          SET
-            name = $2,
-            evolution_instance_name = $3,
-            evolution_server_url = $4,
-            team_id = $5::uuid,
-            is_active = true,
-            updated_at = NOW()
-          WHERE id = $1::uuid AND provider = 'EVOLUTION'
-        `,
-          [id, name, evolutionInstanceName, evolutionServerUrl, teamId]
-        );
-      }
-      return NextResponse.json({ success: true, id });
+        [id, name, evolutionInstanceName, evolutionServerUrl, evolutionApiKey, teamId]
+      );
+      return NextResponse.json({ success: true, id, evolutionInstanceName });
     }
 
-    if (!evolutionApiKey) {
-      return NextResponse.json({ error: "evolutionApiKey obrigatório ao criar inbox" }, { status: 400 });
+    if (!evolutionInstanceName) {
+      if (simpleConnect) {
+        evolutionInstanceName = await generateUniqueEvolutionInstanceName(pool, name);
+      } else {
+        return NextResponse.json({ error: "evolutionInstanceName obrigatório" }, { status: 400 });
+      }
+    }
+
+    if (!evolutionServerUrl && defaults?.serverUrl) evolutionServerUrl = defaults.serverUrl;
+    if (!evolutionApiKey && defaults?.apiKey) evolutionApiKey = defaults.apiKey;
+
+    if (!evolutionServerUrl || !evolutionApiKey) {
+      return NextResponse.json(
+        {
+          error:
+            "Configure EVOLUTION_API_URL e EVOLUTION_API_KEY no servidor (Vercel) para o modo rápido, ou informe URL e chave no formulário avançado.",
+        },
+        { status: 400 }
+      );
     }
 
     if (provisionEvolutionInstance) {
@@ -201,7 +260,12 @@ export async function POST(req: Request) {
     `,
       [name, evolutionInstanceName, evolutionServerUrl, evolutionApiKey, teamId]
     );
-    return NextResponse.json({ success: true, id: ins.rows?.[0]?.id });
+    return NextResponse.json({
+      success: true,
+      id: ins.rows?.[0]?.id,
+      evolutionInstanceName,
+      simpleConnect,
+    });
   } catch (e: any) {
     console.error("whatsapp-inboxes POST:", e);
     const msg = e?.code === "23505" ? "Nome de instância Evolution já cadastrado" : "Erro interno";

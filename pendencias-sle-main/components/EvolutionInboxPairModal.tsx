@@ -1,12 +1,14 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { X, Loader2, Wifi, WifiOff } from "lucide-react";
 
 export type PairInboxInfo = {
   id: string;
   name: string;
   evolutionInstanceName: string | null;
+  /** Se true, abre o modal e já sincroniza webhook + pede QR (fluxo “Adicionar número”). */
+  autoStartSyncWebhook?: boolean;
 };
 
 type Props = {
@@ -23,6 +25,7 @@ function digitsForEvolution(raw: string): string {
 
 export const EvolutionInboxPairModal: React.FC<Props> = ({ open, onClose, inbox }) => {
   const [phone, setPhone] = useState("");
+  const [deviceOs, setDeviceOs] = useState<"any" | "android" | "ios">("any");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [evolution, setEvolution] = useState<any>(null);
@@ -30,62 +33,75 @@ export const EvolutionInboxPairModal: React.FC<Props> = ({ open, onClose, inbox 
   const [conn, setConn] = useState<{ state: string | null } | null>(null);
   const [waitingQr, setWaitingQr] = useState(false);
   const [webhookQr, setWebhookQr] = useState<string | null>(null);
+  const autoPairLaunchedRef = useRef(false);
 
   useEffect(() => {
     if (!open) {
       setPhone("");
+      setDeviceOs("any");
       setErr(null);
       setEvolution(null);
       setSyncResult(null);
       setConn(null);
       setWaitingQr(false);
       setWebhookQr(null);
+      autoPairLaunchedRef.current = false;
     }
   }, [open, inbox?.id]);
 
-  const runConnect = async (syncWebhook: boolean) => {
-    if (!inbox?.id) return;
-    setLoading(true);
-    setErr(null);
-    setEvolution(null);
-    setSyncResult(null);
-    setWebhookQr(null);
-    try {
-      const r = await fetch("/api/crm/evolution-pair", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          inboxId: inbox.id,
-          phoneDigits: digitsForEvolution(phone),
-          syncWebhook,
-        }),
-      });
-      const j = await r.json();
-      if (!r.ok) {
-        setErr(String(j?.error || "Falha ao conectar"));
-        return;
+  const runConnect = useCallback(
+    async (syncWebhook: boolean) => {
+      if (!inbox?.id) return;
+      setLoading(true);
+      setErr(null);
+      setEvolution(null);
+      setSyncResult(null);
+      setWebhookQr(null);
+      try {
+        const r = await fetch("/api/crm/evolution-pair", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            inboxId: inbox.id,
+            phoneDigits: digitsForEvolution(phone),
+            syncWebhook,
+          }),
+        });
+        const j = await r.json();
+        if (!r.ok) {
+          setErr(String(j?.error || "Falha ao conectar"));
+          return;
+        }
+        setEvolution(j.evolution);
+        setSyncResult(j.syncWebhook);
+        if (j.connectionHint?.state) {
+          setConn({ state: j.connectionHint.state });
+        }
+        const ev = j.evolution;
+        const inline =
+          ev?.base64 ||
+          ev?.qrcode?.base64 ||
+          (typeof ev?.code === "string" && ev.code.startsWith("data:image") ? ev.code : null);
+        if (!inline) {
+          setWaitingQr(true);
+        } else {
+          setWaitingQr(false);
+        }
+      } catch (e: any) {
+        setErr(e?.message || String(e));
+      } finally {
+        setLoading(false);
       }
-      setEvolution(j.evolution);
-      setSyncResult(j.syncWebhook);
-      if (j.connectionHint?.state) {
-        setConn({ state: j.connectionHint.state });
-      }
-      const ev = j.evolution;
-      const inline =
-        ev?.base64 ||
-        ev?.qrcode?.base64 ||
-        (typeof ev?.code === "string" && ev.code.startsWith("data:image") ? ev.code : null);
-      if (!inline) {
-        setWaitingQr(true);
-      } else {
-        setWaitingQr(false);
-      }
-    } catch (e: any) {
-      setErr(e?.message || String(e));
-    } finally {
-      setLoading(false);
-    }
-  };
+    },
+    [inbox?.id, phone]
+  );
+
+  useEffect(() => {
+    if (!open || !inbox?.autoStartSyncWebhook || autoPairLaunchedRef.current) return;
+    autoPairLaunchedRef.current = true;
+    const t = setTimeout(() => void runConnect(true), 500);
+    return () => clearTimeout(t);
+  }, [open, inbox?.id, inbox?.autoStartSyncWebhook, runConnect]);
 
   useEffect(() => {
     if (!open || !inbox?.id) return;
@@ -203,6 +219,48 @@ export const EvolutionInboxPairModal: React.FC<Props> = ({ open, onClose, inbox 
             <strong>{conn?.state || "—"}</strong>
             {looksConnected && " · sessão ativa"}
           </span>
+        </div>
+
+        <div className="mt-4">
+          <p className="text-[10px] font-semibold text-slate-700">Onde você vai escanear o QR?</p>
+          <div className="mt-1.5 flex flex-wrap gap-2">
+            {(
+              [
+                { id: "any" as const, label: "Tanto faz" },
+                { id: "android" as const, label: "Android" },
+                { id: "ios" as const, label: "iPhone" },
+              ]
+            ).map((b) => (
+              <button
+                key={b.id}
+                type="button"
+                onClick={() => setDeviceOs(b.id)}
+                className={`rounded-full border px-3 py-1.5 text-[10px] font-semibold transition-colors ${
+                  deviceOs === b.id
+                    ? "border-[#2c348c] bg-[#2c348c]/10 text-[#06183e]"
+                    : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                }`}
+              >
+                {b.label}
+              </button>
+            ))}
+          </div>
+          <p className="mt-2 text-[10px] text-slate-500 leading-relaxed">
+            O QR é o mesmo; só mudam os passos no celular.{" "}
+            {deviceOs === "ios" && (
+              <>
+                No iPhone: <strong>Configurações</strong> do WhatsApp → <strong>Aparelhos conectados</strong> →{" "}
+                <strong>Conectar um aparelho</strong>.
+              </>
+            )}
+            {deviceOs === "android" && (
+              <>
+                No Android: toque nos <strong>três pontos</strong> → <strong>Aparelhos conectados</strong> →{" "}
+                <strong>Conectar um aparelho</strong>.
+              </>
+            )}
+            {deviceOs === "any" && <>Use <strong>Aparelhos conectados</strong> no menu do WhatsApp e escaneie abaixo.</>}
+          </p>
         </div>
 
         <label className="mt-4 block text-[11px] font-medium text-slate-700">
