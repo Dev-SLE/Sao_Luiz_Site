@@ -208,6 +208,56 @@ export async function pickAgentFromTeam(teamId: string, conversationId: string) 
 }
 
 /**
+ * Resolve estágio do funil pelo tópico (nome exato + fallback por padrão no nome).
+ * Regras de roteamento genéricas não devem impedir RASTREIO/SUPORTE de irem para a coluna operacional correta.
+ */
+async function resolveTopicStageId(leadId: string, topic: string): Promise<string | null> {
+  const pool = getPool();
+  const stageNameByTopic: Record<string, string> = {
+    RASTREIO: "Em busca de mercadorias",
+    SUPORTE: "Ocorrências",
+    COMERCIAL: "Aguardando atendimento",
+    FINANCEIRO: "Aguardando atendimento",
+    GERAL: "Aguardando atendimento",
+  };
+  const stageName = stageNameByTopic[topic] || "Aguardando atendimento";
+
+  const exact = await pool.query(
+    `
+      SELECT s.id
+      FROM pendencias.crm_leads l
+      JOIN pendencias.crm_stages s ON s.pipeline_id = l.pipeline_id
+      WHERE l.id = $1::uuid AND LOWER(TRIM(s.name)) = LOWER(TRIM($2))
+      LIMIT 1
+    `,
+    [leadId, stageName]
+  );
+  if (exact.rows?.[0]?.id) return String(exact.rows[0].id);
+
+  let likePattern: string | null = null;
+  if (topic === "RASTREIO") likePattern = "%busca%mercador%";
+  else if (topic === "SUPORTE") likePattern = "%ocorr%";
+  else if (topic === "COMERCIAL" || topic === "FINANCEIRO" || topic === "GERAL") likePattern = "%aguardando%atendimento%";
+
+  if (likePattern) {
+    const fuzzy = await pool.query(
+      `
+        SELECT s.id
+        FROM pendencias.crm_leads l
+        JOIN pendencias.crm_stages s ON s.pipeline_id = l.pipeline_id
+        WHERE l.id = $1::uuid AND LOWER(s.name) LIKE $2
+        ORDER BY s.position ASC NULLS LAST, s.created_at ASC
+        LIMIT 1
+      `,
+      [leadId, likePattern]
+    );
+    if (fuzzy.rows?.[0]?.id) return String(fuzzy.rows[0].id);
+  }
+
+  return null;
+}
+
+/**
  * Após inbound (ex.: WhatsApp): classifica tópico, aplica regras e atribui estágio/atendente quando configurado.
  */
 export async function applyInboundRouting(input: {
@@ -235,15 +285,15 @@ export async function applyInboundRouting(input: {
     [topic, routing.source === "RULE" ? "RULE" : "TOPIC", input.conversationId]
   );
 
-  if (routing.targetStageId) {
-    await pool.query(
-      `
-        UPDATE pendencias.crm_leads
-        SET stage_id = $1::uuid, updated_at = NOW()
-        WHERE id = $2::uuid
-      `,
-      [routing.targetStageId, input.leadId]
-    );
+  const topicStageId = await resolveTopicStageId(input.leadId, topic);
+  /** RASTREIO/SUPORTE: coluna operacional tem prioridade sobre regra que mande tudo para "Aguardando". */
+  let stageToApply: string | null =
+    topic === "RASTREIO" || topic === "SUPORTE"
+      ? topicStageId || routing.targetStageId || null
+      : routing.targetStageId || topicStageId || null;
+
+  if (stageToApply) {
+    await moveLeadToStage(input.leadId, stageToApply);
   }
 
   const tt = String(routing.targetType || "NONE").toUpperCase();
@@ -327,6 +377,33 @@ export async function applyInboundRouting(input: {
   }
 
   return { topic, routing };
+}
+
+/** Move lead para estágio e recalcula position no destino (fim da coluna). */
+export async function moveLeadToStage(leadId: string, stageId: string) {
+  const pool = getPool();
+  const leadRes = await pool.query(`SELECT pipeline_id, stage_id FROM pendencias.crm_leads WHERE id = $1::uuid`, [leadId]);
+  const pipelineId = leadRes.rows?.[0]?.pipeline_id as string | undefined;
+  const currentStage = leadRes.rows?.[0]?.stage_id as string | undefined;
+  if (!pipelineId) return;
+  if (String(currentStage || "") === String(stageId)) return;
+  const posRow = await pool.query(
+    `
+      SELECT COALESCE(MAX(position), 0) + 1 AS next_pos
+      FROM pendencias.crm_leads
+      WHERE pipeline_id = $1 AND stage_id = $2::uuid
+    `,
+    [pipelineId, stageId]
+  );
+  const nextPos = Number(posRow.rows?.[0]?.next_pos || 0);
+  await pool.query(
+    `
+      UPDATE pendencias.crm_leads
+      SET stage_id = $1::uuid, position = $2, updated_at = NOW()
+      WHERE id = $3::uuid
+    `,
+    [stageId, nextPos, leadId]
+  );
 }
 
 export async function resolveSlaMinutes(params: {

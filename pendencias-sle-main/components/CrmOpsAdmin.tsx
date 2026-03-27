@@ -29,21 +29,33 @@ const CrmOpsAdmin: React.FC = () => {
     priority: "MEDIA",
     slaMinutes: 30,
   });
+  const [waInboxes, setWaInboxes] = useState<any[]>([]);
+  const [evoForm, setEvoForm] = useState({
+    id: "",
+    name: "",
+    evolutionInstanceName: "",
+    evolutionServerUrl: "",
+    evolutionApiKey: "",
+    teamId: "",
+  });
+  const [webhookHint, setWebhookHint] = useState("");
 
   const loadAll = async () => {
     setLoading(true);
     setErrorText(null);
     try {
-      const [t, a, r] = await Promise.all([
+      const [t, a, r, w] = await Promise.all([
         authClient.getCrmTeams(),
         authClient.getCrmAgents(),
         authClient.getCrmRoutingRules(),
+        authClient.getCrmWhatsappInboxes().catch(() => ({ inboxes: [] })),
       ]);
       const s = await authClient.getCrmSlaRules();
       setTeams(Array.isArray(t?.teams) ? t.teams : []);
       setAgents(Array.isArray(a?.agents) ? a.agents : []);
       setRules(Array.isArray(r?.rules) ? r.rules : []);
       setSlaRules(Array.isArray(s?.items) ? s.items : []);
+      setWaInboxes(Array.isArray(w?.inboxes) ? w.inboxes : []);
     } catch (err) {
       setErrorText(err instanceof Error ? err.message : "Falha ao carregar operação CRM.");
     } finally {
@@ -55,8 +67,41 @@ const CrmOpsAdmin: React.FC = () => {
     loadAll();
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const base = window.location.origin;
+    setWebhookHint(`${base}/api/whatsapp/evolution/webhook`);
+  }, []);
+
   return (
     <div className="space-y-4">
+      <div className="surface-card-strong p-4 border border-[#2c348c]/25 bg-gradient-to-br from-[#f8faff] to-white">
+        <h3 className="text-sm font-black text-[#06183e]">Multiatendimento (estilo Kommo)</h3>
+        <ul className="mt-2 space-y-1.5 text-[11px] text-slate-700 list-disc pl-4 leading-relaxed">
+          <li>
+            <strong>Atendentes são usuários da plataforma</strong> (login e senha em{' '}
+            <span className="font-semibold text-[#2c348c]">Configurações → Gestão de Usuários</span>). Crie um perfil com{' '}
+            <code className="text-[10px] bg-slate-100 px-1 rounded">VIEW_CRM_CHAT</code>,{' '}
+            <code className="text-[10px] bg-slate-100 px-1 rounded">VIEW_CRM_FUNIL</code> e escopo{' '}
+            <code className="text-[10px] bg-slate-100 px-1 rounded">CRM_SCOPE_SELF</code> (só o que é dele + fila) ou{' '}
+            <code className="text-[10px] bg-slate-100 px-1 rounded">CRM_SCOPE_TEAM</code> /{' '}
+            <code className="text-[10px] bg-slate-100 px-1 rounded">CRM_SCOPE_ALL</code>.
+          </li>
+          <li>
+            <strong>Dois canais:</strong> a <strong>linha oficial (Meta / Cloud API)</strong> fica com a <strong>Sofia</strong> (webhook já existente). As{' '}
+            <strong>linhas das atendentes</strong> (WhatsApp pessoal/comercial com app no celular + Web) usam{' '}
+            <strong>Evolution API</strong> (open-source, gratuita — você hospeda no Docker/Railway/etc.) — cadastre cada instância em{' '}
+            <strong>Caixas WhatsApp Web</strong> abaixo e aponte o webhook para este site.
+          </li>
+          <li>
+            Monte <strong>times</strong>, coloque <strong>membros</strong> (usuários cadastrados) e <strong>regras de roteamento</strong> (tópico, palavra-chave → usuário ou time). Mensagens novas podem cair na fila sem responsável para alguém assumir.
+          </li>
+          <li>
+            No <strong>Chat CRM</strong>: troque o responsável no select, use <strong>Assumir conversa</strong> ou{' '}
+            <strong>Devolver à fila</strong> para liberar para outro atendente.
+          </li>
+        </ul>
+      </div>
       {errorText && (
         <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2">
           <div className="flex items-center justify-between gap-2">
@@ -86,6 +131,155 @@ const CrmOpsAdmin: React.FC = () => {
               <button className="text-[11px] text-red-700 hover:text-red-800" onClick={async () => { await authClient.deleteCrmTeam(t.id); await loadAll(); }}>Excluir</button>
             </div>
           ))}
+        </div>
+      </div>
+
+      <div className="surface-card-strong p-4 border border-emerald-200/60 bg-gradient-to-br from-emerald-50/40 to-white">
+        <h3 className="text-sm font-bold text-slate-900">Caixas WhatsApp Web (Evolution API)</h3>
+        <p className="mt-1 text-[11px] text-slate-600 leading-relaxed">
+          Stack sugerida:{' '}
+          <a
+            className="font-semibold text-[#2c348c] underline"
+            href="https://github.com/EvolutionAPI/evolution-api"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Evolution API
+          </a>{' '}
+          (sem custo de licença). Custo só de hospedagem — em dev use Docker na sua máquina ({' '}
+          <code className="text-[10px] bg-slate-100 px-1 rounded">deploy/docker-compose.evolution.yml</code>
+          ). Produção: VM barata, Railway, etc. O mesmo <strong>apikey</strong> do Evolution vai em &quot;Chave API&quot; aqui. No
+          Manager do Evolution, crie uma <strong>instância</strong> (nome único, ex.: <code className="text-[10px]">brenda-sle</code>
+          ), escaneie o QR com o WhatsApp da atendente e configure o webhook:
+        </p>
+        <div className="mt-2 rounded-lg border border-slate-200 bg-slate-900 px-3 py-2 text-[10px] text-emerald-100 font-mono break-all">
+          {webhookHint ? `${webhookHint}?token=SEU_EVOLUTION_WEBHOOK_TOKEN` : "/api/whatsapp/evolution/webhook?token=..."}
+        </div>
+        <p className="mt-1 text-[10px] text-slate-500">
+          Defina <code className="bg-slate-100 px-1 rounded">EVOLUTION_WEBHOOK_TOKEN</code> no <code className="bg-slate-100 px-1 rounded">.env</code> do site
+          e use o mesmo valor no query <code className="bg-slate-100 px-1 rounded">token</code>. Eventos:{" "}
+          <strong>MESSAGES_UPSERT</strong> e <strong>QRCODE_UPDATED</strong> (este último para o QR em{" "}
+          <a className="underline font-semibold text-[#2c348c]" href="/evolution-pairing" target="_blank" rel="noreferrer">
+            /evolution-pairing
+          </a>
+          ).
+        </p>
+        <p className="mt-1 text-[10px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
+          <strong>QR em branco no Manager?</strong> O painel <code className="text-[10px]">8080/manager</code> usa WebSocket; no Edge às vezes não aparece nada na rede.
+          Use o fallback: abra <a className="underline font-semibold text-[#2c348c]" href="/evolution-pairing" target="_blank" rel="noreferrer">/evolution-pairing</a> com o Next rodando (precisa{' '}
+          <code className="text-[10px]">EVOLUTION_API_KEY</code> no <code className="text-[10px]">.env</code>) ou tente o pareamento por <strong>código de 8 dígitos</strong> no WhatsApp.
+        </p>
+        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2">
+          <input
+            className="rounded bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800"
+            placeholder="Rótulo (ex.: Brenda - Comercial)"
+            value={evoForm.name}
+            onChange={(e) => setEvoForm((f) => ({ ...f, name: e.target.value }))}
+          />
+          <input
+            className="rounded bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800"
+            placeholder="Nome da instância no Evolution (ex.: brenda-sle)"
+            value={evoForm.evolutionInstanceName}
+            onChange={(e) => setEvoForm((f) => ({ ...f, evolutionInstanceName: e.target.value }))}
+          />
+          <input
+            className="rounded bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800 md:col-span-2"
+            placeholder="URL do servidor Evolution (ex.: http://localhost:8080 ou https://evo.seudominio.com)"
+            value={evoForm.evolutionServerUrl}
+            onChange={(e) => setEvoForm((f) => ({ ...f, evolutionServerUrl: e.target.value }))}
+          />
+          <input
+            className="rounded bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800 md:col-span-2"
+            placeholder="Chave API (apikey do Evolution) — deixe em branco ao editar para não trocar"
+            value={evoForm.evolutionApiKey}
+            onChange={(e) => setEvoForm((f) => ({ ...f, evolutionApiKey: e.target.value }))}
+          />
+          <select
+            className="rounded bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800"
+            value={evoForm.teamId}
+            onChange={(e) => setEvoForm((f) => ({ ...f, teamId: e.target.value }))}
+          >
+            <option value="">Time (opcional)</option>
+            {teams.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              className="pressable-3d flex-1 rounded bg-gradient-to-r from-emerald-700 to-emerald-600 text-xs text-white font-bold"
+              onClick={async () => {
+                await authClient.saveCrmWhatsappInbox({
+                  action: "UPSERT_EVOLUTION",
+                  id: evoForm.id || undefined,
+                  name: evoForm.name,
+                  evolutionInstanceName: evoForm.evolutionInstanceName,
+                  evolutionServerUrl: evoForm.evolutionServerUrl,
+                  evolutionApiKey: evoForm.evolutionApiKey || undefined,
+                  teamId: evoForm.teamId || null,
+                });
+                setEvoForm({
+                  id: "",
+                  name: "",
+                  evolutionInstanceName: "",
+                  evolutionServerUrl: "",
+                  evolutionApiKey: "",
+                  teamId: "",
+                });
+                await loadAll();
+              }}
+            >
+              Salvar caixa Web
+            </button>
+          </div>
+        </div>
+        <div className="mt-3 space-y-2">
+          {waInboxes
+            .filter((x) => String(x.provider).toUpperCase() === "EVOLUTION" && x.isActive !== false)
+            .map((ib) => (
+              <div
+                key={ib.id}
+                className="flex flex-wrap items-center justify-between gap-2 rounded border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700"
+              >
+                <div>
+                  <span className="font-semibold">{ib.name}</span>
+                  <span className="text-slate-500"> — instância </span>
+                  <code className="text-[10px] bg-slate-100 px-1 rounded">{ib.evolutionInstanceName}</code>
+                  <span className="text-slate-500"> · API </span>
+                  <span className="text-[10px]">{ib.evolutionApiKeyLast4 || "—"}</span>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    className="text-[11px] text-[#2c348c] hover:underline"
+                    onClick={() =>
+                      setEvoForm({
+                        id: ib.id,
+                        name: ib.name,
+                        evolutionInstanceName: ib.evolutionInstanceName || "",
+                        evolutionServerUrl: ib.evolutionServerUrl || "",
+                        evolutionApiKey: "",
+                        teamId: ib.teamId || "",
+                      })
+                    }
+                  >
+                    Editar
+                  </button>
+                  <button
+                    type="button"
+                    className="text-[11px] text-red-700"
+                    onClick={async () => {
+                      await authClient.saveCrmWhatsappInbox({ action: "DELETE", id: ib.id });
+                      await loadAll();
+                    }}
+                  >
+                    Desativar
+                  </button>
+                </div>
+              </div>
+            ))}
         </div>
       </div>
 

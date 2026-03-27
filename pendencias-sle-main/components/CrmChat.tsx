@@ -37,6 +37,9 @@ interface ConversationSummary {
   topic?: string | null;
   slaDueAt?: string | null;
   slaBreachedAt?: string | null;
+  /** Caixa WhatsApp (null = linha oficial Meta / Sofia) */
+  inboxName?: string | null;
+  inboxProvider?: string | null;
 }
 
 interface Message {
@@ -178,6 +181,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
     'PENDENTE' | 'CONCLUIDO' | 'EM_RASTREIO' | 'PERDIDO'
   >('PENDENTE');
   const [agents, setAgents] = useState<Array<{ username: string; role?: string; activeConversations?: number }>>([]);
+  const [crmScope, setCrmScope] = useState<'ALL' | 'TEAM' | 'SELF' | null>(null);
   const [assigning, setAssigning] = useState(false);
   const [routingHint, setRoutingHint] = useState<{ topic?: string; targetUsername?: string | null } | null>(null);
   const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
@@ -331,7 +335,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
     if (!input.trim() && attachmentFiles.length === 0) return;
     const text = input.trim();
 
-    const matches = text.match(/\b\d{5,}\b/g);
+    const matches = text.match(/\b\d{4,}\b/g);
     if (matches && matches.length > 0) {
       for (const raw of matches) {
         const info = lookupCte(raw);
@@ -424,6 +428,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
         requestUsername: user?.username || null,
         requestRole: user?.role || null,
       });
+      setCrmScope(convResp?.scope ?? 'SELF');
       setConversations(convResp?.conversations || []);
     } catch (e) {
       console.error("Erro ao atualizar conversa:", e);
@@ -498,14 +503,23 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
   };
 
   useEffect(() => {
-    // Detecta CTE no histórico atual (após carregar mensagens).
+    // Prioriza CTE salvo no lead (webhook / Sofia); senão extrai do histórico (4+ dígitos).
+    const fromLead = selectedConversation?.cte?.replace(/\D/g, "") || "";
+    if (fromLead.length >= 4) {
+      const info = lookupCte(fromLead);
+      setUltimoRastreio(
+        info || `CTE ${fromLead} vinculado ao lead — abra o rastreio para ver detalhes operacionais.`
+      );
+      return;
+    }
+
     if (!messages.length) {
       setUltimoRastreio(null);
       return;
     }
 
-    const allText = messages.map((m) => m.text).join(' ');
-    const matches = allText.match(/\b\d{5,}\b/g);
+    const allText = messages.map((m) => m.text).join(" ");
+    const matches = allText.match(/\b\d{4,}\b/g);
     if (matches && matches.length > 0) {
       for (const raw of matches) {
         const info = lookupCte(raw);
@@ -517,7 +531,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
     }
 
     setUltimoRastreio(null);
-  }, [messages]);
+  }, [messages, selectedConversation?.cte, selectedConversation?.id, pendencias.data, criticos.data]);
 
   useEffect(() => {
     if (
@@ -543,6 +557,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
           requestUsername: user?.username || null,
           requestRole: user?.role || null,
         });
+        setCrmScope(resp?.scope ?? 'SELF');
         let convs: ConversationSummary[] = resp?.conversations || [];
 
         // Se o lead abriu o chat mas ainda não existe conversation criada,
@@ -696,6 +711,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
           requestRole: user?.role || null,
         });
         const nextConvs = convResp?.conversations || [];
+        setCrmScope(convResp?.scope ?? 'SELF');
         setConversations(nextConvs);
         crmChatCache = {
           leadId: leadId || null,
@@ -812,6 +828,17 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
             Filtros
           </button>
         </div>
+        {crmScope && (
+          <div className="px-3 py-2 border-b border-slate-200 bg-[#eef3ff]/80">
+            <p className="text-[10px] font-semibold text-[#1f2f86] leading-snug">
+              {crmScope === 'ALL' && 'Visão global: você enxerga todas as conversas.'}
+              {crmScope === 'TEAM' &&
+                'Visão da equipe: conversas do seu time, sem responsável na fila e as suas.'}
+              {crmScope === 'SELF' &&
+                'Sua fila: conversas atribuídas a você + sem responsável (para assumir). Perfis em Configurações → CRM_SCOPE_*.'}
+            </p>
+          </div>
+        )}
         <div className="px-3 py-2 border-b border-slate-200">
           <div className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-[11px] text-slate-700">
             <Hash size={12} className="text-[#2c348c]/70" />
@@ -871,7 +898,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                   <p className="mt-0.5 truncate text-[11px] text-slate-500">
                     {conv.lastMessage}
                   </p>
-                  <div className="flex items-center gap-1 mt-1">
+                  <div className="flex items-center gap-1 mt-1 flex-wrap">
                     <span
                       className={clsx(
                         'px-1.5 py-0.5 rounded-full text-[9px] font-bold border',
@@ -880,6 +907,16 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                     >
                       {channel.label}
                     </span>
+                    {conv.inboxProvider === 'EVOLUTION' && conv.inboxName && (
+                      <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold border border-emerald-300 bg-emerald-50 text-emerald-900">
+                        Web · {conv.inboxName}
+                      </span>
+                    )}
+                    {!conv.inboxProvider && !conv.inboxName && (
+                      <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold border border-sky-200 bg-sky-50 text-sky-900">
+                        Meta · Sofia
+                      </span>
+                    )}
                     {conv.unread > 0 && (
                       <span className="ml-auto inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#e42424] text-[9px] font-bold text-white">
                         {conv.unread}
@@ -913,6 +950,19 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
               >
                 {channelConfig[(selectedConversation?.channel || 'WHATSAPP') as Channel].label}
               </span>
+              {selectedConversation?.inboxProvider === 'EVOLUTION' && selectedConversation?.inboxName && (
+                <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold border border-emerald-300 bg-emerald-50 text-emerald-900">
+                  Caixa Web: {selectedConversation.inboxName}
+                </span>
+              )}
+              {selectedConversation &&
+                selectedConversation.channel === 'WHATSAPP' &&
+                !selectedConversation.inboxProvider &&
+                !selectedConversation.inboxName && (
+                  <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold border border-sky-200 bg-sky-50 text-sky-900">
+                    Meta · oficial
+                  </span>
+                )}
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -1061,7 +1111,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                 </option>
               ))}
             </select>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-col sm:flex-row items-stretch gap-2">
               <button
                 type="button"
                 onClick={() =>
@@ -1074,6 +1124,19 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                 className="flex-1 rounded-lg bg-slate-50 border border-slate-200 px-2 py-2 text-[11px] text-slate-800 hover:border-[#2c348c]/40"
               >
                 {selectedConversation?.lockedBy ? `Desbloquear (${selectedConversation.lockedBy})` : 'Assumir conversa'}
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  applyConversationUpdate({
+                    assignedUsername: null,
+                    assignmentMode: 'MANUAL',
+                  })
+                }
+                disabled={!selectedConversation?.assignedUsername}
+                className="flex-1 rounded-lg border border-amber-200 bg-amber-50 px-2 py-2 text-[11px] font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Devolver à fila
               </button>
             </div>
           </div>

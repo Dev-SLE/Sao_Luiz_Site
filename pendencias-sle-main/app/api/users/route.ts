@@ -29,12 +29,28 @@ export async function POST(req: Request) {
     const role = String(body?.role || "").trim();
     const linkedOriginUnit = String(body?.linkedOriginUnit || "").trim();
     const linkedDestUnit = String(body?.linkedDestUnit || "").trim();
-    if (!username || !password || !role) {
-      return NextResponse.json({ error: "username/password/role obrigatórios" }, { status: 400 });
+    if (!username || !role) {
+      return NextResponse.json({ error: "username/role obrigatórios" }, { status: 400 });
     }
 
-    const passwordHash = await bcrypt.hash(password, 10);
     const pool = getPool();
+    const existing = await pool.query(
+      "SELECT username, password_hash FROM pendencias.users WHERE username = $1 LIMIT 1",
+      [username]
+    );
+    const isUpdate = (existing.rows?.length || 0) > 0;
+
+    if (!isUpdate && !password) {
+      return NextResponse.json(
+        { error: "password obrigatório para novo usuário" },
+        { status: 400 }
+      );
+    }
+
+    const passwordHash = password
+      ? await bcrypt.hash(password, 10)
+      : String(existing.rows?.[0]?.password_hash || "");
+
     const result = await pool.query(
       `
         INSERT INTO pendencias.users (username, password_hash, role, linked_origin_unit, linked_dest_unit, updated_at)

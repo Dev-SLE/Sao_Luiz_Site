@@ -1,0 +1,63 @@
+# Evolution API v2 — PostgreSQL + Redis obrigatórios na imagem atual.
+# cd deploy && docker compose -f docker-compose.evolution.yml up -d
+# Manager: http://localhost:8080  |  Postgres interno (não exposto).
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: evolution
+      POSTGRES_PASSWORD: ${EVOLUTION_DB_PASSWORD}
+      POSTGRES_DB: evolution_db
+    volumes:
+      - evolution_pg:/var/lib/postgresql/data
+    networks:
+      - evolution-internal
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    networks:
+      - evolution-internal
+
+  evolution-api:
+    # A imagem atendai:latest está parada em v2.2.3 e costuma falhar no QR/pairing.
+    image: evoapicloud/evolution-api:v2.3.3
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    environment:
+      # URL pública da API (IP:porta ou https://domínio). Em VM na internet use o IP/DNS real;
+      # se deixar só localhost, os eventos vêm com server_url errado e o QR pode ficar em "connecting".
+      # Local: exporte EVOLUTION_PUBLIC_SERVER_URL=http://127.0.0.1:8080 e abra o Manager nesse mesmo host.
+      SERVER_URL: ${EVOLUTION_PUBLIC_SERVER_URL:-http://localhost:8080}
+      # Alinha com a versão atual do WhatsApp Web (evita QR vazio / falha de pareamento).
+      # Atualize se o QR parar de novo: https://web.whatsapp.com/check-update?version=0&platform=web
+      CONFIG_SESSION_PHONE_VERSION: "2.2413.51"
+      # O Manager costuma receber o QR em tempo real via Socket.io — por padrão vem desligado.
+      WEBSOCKET_ENABLED: "true"
+      WEBSOCKET_GLOBAL_EVENTS: "true"
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: postgresql://evolution:${EVOLUTION_DB_PASSWORD}@postgres:5432/evolution_db?schema=evolution_api
+      DATABASE_CONNECTION_CLIENT_NAME: evolution_sle
+      CACHE_REDIS_ENABLED: "true"
+      CACHE_REDIS_URI: redis://redis:6379/6
+      CACHE_REDIS_PREFIX_KEY: evolution_sle
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - evolution_instances:/evolution/instances
+    networks:
+      - evolution-internal
+
+volumes:
+  evolution_pg:
+  evolution_instances:
+
+networks:
+  evolution-internal:
+    driver: bridge

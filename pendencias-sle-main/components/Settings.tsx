@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useData } from '../context/DataContext';
 import { Page, UserData, ProfileData } from '../types';
-import { Trash2, UserPlus, Save, Copy, Shield, Users, CheckSquare, Square, X, Activity, Search } from 'lucide-react';
+import { Trash2, UserPlus, Save, Copy, Shield, Users, CheckSquare, Square, X, Activity, Search, Pencil } from 'lucide-react';
 import clsx from 'clsx';
 import { authClient } from '../lib/auth';
 import CrmOpsAdmin from './CrmOpsAdmin';
@@ -85,6 +85,7 @@ const Settings: React.FC = () => {
       linkedDestUnit: ''
   });
   const [isAddingUser, setIsAddingUser] = useState(false);
+  const [editingUsername, setEditingUsername] = useState<string | null>(null);
 
   // --- Profiles Tab State ---
   const [editingProfile, setEditingProfile] = useState<ProfileData | null>(null);
@@ -102,12 +103,36 @@ const Settings: React.FC = () => {
 
   const handleAddUser = async (e: React.FormEvent) => {
       e.preventDefault();
-      if (!newUser.username || !newUser.password || !newUser.role) {
+      const isEditing = !!editingUsername;
+      if (!newUser.username || !newUser.role) {
           alert("Preencha os campos obrigatórios");
+          return;
+      }
+      if (!isEditing && !newUser.password) {
+          alert("Senha é obrigatória ao criar um novo usuário");
           return;
       }
       await addUser(newUser);
       setNewUser({ username: '', password: '', role: '', linkedOriginUnit: '', linkedDestUnit: '' });
+      setIsAddingUser(false);
+      setEditingUsername(null);
+  };
+
+  const startEditUser = (u: UserData) => {
+      setNewUser({
+        username: u.username,
+        password: '',
+        role: u.role,
+        linkedOriginUnit: u.linkedOriginUnit || '',
+        linkedDestUnit: u.linkedDestUnit || '',
+      });
+      setEditingUsername(u.username);
+      setIsAddingUser(true);
+  };
+
+  const cancelUserForm = () => {
+      setNewUser({ username: '', password: '', role: '', linkedOriginUnit: '', linkedDestUnit: '' });
+      setEditingUsername(null);
       setIsAddingUser(false);
   };
 
@@ -230,7 +255,7 @@ const Settings: React.FC = () => {
                   <div className="surface-card-strong p-6 animate-in slide-in-from-top-2">
                       <div className="flex justify-between items-center mb-4">
                           <h3 className="text-lg font-bold text-slate-900">Novo Usuário</h3>
-                          <button onClick={() => setIsAddingUser(false)} className="text-slate-500 hover:text-red-500"><X size={20}/></button>
+                          <button onClick={cancelUserForm} className="text-slate-500 hover:text-red-500"><X size={20}/></button>
                       </div>
                       <form onSubmit={handleAddUser} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                           <div className="space-y-1">
@@ -240,15 +265,19 @@ const Settings: React.FC = () => {
                                 className="w-full p-2 rounded border border-slate-200 bg-slate-50 text-slate-800 placeholder-gray-500 focus:ring-2 focus:ring-[#2c348c]/30 outline-none" 
                                 value={newUser.username} 
                                 onChange={e => setNewUser({...newUser, username: e.target.value})} 
+                                disabled={!!editingUsername}
                               />
                           </div>
                           <div className="space-y-1">
-                              <label className="text-xs font-bold text-slate-600 uppercase">Senha</label>
+                              <label className="text-xs font-bold text-slate-600 uppercase">
+                                {editingUsername ? 'Nova Senha (Opcional)' : 'Senha'}
+                              </label>
                               <input 
-                                required
+                                required={!editingUsername}
                                 className="w-full p-2 rounded border border-slate-200 bg-slate-50 text-slate-800 placeholder-gray-500 focus:ring-2 focus:ring-[#2c348c]/30 outline-none" 
                                 value={newUser.password} 
                                 onChange={e => setNewUser({...newUser, password: e.target.value})} 
+                                placeholder={editingUsername ? 'Deixe vazio para manter a senha atual' : ''}
                               />
                           </div>
                           <div className="space-y-1">
@@ -287,7 +316,7 @@ const Settings: React.FC = () => {
                           </div>
                           <div className="md:col-span-2 lg:col-span-1 flex items-end">
                               <button type="submit" className="pressable-3d w-full rounded bg-gradient-to-r from-emerald-600 to-emerald-700 p-2 font-bold text-white transition hover:brightness-105">
-                                  Salvar
+                                  {editingUsername ? 'Salvar Edição' : 'Salvar'}
                               </button>
                           </div>
                       </form>
@@ -319,14 +348,24 @@ const Settings: React.FC = () => {
                                   <td className="px-4 py-3 text-slate-600">{u.linkedOriginUnit || '-'}</td>
                                   <td className="px-4 py-3 text-slate-600">{u.linkedDestUnit || '-'}</td>
                                   <td className="px-4 py-3 text-right">
-                                      {u.username.toLowerCase() !== 'admin' && (
-                                          <button 
-                                            onClick={() => { if(confirm(`Remover ${u.username}?`)) deleteUser(u.username) }}
-                                            className="text-slate-500 hover:text-red-500 p-1"
-                                          >
-                                              <Trash2 size={16} />
-                                          </button>
-                                      )}
+                                      <div className="inline-flex items-center gap-1">
+                                        <button
+                                          onClick={() => startEditUser(u)}
+                                          className="text-slate-500 hover:text-[#2c348c] p-1"
+                                          title="Editar usuário"
+                                        >
+                                          <Pencil size={16} />
+                                        </button>
+                                        {u.username.toLowerCase() !== 'admin' && (
+                                            <button 
+                                              onClick={() => { if(confirm(`Remover ${u.username}?`)) deleteUser(u.username) }}
+                                              className="text-slate-500 hover:text-red-500 p-1"
+                                              title="Excluir usuário"
+                                            >
+                                                <Trash2 size={16} />
+                                            </button>
+                                        )}
+                                      </div>
                                   </td>
                               </tr>
                           ))}

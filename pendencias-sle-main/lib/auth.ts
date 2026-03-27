@@ -520,6 +520,20 @@ export class NeonDataClient {
     return data;
   }
 
+  async getCrmWhatsappInboxes(params?: { provider?: string }): Promise<any> {
+    const usp = new URLSearchParams();
+    if (params?.provider) usp.set('provider', params.provider);
+    const qs = usp.toString();
+    const url = this.makeApiUrl(`/crm/whatsapp-inboxes${qs ? `?${qs}` : ''}`);
+    const resp = await fetch(url);
+    if (!resp.ok) throw await this.buildHttpError('Erro ao buscar caixas WhatsApp', resp);
+    return resp.json();
+  }
+
+  async saveCrmWhatsappInbox(payload: any): Promise<any> {
+    return this.postJson('/crm/whatsapp-inboxes', payload);
+  }
+
   async saveCrmTeam(payload: any): Promise<any> {
     return this.postJson("/crm/teams", { ...payload, action: "UPSERT_TEAM" });
   }

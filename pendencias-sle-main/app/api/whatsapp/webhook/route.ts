@@ -4,6 +4,7 @@ import { getPool } from "../../../../lib/server/db";
 import { ensureCrmSchemaTables } from "../../../../lib/server/ensureSchema";
 import { countTrailingClientStreak } from "../../../../lib/server/sofiaStreak";
 import { applyInboundRouting } from "../../../../lib/server/crmRouting";
+import { ensureDefaultPipelineAndFirstStage } from "../../../../lib/server/crmDefaultPipeline";
 
 export const runtime = "nodejs";
 
@@ -63,9 +64,57 @@ function buildAttachmentMeta(message: any) {
 }
 
 function extractCteFromText(text: string): string | null {
-  // Padrão simples: qualquer sequência de 5+ dígitos
-  const m = String(text || "").match(/\b\d{5,}\b/);
-  return m ? m[0] : null;
+  const raw = String(text || "");
+  if (/^\s*\d{3,12}\s*$/.test(raw)) return raw.trim();
+  const longDigits = raw.match(/\b\d{5,}\b/);
+  if (longDigits) return longDigits[0];
+  const cteHint = raw.match(/\bcte\b[^0-9]{0,10}(\d{3,12})\b/i);
+  if (cteHint?.[1]) return cteHint[1];
+  return null;
+}
+
+function parseWhatsappProfileName(value: any, from: string) {
+  const contacts = Array.isArray(value?.contacts) ? value.contacts : [];
+  const byWaId = contacts.find((c: any) => String(c?.wa_id || "") === String(from || ""));
+  const first = byWaId || contacts[0];
+  const name = String(first?.profile?.name || "").trim();
+  return name || null;
+}
+
+async function lookupCteSummary(pool: any, cteInput: string | null | undefined) {
+  const cte = String(cteInput || "").replace(/\D/g, "");
+  if (!cte) return null;
+  const res = await pool.query(
+    `
+      SELECT
+        c.cte,
+        c.serie,
+        c.status,
+        c.entrega,
+        c.destinatario,
+        c.data_limite_baixa,
+        i.status_calculado
+      FROM pendencias.ctes c
+      LEFT JOIN pendencias.cte_view_index i ON i.cte = c.cte AND i.serie = c.serie
+      WHERE c.cte = $1 OR LTRIM(c.cte, '0') = LTRIM($1, '0')
+      ORDER BY c.data_emissao DESC NULLS LAST
+      LIMIT 1
+    `,
+    [cte]
+  );
+  return res.rows?.[0] || null;
+}
+
+function detectConversationSlots(historyText: string) {
+  const full = String(historyText || "").toLowerCase();
+  const cte = extractCteFromText(full);
+  const hasDestination = /\b(destino|cidade de destino|entrega em|vai para|cidade)\b/.test(full);
+  const hasRecipient = /\b(destinat[aá]rio|recebedor|quem vai receber|nome\/cnpj|cnpj)\b/.test(full);
+  return {
+    cte: cte || "",
+    hasDestination,
+    hasRecipient,
+  };
 }
 
 function buildGuidedFallback(input: {
@@ -73,12 +122,16 @@ function buildGuidedFallback(input: {
   cteNumber?: string | null;
   customFallback?: string | null;
   lastIaBody?: string | null;
+  historyText?: string | null;
+  cteSummary?: any;
 }) {
   const text = String(input.text || "").toLowerCase();
   const isGreeting =
     /\b(oi|ola|olá|bom dia|boa tarde|boa noite|tudo bem|blz|beleza)\b/i.test(String(input.text || ""));
-  const detectedCte = extractCteFromText(input.text || "") || String(input.cteNumber || "").trim() || "";
+  const slots = detectConversationSlots(String(input.historyText || ""));
+  const detectedCte = extractCteFromText(input.text || "") || String(input.cteNumber || slots.cte || "").trim() || "";
   const custom = String(input.customFallback || "").trim();
+  const cteSummary = input.cteSummary || null;
 
   const variantsNoCte = [
     "Para eu te ajudar no rastreio com precisão, me informe o número do CTE. Se não tiver, pode me passar NF, remetente, destinatário e cidade de destino.",
@@ -94,6 +147,14 @@ function buildGuidedFallback(input: {
     const idx = Math.abs(String(input.text || "").length + text.length) % variantsNoCte.length;
     next = variantsNoCte[idx];
     }
+  } else if (cteSummary) {
+    const destino = String(cteSummary.entrega || "").trim() || "não informado";
+    const status = String(cteSummary.status_calculado || cteSummary.status || "").trim() || "em análise";
+    next = `Encontrei o CTE ${detectedCte} no sistema. Status atual: ${status}. Destino: ${destino}. Para continuar, me confirme o nome/CNPJ do destinatário.`;
+  } else if (!slots.hasDestination) {
+    next = `Perfeito, recebi o CTE ${detectedCte}. Para eu validar o rastreio agora, me confirme a cidade de destino.`;
+  } else if (!slots.hasRecipient) {
+    next = `Ótimo, com o CTE ${detectedCte} e destino em mãos. Agora me confirme o nome ou CNPJ do destinatário para eu concluir a triagem.`;
   } else if (text.includes("onde") || text.includes("status") || text.includes("rast")) {
     next = `Perfeito. Recebi o CTE ${detectedCte}. Vou validar o status na unidade responsável. Se puder, me confirme também a cidade de destino para agilizar.`;
   } else if (text.includes("prazo") || text.includes("entrega")) {
@@ -242,65 +303,6 @@ function weekdayPt(d = new Date()) {
   return map[d.getDay()];
 }
 
-async function ensureDefaultPipelineAndFirstStage(pool: any) {
-  let pipelineRes = await pool.query(
-    "SELECT id FROM pendencias.crm_pipelines WHERE is_default = true ORDER BY created_at ASC LIMIT 1"
-  );
-  let pipelineId = pipelineRes.rows?.[0]?.id as string | undefined;
-  if (!pipelineId) {
-    const anyPipe = await pool.query(
-      "SELECT id FROM pendencias.crm_pipelines ORDER BY created_at ASC LIMIT 1"
-    );
-    pipelineId = anyPipe.rows?.[0]?.id as string | undefined;
-  }
-  if (!pipelineId) {
-    await pool.query("UPDATE pendencias.crm_pipelines SET is_default = false");
-    const pipelineInsert = await pool.query(
-      `
-        INSERT INTO pendencias.crm_pipelines (name, description, is_default, created_by, created_at, updated_at)
-        VALUES ('Funil Padrão', 'Funil criado automaticamente', true, 'system', NOW(), NOW())
-        RETURNING id
-      `
-    );
-    pipelineId = pipelineInsert.rows?.[0]?.id as string | undefined;
-    if (!pipelineId) return null;
-    const stages = [
-      "Aguardando atendimento",
-      "Em busca de mercadorias",
-      "Ocorrências",
-      "Atendimento finalizado",
-    ];
-    for (let i = 0; i < stages.length; i++) {
-      await pool.query(
-        `
-          INSERT INTO pendencias.crm_stages (pipeline_id, name, position, created_at)
-          VALUES ($1, $2, $3, NOW())
-        `,
-        [pipelineId, stages[i], i]
-      );
-    }
-  }
-
-  const stageRes = await pool.query(
-    "SELECT id FROM pendencias.crm_stages WHERE pipeline_id = $1 ORDER BY position ASC LIMIT 1",
-    [pipelineId]
-  );
-  let stageId = stageRes.rows?.[0]?.id as string | undefined;
-  if (!stageId) {
-    const ins = await pool.query(
-      `
-        INSERT INTO pendencias.crm_stages (pipeline_id, name, position, created_at)
-        VALUES ($1, 'Aguardando atendimento', 0, NOW())
-        RETURNING id
-      `,
-      [pipelineId]
-    );
-    stageId = ins.rows?.[0]?.id as string | undefined;
-  }
-  if (!pipelineId || !stageId) return null;
-  return { pipelineId, stageId };
-}
-
 /** OpenAI + envio WhatsApp — roda fora do caminho crítico do webhook para responder rápido à Meta. */
 async function runWebhookSofiaAutoReply(
   pool: any,
@@ -392,6 +394,9 @@ async function runWebhookSofiaAutoReply(
       .reverse()
       .map((m: any) => `${String(m.sender_type)}: ${String(m.body)}`)
       .join("\n");
+    const contextText = `${transcript}\nCLIENT: ${text}`;
+    const cteCandidate = extractCteFromText(text) || String(convInfo.cte_number || "").trim();
+    const cteSummary = await lookupCteSummary(pool, cteCandidate);
     const maxResponseChars = Number(s.max_response_chars || 480);
     const minConf = Number(s.min_confidence || 70);
     const confidence = text.length > 80 ? 85 : text.length > 30 ? 75 : 65;
@@ -406,6 +411,9 @@ async function runWebhookSofiaAutoReply(
       `Objetivo: coletar dados essenciais para o atendente humano quando faltar contexto (CTE, origem, destino, unidade, problema e prazo).`,
       `Se faltar dado crítico, faça pergunta curta e objetiva antes de prometer solução.`,
       `Não repita frase pronta já usada no histórico; varie a formulação mantendo o mesmo sentido.`,
+      cteSummary
+        ? `CTE encontrado no banco: CTE ${String(cteSummary.cte || "")} Série ${String(cteSummary.serie || "")} | Status ${String(cteSummary.status_calculado || cteSummary.status || "")} | Destino ${String(cteSummary.entrega || "")} | Destinatário ${String(cteSummary.destinatario || "")}.`
+        : "Se o cliente enviar número de CTE/NF e não houver resultado no banco, informe que não encontrou e peça confirmação do número.",
       `Base: ${String(s.knowledge_base || "")}`,
       `Histórico:\n${transcript}`,
       `Mensagem atual: ${text}`,
@@ -426,6 +434,8 @@ async function runWebhookSofiaAutoReply(
       cteNumber: String(convInfo.cte_number || ""),
       customFallback: String(s.fallback_message || ""),
       lastIaBody: lastIaMessage?.body ? String(lastIaMessage.body) : null,
+      historyText: contextText,
+      cteSummary,
     });
     let finalReply =
       normalizedReply.length > 0
@@ -480,7 +490,7 @@ async function runWebhookSofiaAutoReply(
         INSERT INTO pendencias.crm_activities (lead_id, user_username, type, description, data, created_at)
         VALUES ($1, $2, 'EVENT', 'Sofia respondeu automaticamente', $3::jsonb, NOW())
       `,
-      [leadId, String(s.name || "Sofia"), JSON.stringify({ conversationId })]
+      [leadId, String(s.name || "Sofia"), JSON.stringify({ conversationId, cteCandidate, cteFound: !!cteSummary })]
     );
   } catch (e) {
     console.error("[whatsapp-webhook] Sofia auto:", e);
@@ -600,6 +610,7 @@ export async function POST(req: Request) {
           const from = String(message.from || "");
           const text = parseWhatsAppText(message);
           const cteDetected = extractCteFromText(text);
+          const profileName = parseWhatsappProfileName(value, from);
 
           const last10 = lastN(from, 10);
           const defaultIds = await ensureDefaultPipelineAndFirstStage(pool);
@@ -624,9 +635,19 @@ export async function POST(req: Request) {
           if (leadRes.rows?.[0]?.id) {
             leadId = leadRes.rows[0].id as string;
             leadTitle = String(leadRes.rows[0].title || leadId);
+            if (profileName && /^whatsapp\s+\d+/i.test(leadTitle)) {
+              const upgradedTitle = `${profileName} (${last10 || from})`;
+              await pool.query(
+                `UPDATE pendencias.crm_leads SET title = $1, updated_at = NOW() WHERE id = $2`,
+                [upgradedTitle, leadId]
+              );
+              leadTitle = upgradedTitle;
+            }
           } else {
             // 2) Cria lead automático para este número
-            leadTitle = `WhatsApp ${last10 || from.slice(-4) || "Lead"}`;
+            leadTitle = profileName
+              ? `${profileName} (${last10 || from.slice(-4) || "Lead"})`
+              : `WhatsApp ${last10 || from.slice(-4) || "Lead"}`;
 
             const positionRow = await pool.query(
               `
@@ -672,12 +693,13 @@ export async function POST(req: Request) {
             );
           }
 
-          // 3) Garante conversation WHATSAPP
+          // 3) Garante conversation WHATSAPP (número oficial Meta — sem inbox Web)
           const convRes = await pool.query(
             `
               SELECT id
               FROM pendencias.crm_conversations
               WHERE lead_id = $1 AND channel = 'WHATSAPP' AND is_active = true
+                AND whatsapp_inbox_id IS NULL
               ORDER BY created_at DESC
               LIMIT 1
             `,
@@ -689,8 +711,8 @@ export async function POST(req: Request) {
           } else {
             const insertConv = await pool.query(
               `
-                INSERT INTO pendencias.crm_conversations (lead_id, channel, is_active, created_at, last_message_at)
-                VALUES ($1, 'WHATSAPP', true, NOW(), NULL)
+                INSERT INTO pendencias.crm_conversations (lead_id, channel, is_active, created_at, last_message_at, whatsapp_inbox_id)
+                VALUES ($1, 'WHATSAPP', true, NOW(), NULL, NULL)
                 RETURNING id
               `,
               [leadId]
@@ -744,16 +766,54 @@ export async function POST(req: Request) {
             [leadId, JSON.stringify({ from, message_type: message.type })]
           );
 
-          // 5) Atualiza CTE no lead se detectado e estiver vazio
+          // 5) CTE no lead + reabertura de fluxo (novo envio / cliente que voltou após conclusão)
           if (cteDetected) {
+            const prevLead = await pool.query(
+              `SELECT cte_number, customer_status FROM pendencias.crm_leads WHERE id = $1::uuid`,
+              [leadId]
+            );
+            const prevCte = String(prevLead.rows?.[0]?.cte_number || "").trim();
+            const newCte = String(cteDetected).trim();
+            const cs = String(prevLead.rows?.[0]?.customer_status || "").trim().toUpperCase();
+            const wasClosed =
+              cs === "CONCLUIDO" ||
+              cs === "PERDIDO" ||
+              cs.includes("CONCLU") ||
+              cs.includes("FINALIZ");
+            const newShipment = Boolean(prevCte && newCte && prevCte !== newCte);
+            const reopen = newShipment || (wasClosed && Boolean(newCte));
+
             await pool.query(
               `
                 UPDATE pendencias.crm_leads
-                SET cte_number = COALESCE(cte_number, $1)
-                WHERE id = $2
+                SET
+                  cte_number = $1,
+                  customer_status = CASE WHEN $3::boolean THEN 'PENDENTE' ELSE customer_status END,
+                  updated_at = NOW()
+                WHERE id = $2::uuid
               `,
-              [cteDetected, leadId]
+              [newCte, leadId, reopen]
             );
+
+            if (reopen) {
+              try {
+                await pool.query(
+                  `
+                    INSERT INTO pendencias.crm_activities (lead_id, user_username, type, description, data, created_at)
+                    VALUES ($1::uuid, NULL, 'EVENT', $2, $3::jsonb, NOW())
+                  `,
+                  [
+                    leadId,
+                    newShipment
+                      ? "Novo CTE informado — fluxo reaberto para acompanhamento do envio."
+                      : "Cliente retornou após atendimento concluído — fluxo reaberto.",
+                    JSON.stringify({ previousCte: prevCte || null, newCte, customer_status_reset: true }),
+                  ]
+                );
+              } catch {
+                // noop
+              }
+            }
           }
 
           // 6) Roteamento: tópico + regras (estágio/atribuição) logo após lead + conversa + mensagem

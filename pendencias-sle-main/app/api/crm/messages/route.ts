@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getPool } from "../../../../lib/server/db";
 import { ensureCrmSchemaTables } from "../../../../lib/server/ensureSchema";
+import { evolutionSendText } from "../../../../lib/server/evolutionClient";
 
 export const runtime = "nodejs";
 
@@ -296,20 +297,54 @@ export async function POST(req: Request) {
       outboundWhatsApp.attempted = true;
       const leadInfo = await pool.query(
         `
-          SELECT l.contact_phone
+          SELECT
+            l.contact_phone,
+            i.provider AS inbox_provider,
+            i.evolution_instance_name,
+            i.evolution_server_url,
+            i.evolution_api_key
           FROM pendencias.crm_conversations c
           JOIN pendencias.crm_leads l ON l.id = c.lead_id
+          LEFT JOIN pendencias.crm_whatsapp_inboxes i ON i.id = c.whatsapp_inbox_id
           WHERE c.id = $1
           LIMIT 1
         `,
         [activeConversationId]
       );
-      const contactPhone = leadInfo.rows?.[0]?.contact_phone as string | null | undefined;
+      const row = leadInfo.rows?.[0];
+      const contactPhone = row?.contact_phone as string | null | undefined;
       const toE164 = normalizePhoneToE164(contactPhone);
+      const useEvolution =
+        String(row?.inbox_provider || "").toUpperCase() === "EVOLUTION" &&
+        row?.evolution_instance_name &&
+        row?.evolution_server_url &&
+        row?.evolution_api_key;
 
       if (!toE164) {
         outboundWhatsApp.delivered = false;
         outboundWhatsApp.error = "Lead sem telefone válido para envio WhatsApp";
+      } else if (useEvolution) {
+        let finalResp: any = null;
+        let finalOk = true;
+        if (attachments.length > 0) {
+          outboundWhatsApp.error =
+            "Anexos pelo painel nesta linha Web: em breve — por enquanto envie pelo WhatsApp no celular.";
+          finalOk = false;
+        }
+        if (text && finalOk) {
+          const waResp = await evolutionSendText({
+            serverUrl: String(row.evolution_server_url),
+            apiKey: String(row.evolution_api_key),
+            instanceName: String(row.evolution_instance_name),
+            numberDigits: toE164,
+            text,
+          });
+          finalResp = waResp.response;
+          finalOk = waResp.ok;
+          if (!waResp.ok) outboundWhatsApp.error = waResp.error;
+        }
+        outboundWhatsApp.delivered = finalOk;
+        outboundWhatsApp.response = finalResp;
       } else {
         let finalResp: any = null;
         let finalOk = true;
@@ -335,7 +370,9 @@ export async function POST(req: Request) {
       }
 
       // Mescla outbound_whatsapp no metadata (preserva attachments etc.)
-      const waMessageId = outboundWhatsApp.response?.messages?.[0]?.id || null;
+      const waMessageId = useEvolution
+        ? outboundWhatsApp.response?.key?.id || null
+        : outboundWhatsApp.response?.messages?.[0]?.id || null;
       await pool.query(
         `
           UPDATE pendencias.crm_messages
@@ -356,8 +393,8 @@ export async function POST(req: Request) {
         ]
       );
 
-      // Fallback de fila: se falhou, enfileira para retry posterior
-      if (!outboundWhatsApp.delivered) {
+      // Retry outbox só para Cloud API (Meta). Evolution usa outro transporte.
+      if (!outboundWhatsApp.delivered && !useEvolution) {
         await pool.query(
           `
             INSERT INTO pendencias.crm_outbox (

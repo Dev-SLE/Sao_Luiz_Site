@@ -89,6 +89,9 @@ export async function GET(req: Request) {
         SELECT
           c.id,
           c.channel,
+          c.whatsapp_inbox_id,
+          wi.name AS inbox_name,
+          wi.provider AS inbox_provider,
           c.status,
           c.assigned_team_id,
           c.assigned_username,
@@ -120,6 +123,7 @@ export async function GET(req: Request) {
           lm.created_at AS last_message_at
         FROM pendencias.crm_conversations c
         JOIN pendencias.crm_leads l ON l.id = c.lead_id
+        LEFT JOIN pendencias.crm_whatsapp_inboxes wi ON wi.id = c.whatsapp_inbox_id
         LEFT JOIN LATERAL (
           SELECT m.body, m.created_at
           FROM pendencias.crm_messages m
@@ -195,10 +199,13 @@ export async function GET(req: Request) {
         lastMessage: r.last_message_body ? String(r.last_message_body) : "Sem mensagens ainda.",
         lastAt,
         unread: 0,
+        whatsappInboxId: r.whatsapp_inbox_id as string | null,
+        inboxName: r.inbox_name ? String(r.inbox_name) : null,
+        inboxProvider: r.inbox_provider ? String(r.inbox_provider) : null,
       };
     });
 
-    return NextResponse.json({ conversations });
+    return NextResponse.json({ conversations, scope });
   } catch (error) {
     console.error("CRM conversations GET error:", error);
     return NextResponse.json({ error: "Erro interno" }, { status: 500 });
@@ -323,10 +330,8 @@ export async function PATCH(req: Request) {
     if (!conversationId) return NextResponse.json({ error: "conversationId obrigatório" }, { status: 400 });
 
     const status = body?.status != null ? String(body.status).toUpperCase() : null;
-    const assignedUsername =
-      body?.assignedUsername !== undefined
-        ? (body.assignedUsername ? String(body.assignedUsername) : null)
-        : undefined;
+    const assignInBody = Object.prototype.hasOwnProperty.call(body || {}, "assignedUsername");
+    const assignRaw = assignInBody ? body?.assignedUsername : undefined;
     const assignedTeamId =
       body?.assignedTeamId !== undefined
         ? (body.assignedTeamId ? String(body.assignedTeamId) : null)
@@ -349,23 +354,27 @@ export async function PATCH(req: Request) {
         UPDATE pendencias.crm_conversations
         SET
           status = COALESCE($2, status),
-          assigned_username = CASE WHEN $3::text IS NULL THEN assigned_username ELSE $3 END,
-          assigned_team_id = CASE WHEN $4::text IS NULL THEN assigned_team_id ELSE $4::uuid END,
-          assignment_mode = COALESCE($5, assignment_mode),
-          topic = COALESCE($6, topic),
+          assigned_username = CASE
+            WHEN NOT $9::boolean THEN assigned_username
+            WHEN $10::text IS NULL OR TRIM(BOTH FROM COALESCE($10::text, '')) = '' THEN NULL
+            ELSE TRIM(BOTH FROM $10::text)
+          END,
+          assigned_team_id = CASE WHEN $3::text IS NULL THEN assigned_team_id ELSE $3::uuid END,
+          assignment_mode = COALESCE($4, assignment_mode),
+          topic = COALESCE($5, topic),
           locked_by = CASE
-            WHEN $7 = 'UNLOCK' THEN NULL
-            WHEN $7 IN ('LOCK', 'CLAIM') THEN $8
+            WHEN $6 = 'UNLOCK' THEN NULL
+            WHEN $6 IN ('LOCK', 'CLAIM') THEN $7
             ELSE locked_by
           END,
           locked_at = CASE
-            WHEN $7 = 'UNLOCK' THEN NULL
-            WHEN $7 IN ('LOCK', 'CLAIM') THEN NOW()
+            WHEN $6 = 'UNLOCK' THEN NULL
+            WHEN $6 IN ('LOCK', 'CLAIM') THEN NOW()
             ELSE locked_at
           END,
           lock_expires_at = CASE
-            WHEN $7 = 'UNLOCK' THEN NULL
-            WHEN $7 IN ('LOCK', 'CLAIM') THEN NOW() + ($9::int * INTERVAL '1 minute')
+            WHEN $6 = 'UNLOCK' THEN NULL
+            WHEN $6 IN ('LOCK', 'CLAIM') THEN NOW() + ($8::int * INTERVAL '1 minute')
             ELSE lock_expires_at
           END,
           sla_breached_at = CASE
@@ -375,8 +384,37 @@ export async function PATCH(req: Request) {
           END
         WHERE id = $1
       `,
-      [conversationId, status, assignedUsername ?? null, assignedTeamId ?? null, assignmentMode, topic, lockAction, lockBy, lockMinutes]
+      [
+        conversationId,
+        status,
+        assignedTeamId ?? null,
+        assignmentMode,
+        topic,
+        lockAction,
+        lockBy,
+        lockMinutes,
+        assignInBody,
+        assignRaw === null || assignRaw === undefined ? null : String(assignRaw),
+      ]
     );
+
+    if (assignInBody) {
+      const newAssign =
+        assignRaw === null || assignRaw === undefined || String(assignRaw).trim() === ""
+          ? null
+          : String(assignRaw).trim();
+      await pool.query(
+        `
+          UPDATE pendencias.crm_leads
+          SET
+            assigned_username = $1,
+            owner_username = $1,
+            updated_at = NOW()
+          WHERE id = $2::uuid
+        `,
+        [newAssign, current.lead_id]
+      );
+    }
 
     await pool.query(
       `
@@ -390,7 +428,11 @@ export async function PATCH(req: Request) {
         current.lead_id,
         lockAction ? `LOCK_${lockAction}` : "ASSIGNMENT_UPDATE",
         current.assigned_username || null,
-        assignedUsername !== undefined ? assignedUsername : current.assigned_username || null,
+        assignInBody
+          ? assignRaw === null || assignRaw === undefined || String(assignRaw).trim() === ""
+            ? null
+            : String(assignRaw).trim()
+          : current.assigned_username || null,
         assignedTeamId ?? null,
         JSON.stringify({
           status,

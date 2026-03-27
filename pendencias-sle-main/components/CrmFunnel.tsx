@@ -775,7 +775,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
         </div>
       </div>
 
-      <div className="overflow-x-auto pb-4">
+      <div className="flex-1 min-h-0 overflow-x-auto overflow-y-auto pb-4">
         {boardError && (
           <div className="mb-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2">
             <div className="flex items-center justify-between gap-2">
@@ -793,7 +793,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
           </div>
         )}
         <div
-          className="flex gap-4 h-full flex-nowrap"
+          className="flex gap-4 flex-nowrap items-start"
           style={{ minWidth: KANBAN_COLUMNS.length * (COLUMN_WIDTH + COLUMN_GAP_PX) }}
         >
           {KANBAN_COLUMNS.map((columnName) => {
@@ -801,7 +801,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
               return (
                 <div
                   key="agencias-fixed"
-                  className="flex-none w-[260px] min-w-[260px] bg-white border border-slate-200 rounded-xl flex flex-col"
+                  className="flex-none w-[260px] min-w-[260px] shrink-0 bg-white border border-slate-200 rounded-xl flex flex-col self-stretch"
                 >
                   <div className="px-3 py-3 border-b border-slate-200 flex items-center justify-between">
                     <div>
@@ -847,7 +847,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
             return (
             <div
               key={columnName}
-              className="flex-none w-[260px] min-w-[260px] bg-white border border-slate-200 rounded-xl flex flex-col"
+              className="flex-none w-[260px] min-w-[260px] shrink-0 bg-white border border-slate-200 rounded-xl flex flex-col"
               onDragOver={(e) => e.preventDefault()}
               onDrop={() => {
                 if (stageId) handleDropOnStage(stageId);
@@ -1836,6 +1836,11 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
               <p className="text-xs text-slate-700">
                 Telefone: {selectedLead.phone || '—'}
               </p>
+              {(selectedLead.ownerUsername || selectedLead.assignedUsername) && (
+                <p className="text-xs text-slate-800 font-semibold">
+                  Responsável: {selectedLead.assignedUsername || selectedLead.ownerUsername}
+                </p>
+              )}
               <p className="text-xs text-slate-700">
                 CTE vinculado: {selectedLead.cte || '—'}
               </p>

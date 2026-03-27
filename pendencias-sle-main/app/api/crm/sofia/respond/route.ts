@@ -5,11 +5,60 @@ import { countTrailingClientStreak } from "../../../../../lib/server/sofiaStreak
 
 export const runtime = "nodejs";
 
+function extractCteFromText(text: string): string | null {
+  const raw = String(text || "");
+  if (/^\s*\d{3,12}\s*$/.test(raw)) return raw.trim();
+  const longDigits = raw.match(/\b\d{5,}\b/);
+  if (longDigits) return longDigits[0];
+  const cteHint = raw.match(/\bcte\b[^0-9]{0,10}(\d{3,12})\b/i);
+  if (cteHint?.[1]) return cteHint[1];
+  return null;
+}
+
+async function lookupCteSummary(pool: any, cteInput: string | null | undefined) {
+  const cte = String(cteInput || "").replace(/\D/g, "");
+  if (!cte) return null;
+  const res = await pool.query(
+    `
+      SELECT
+        c.cte,
+        c.serie,
+        c.status,
+        c.entrega,
+        c.destinatario,
+        c.data_limite_baixa,
+        i.status_calculado
+      FROM pendencias.ctes c
+      LEFT JOIN pendencias.cte_view_index i ON i.cte = c.cte AND i.serie = c.serie
+      WHERE c.cte = $1 OR LTRIM(c.cte, '0') = LTRIM($1, '0')
+      ORDER BY c.data_emissao DESC NULLS LAST
+      LIMIT 1
+    `,
+    [cte]
+  );
+  return res.rows?.[0] || null;
+}
+
+function detectConversationSlots(historyText: string) {
+  const full = String(historyText || "").toLowerCase();
+  const cte = extractCteFromText(full);
+  const hasDestination =
+    /\b(destino|cidade de destino|entrega em|vai para|cidade)\b/.test(full);
+  const hasRecipient =
+    /\b(destinat[aá]rio|recebedor|quem vai receber|nome\/cnpj|cnpj)\b/.test(full);
+  return {
+    cte: cte || "",
+    hasDestination,
+    hasRecipient,
+  };
+}
+
 function fallbackReply(input: { customerName?: string; cte?: string; text?: string; customFallback?: string | null }) {
   const lower = String(input.text || "").toLowerCase();
   const isGreeting =
     /\b(oi|ola|olá|bom dia|boa tarde|boa noite|tudo bem|blz|beleza)\b/i.test(String(input.text || ""));
-  const cte = String(input.cte || "").trim();
+  const slots = detectConversationSlots(`${String(input.text || "")}\n${String(input.customFallback || "")}`);
+  const cte = String(input.cte || slots.cte || "").trim();
   const custom = String(input.customFallback || "").trim();
   const variantsNoCte = [
     "Para eu te ajudar com precisão, me informe o número do CTE. Se não tiver, pode enviar NF, remetente, destinatário e cidade de destino.",
@@ -23,6 +72,12 @@ function fallbackReply(input: { customerName?: string; cte?: string; text?: stri
     }
     const idx = Math.abs(String(input.text || "").length + lower.length) % variantsNoCte.length;
     return variantsNoCte[idx];
+  }
+  if (!slots.hasDestination) {
+    return `Perfeito, recebi o CTE ${cte}. Para eu validar o rastreio agora, me confirme a cidade de destino.`;
+  }
+  if (!slots.hasRecipient) {
+    return `Ótimo, com o CTE ${cte} e destino em mãos. Agora me confirme o nome ou CNPJ do destinatário para eu concluir a triagem.`;
   }
   if (lower.includes("prazo") || lower.includes("entrega")) {
     return `Recebi sua dúvida sobre prazo. Vou validar internamente o CTE ${cte} e já te retorno. Se puder, me confirme também a cidade de destino.`;
@@ -219,6 +274,9 @@ export async function POST(req: Request) {
     const autoMode = String(settings.auto_mode || "ASSISTIDO").toUpperCase(); // ASSISTIDO | SEMI_AUTO | AUTO_TOTAL
     const responseTone = String(settings.response_tone || "PROFISSIONAL");
     const maxResponseChars = Number(settings.max_response_chars || 480);
+    const contextText = `${transcript}\nCLIENT: ${text}`;
+    const cteCandidate = String(conv.cte_number || extractCteFromText(contextText) || "").trim();
+    const cteSummary = await lookupCteSummary(pool, cteCandidate);
 
     const prompt = [
       `Nome cliente: ${String(conv.title || "")}`,
@@ -229,6 +287,9 @@ export async function POST(req: Request) {
       `Objetivo operacional: qualificar a conversa para o atendente humano, coletando os dados mínimos (CTE, origem, destino, unidade, ocorrência, urgência).`,
       `Se não houver informação suficiente, faça pergunta curta e direta para avançar o diagnóstico.`,
       `Não repita frase pronta já usada no histórico; varie a formulação mantendo o mesmo sentido.`,
+      cteSummary
+        ? `CTE encontrado no banco: CTE ${String(cteSummary.cte || "")} Série ${String(cteSummary.serie || "")} | Status ${String(cteSummary.status_calculado || cteSummary.status || "")} | Destino ${String(cteSummary.entrega || "")} | Destinatário ${String(cteSummary.destinatario || "")}.`
+        : "Se o cliente enviar CTE/NF e não houver resultado no banco, avise que não encontrou e peça confirmação do número.",
       `Conhecimento: ${String(settings.knowledge_base || "")}`,
       `Histórico:\n${transcript}`,
       `Mensagem atual: ${text}`,
@@ -244,8 +305,8 @@ export async function POST(req: Request) {
     if (!suggestion) {
       suggestion = fallbackReply({
         customerName: String(conv.title || ""),
-        cte: String(conv.cte_number || ""),
-        text,
+        cte: String(conv.cte_number || extractCteFromText(contextText) || ""),
+        text: contextText,
         customFallback: settings.fallback_message,
       });
     }
@@ -254,8 +315,8 @@ export async function POST(req: Request) {
     if (!suggestion || (prevIaBody && suggestion === prevIaBody) || isGenericReply(suggestion)) {
       suggestion = fallbackReply({
         customerName: String(conv.title || ""),
-        cte: String(conv.cte_number || ""),
-        text,
+        cte: String(conv.cte_number || extractCteFromText(contextText) || ""),
+        text: contextText,
         customFallback: null,
       });
       suggestion = normalizeAiText(suggestion, maxResponseChars);
