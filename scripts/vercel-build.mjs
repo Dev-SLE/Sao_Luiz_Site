@@ -6,6 +6,8 @@ const rootDir = process.cwd();
 const appDir = resolve(rootDir, "pendencias-sle-main");
 const appNextDir = resolve(appDir, ".next");
 const rootNextDir = resolve(rootDir, ".next");
+const appPublicDir = resolve(appDir, "public");
+const rootPublicDir = resolve(rootDir, "public");
 
 execSync("npm install --include=dev --prefix pendencias-sle-main", {
   stdio: "inherit",
@@ -26,4 +28,12 @@ if (existsSync(rootNextDir)) {
 }
 
 cpSync(appNextDir, rootNextDir, { recursive: true });
+
+if (existsSync(appPublicDir)) {
+  if (existsSync(rootPublicDir)) {
+    rmSync(rootPublicDir, { recursive: true, force: true });
+  }
+  cpSync(appPublicDir, rootPublicDir, { recursive: true });
+}
+
 console.log("Artefato .next copiado para raiz do projeto.");
