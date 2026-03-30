@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import clsx from 'clsx';
 import { Package, Scale, Coins, Tag } from 'lucide-react';
 import { authClient } from '../lib/auth';
+import { AppMessageModal, type AppMessageVariant } from './AppOverlays';
 
 // --- Helpers ---
 
@@ -178,6 +179,11 @@ const NoteModal: React.FC<Props> = ({ cte, onClose }) => {
   const [resolveChecked, setResolveChecked] = useState(false);
   const [showConfirmResolve, setShowConfirmResolve] = useState(false);
   const [expandedAttachments, setExpandedAttachments] = useState<Record<string, boolean>>({});
+  const [noteNotice, setNoteNotice] = useState<{
+    title: string;
+    message: string;
+    variant: AppMessageVariant;
+  } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   if (!cte) return null;
@@ -260,7 +266,13 @@ const NoteModal: React.FC<Props> = ({ cte, onClose }) => {
                   base64 = await fileToBase64(file);
               }
               newFiles.push({ name: file.name, type: file.type, base64: base64, file });
-          } catch (e) { alert(`Erro ao processar: ${file.name}`); }
+          } catch (e) {
+            setNoteNotice({
+              title: 'Arquivo',
+              message: `Não foi possível processar o arquivo "${file.name}". Tente outro formato ou tamanho.`,
+              variant: 'error',
+            });
+          }
       }
       setPendingFiles(prev => [...prev, ...newFiles]);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -280,9 +292,20 @@ const NoteModal: React.FC<Props> = ({ cte, onClose }) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!text.trim() && pendingFiles.length === 0) return;
-    if (isTad && !text.trim()) { alert("Motivo do TAD é obrigatório."); return; }
+    if (isTad && !text.trim()) {
+      setNoteNotice({
+        title: 'TAD',
+        message: 'Informe o motivo do TAD no texto antes de enviar.',
+        variant: 'warning',
+      });
+      return;
+    }
     if (!hasPermission('EDIT_NOTES')) {
-      alert('Seu perfil não possui permissão para registrar anotações.');
+      setNoteNotice({
+        title: 'Permissão',
+        message: 'Seu perfil não possui permissão para registrar anotações.',
+        variant: 'warning',
+      });
       return;
     }
 
@@ -330,7 +353,11 @@ const NoteModal: React.FC<Props> = ({ cte, onClose }) => {
         const base = Array.isArray(prev) ? prev : [];
         return base.filter(n => n.ID !== tempId);
       });
-      alert('Erro ao enviar.');
+      setNoteNotice({
+        title: 'Envio',
+        message: 'Não foi possível enviar a anotação. Tente novamente.',
+        variant: 'error',
+      });
     } finally { setIsSending(false); }
   };
 
@@ -340,6 +367,7 @@ const NoteModal: React.FC<Props> = ({ cte, onClose }) => {
   };
 
   return (
+    <>
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm animate-in fade-in duration-200">
       
       {previewUrl && (
@@ -564,6 +592,14 @@ const NoteModal: React.FC<Props> = ({ cte, onClose }) => {
         </form>
       </div>
     </div>
+    <AppMessageModal
+      open={!!noteNotice}
+      title={noteNotice?.title || ''}
+      message={noteNotice?.message || ''}
+      variant={noteNotice?.variant || 'info'}
+      onClose={() => setNoteNotice(null)}
+    />
+    </>
   );
 };
 

@@ -373,13 +373,16 @@ function extractEvolutionEvent(req: Request, body: Record<string, unknown>): str
 }
 
 function extractEvolutionInstance(body: Record<string, unknown>): string {
+  const d = body?.data as Record<string, unknown> | undefined;
   const raw =
     body?.instance ||
     body?.instanceName ||
-    (body?.data as any)?.instance ||
-    (body?.data as any)?.instanceName ||
-    (body?.data as any)?.instance_name ||
+    (body as any)?.instanceKey ||
+    d?.instance ||
+    d?.instanceName ||
+    (d as any)?.instance_name ||
     (body as any)?.instance_name ||
+    (d as any)?.key?.instance ||
     "";
   return String(raw || "").trim();
 }
@@ -392,13 +395,33 @@ function isQrcodeUpdatedEvent(eventNorm: string): boolean {
   return false;
 }
 
+/**
+ * Evolution / Baileys envia o nome do evento em formatos variados:
+ * MESSAGES_UPSERT → "messages.upsert", mas "messagesUpsert" vira "messagesupsert" (sem ponto)
+ * e era ignorado pelo cheque antigo — mensagens nunca entravam no CRM.
+ */
 function looksLikeMessagesUpsert(body: Record<string, unknown>, eventNorm: string): boolean {
-  if (eventNorm.includes("messages.upsert")) return true;
-  if (eventNorm) return false;
-  const d = body?.data as Record<string, unknown> | undefined;
+  if (!eventNorm) {
+    /* continua para heurística no payload */
+  } else if (
+    eventNorm.includes("messages.upsert") ||
+    (eventNorm.includes("messages") && eventNorm.includes("upsert"))
+  ) {
+    return true;
+  } else if (
+    eventNorm.includes("connection") ||
+    eventNorm.includes("qrcode") ||
+    eventNorm.includes("qr.code") ||
+    eventNorm.includes("presence") ||
+    eventNorm.includes("chats.") ||
+    eventNorm.includes("contacts.")
+  ) {
+    return false;
+  }
+  const d = (body?.data ?? body) as Record<string, unknown> | undefined;
   if (!d || typeof d !== "object") return false;
   if (Array.isArray(d.messages) && d.messages.length) return true;
-  if (d.key && d.message) return true;
+  if (d.key && (d.message || (d as any).msg)) return true;
   return false;
 }
 
@@ -406,8 +429,15 @@ function collectUpsertItems(data: any): any[] {
   if (!data) return [];
   if (Array.isArray(data)) return data;
   if (Array.isArray(data.messages)) return data.messages;
-  if (data.key) return [data];
+  if (data.key && (data.message || data.msg)) return [data];
   return [];
+}
+
+/** Algumas versões colocam mensagens só em body.data; outras ecoam na raiz. */
+function collectUpsertItemsFromWebhookBody(body: Record<string, unknown>): any[] {
+  const fromData = collectUpsertItems(body?.data);
+  if (fromData.length) return fromData;
+  return collectUpsertItems(body);
 }
 
 function collectMessageEditItems(data: any): any[] {
@@ -731,6 +761,18 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, ignored_event: eventRaw || null });
     }
 
+    const upsertProbe = collectUpsertItemsFromWebhookBody(body);
+    if (!upsertProbe.length && process.env.NODE_ENV !== "test") {
+      console.warn("[evolution-webhook] evento parece upsert mas sem itens de mensagem", {
+        instance,
+        eventRaw,
+        eventNorm,
+        bodyKeys: body && typeof body === "object" ? Object.keys(body) : [],
+        dataKeys:
+          body?.data && typeof body.data === "object" ? Object.keys(body.data as object) : [],
+      });
+    }
+
     await ensureCrmSchemaTables();
     const pool = getPool();
 
@@ -751,15 +793,19 @@ export async function POST(req: Request) {
     );
     const inboxRow = inboxRes.rows?.[0];
     if (!inboxRow?.id) {
-      console.warn("[evolution-webhook] Inbox não cadastrada para instance:", instance);
-      return NextResponse.json({ ok: true, skipped: "unknown_instance" });
+      console.warn(
+        "[evolution-webhook] Inbox não cadastrada para instance:",
+        instance,
+        "— confira evolution_instance_name no CRM (diferença 0/O ou hífen costuma causar isso)."
+      );
+      return NextResponse.json({ ok: true, skipped: "unknown_instance", instance });
     }
     const inboxId = String(inboxRow.id);
 
-    const items = collectUpsertItems(body?.data);
+    const items = collectUpsertItemsFromWebhookBody(body);
     console.log("[evolution-webhook] upsert items", { instance, count: items.length });
     if (!items.length) {
-      return NextResponse.json({ ok: true, empty: true });
+      return NextResponse.json({ ok: true, empty: true, hint: "payload_sem_messages" });
     }
 
     const defaultIds = await ensureDefaultPipelineAndFirstStage(pool);

@@ -3,6 +3,7 @@ import { MessageCircle, MapPin, Phone, Plus, Columns3, ArrowRightCircle, X } fro
 import clsx from 'clsx';
 import { authClient } from '../lib/auth';
 import { useAuth } from '../context/AuthContext';
+import { AppConfirmModal } from './AppOverlays';
 
 type Priority = 'ALTA' | 'MEDIA' | 'BAIXA';
 type Source = 'WHATSAPP' | 'IA' | 'MANUAL';
@@ -124,6 +125,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
   const [isSavingLead, setIsSavingLead] = useState(false);
   const [isSavingLeadEdit, setIsSavingLeadEdit] = useState(false);
   const [isDeletingLead, setIsDeletingLead] = useState(false);
+  const [deleteLeadConfirmOpen, setDeleteLeadConfirmOpen] = useState(false);
   const [isSavingPipeline, setIsSavingPipeline] = useState(false);
   const saveLeadLock = useRef(false);
   const savePipelineLock = useRef(false);
@@ -649,17 +651,15 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editLeadForm.agencyId, editLeadOpen, selectedLead?.id]);
 
-  const handleDeleteLead = async () => {
+  const performDeleteLead = async () => {
     if (!selectedLead) return;
     if (isDeletingLead) return;
-    const ok = window.confirm(`Excluir o lead "${selectedLead.title}"?`);
-    if (!ok) return;
-
     setIsDeletingLead(true);
     try {
       await authClient.deleteCrmLead({ leadId: selectedLead.id, deletedByUsername: user?.username ?? null });
       setDrawerLeadId(null);
       setEditLeadOpen(false);
+      setDeleteLeadConfirmOpen(false);
       await refreshBoard({ silent: true });
     } catch (err) {
       console.error('Erro ao excluir lead:', err);
@@ -1843,7 +1843,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
               </button>
               <button
                 type="button"
-                onClick={handleDeleteLead}
+                onClick={() => setDeleteLeadConfirmOpen(true)}
                 disabled={isDeletingLead}
                 className="flex-1 px-3 py-2 text-xs rounded-lg bg-red-50 text-red-700 font-semibold hover:bg-red-100 border border-red-200 disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -1928,6 +1928,22 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
           </div>
         </div>
       )}
+
+      <AppConfirmModal
+        open={deleteLeadConfirmOpen && !!selectedLead}
+        title="Excluir lead"
+        message={
+          selectedLead
+            ? `Excluir permanentemente o lead "${selectedLead.title}"? Esta ação não pode ser desfeita pelo painel.`
+            : ''
+        }
+        confirmLabel="Excluir lead"
+        cancelLabel="Cancelar"
+        danger
+        busy={isDeletingLead}
+        onCancel={() => !isDeletingLead && setDeleteLeadConfirmOpen(false)}
+        onConfirm={() => void performDeleteLead()}
+      />
     </div>
   );
 };

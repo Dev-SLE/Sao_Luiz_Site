@@ -19,6 +19,7 @@ import clsx from 'clsx';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { authClient } from '../lib/auth';
+import { AppConfirmModal, AppMessageModal, type AppMessageVariant } from './AppOverlays';
 
 type Channel = 'WHATSAPP' | 'IA' | 'INTERNO';
 
@@ -285,6 +286,28 @@ let crmChatCache: {
 
 const READ_SIG_STORAGE_KEY = 'sle_chat_read_signatures';
 
+function humanizeGovernanceReason(reason: string): string {
+  const r = String(reason || '').trim();
+  const map: Record<string, string> = {
+    keyword_detected: 'palavra-chave de handoff',
+    governance_blocked: 'regras de segurança',
+    assistido_mode: 'modo assistido (sem envio automático)',
+    semi_auto_requires_human_confirm: 'é necessário confirmar antes do envio',
+    outside_active_day: 'fora dos dias configurados para a Sofia',
+    outside_business_hours: 'fora do horário comercial',
+    low_confidence: 'baixa confiança da resposta',
+    max_auto_replies_reached: 'limite de respostas automáticas atingido',
+    blocked_topic: 'tema bloqueado pela política',
+    blocked_status: 'status do atendimento não permite envio automático',
+    agency_waiting_human_followup: 'fluxo de agência aguarda humano',
+    agency_sla_breached: 'SLA de agência',
+    sla_breached: 'SLA do atendimento',
+    too_many_customer_messages_without_human: 'várias mensagens do cliente sem resposta humana',
+    ok: 'ok',
+  };
+  return map[r] || r.replace(/_/g, ' ');
+}
+
 const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
   const { user } = useAuth();
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
@@ -348,6 +371,13 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
     }
   });
   const [pulseUnreadByConversationId, setPulseUnreadByConversationId] = useState<Record<string, boolean>>({});
+  const [appNotice, setAppNotice] = useState<{
+    title: string;
+    message: string;
+    variant: AppMessageVariant;
+  } | null>(null);
+  const [pendingDeleteMessageId, setPendingDeleteMessageId] = useState<string | null>(null);
+  const [deletingMessage, setDeletingMessage] = useState(false);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
   const autoReplyGuardRef = useRef<string>('');
   const conversationsFetchLock = useRef(false);
@@ -716,7 +746,11 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
 
       const suggestionText = String(resp?.suggestion || '').trim();
       if (!suggestionText) {
-        alert('Sofia não gerou resposta para este contexto.');
+        setAppNotice({
+          title: 'Sofia',
+          message: 'Não foi possível gerar uma resposta para este contexto. Tente ajustar a mensagem ou o resumo.',
+          variant: 'warning',
+        });
         return;
       }
 
@@ -735,12 +769,21 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
           const msgsResp = await authClient.getCrmMessages(selectedConversationId);
           applyMessagesResponse(msgsResp);
           setInput('');
-          alert('Palavra-chave de handoff detectada. Sofia pausada e atendimento encaminhado para humano.');
+          setAppNotice({
+            title: 'Handoff para atendimento humano',
+            message:
+              'Palavra-chave de handoff detectada. A mensagem foi enviada e a Sofia deixa de responder automaticamente neste fluxo; continue o atendimento manualmente.',
+            variant: 'success',
+          });
           return;
         }
         const reason = String(resp?.governance?.reason || 'governance_blocked');
         setInput(suggestionText);
-        alert(`Governança bloqueou autoenvio (${reason}). A resposta foi colocada no campo para revisão humana.`);
+        setAppNotice({
+          title: 'Governança da Sofia',
+          message: `O envio automático foi bloqueado (${humanizeGovernanceReason(reason)}). A sugestão foi colocada no campo de mensagem para você revisar e enviar manualmente.`,
+          variant: 'warning',
+        });
         return;
       }
 
@@ -757,10 +800,18 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
       const msgsResp = await authClient.getCrmMessages(selectedConversationId);
       applyMessagesResponse(msgsResp);
       setInput('');
-      alert('Sofia respondeu automaticamente com governança aplicada.');
+      setAppNotice({
+        title: 'Mensagem enviada',
+        message: 'A Sofia enviou a resposta automaticamente. As regras de governança foram respeitadas.',
+        variant: 'success',
+      });
     } catch (e) {
       console.error("Erro ao executar auto resposta da Sofia:", e);
-      alert('Falha ao executar auto resposta da Sofia.');
+      setAppNotice({
+        title: 'Auto resposta',
+        message: 'Não foi possível concluir a ação. Verifique sua conexão e tente novamente.',
+        variant: 'error',
+      });
     } finally {
       setSofiaAutoRunning(false);
     }
@@ -1458,12 +1509,9 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                             'text-[9px] underline underline-offset-2',
                             isMe ? 'text-white/80' : 'text-slate-500'
                           )}
-                          onClick={async () => {
+                          onClick={() => {
                             if (!selectedConversationId) return;
-                            if (!window.confirm('Remover esta mensagem do CRM?')) return;
-                            await authClient.deleteCrmMessage({ conversationId: selectedConversationId, messageId: m.id });
-                            const msgsResp = await authClient.getCrmMessages(selectedConversationId);
-                            applyMessagesResponse(msgsResp);
+                            setPendingDeleteMessageId(m.id);
                           }}
                         >
                           excluir
@@ -2037,6 +2085,48 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
           </div>
         )}
       </aside>
+
+      <AppMessageModal
+        open={!!appNotice}
+        title={appNotice?.title || ''}
+        message={appNotice?.message || ''}
+        variant={appNotice?.variant || 'info'}
+        onClose={() => setAppNotice(null)}
+      />
+
+      <AppConfirmModal
+        open={!!pendingDeleteMessageId}
+        title="Excluir mensagem"
+        message="Remover esta mensagem do CRM? Essa ação não pode ser desfeita pelo painel."
+        confirmLabel="Excluir"
+        cancelLabel="Cancelar"
+        danger
+        busy={deletingMessage}
+        onCancel={() => !deletingMessage && setPendingDeleteMessageId(null)}
+        onConfirm={async () => {
+          if (!selectedConversationId || !pendingDeleteMessageId) return;
+          setDeletingMessage(true);
+          try {
+            await authClient.deleteCrmMessage({
+              conversationId: selectedConversationId,
+              messageId: pendingDeleteMessageId,
+            });
+            const msgsResp = await authClient.getCrmMessages(selectedConversationId);
+            applyMessagesResponse(msgsResp);
+            setPendingDeleteMessageId(null);
+          } catch (err) {
+            console.error(err);
+            setAppNotice({
+              title: 'Erro',
+              message: 'Não foi possível excluir a mensagem.',
+              variant: 'error',
+            });
+            setPendingDeleteMessageId(null);
+          } finally {
+            setDeletingMessage(false);
+          }
+        }}
+      />
     </div>
   );
 };

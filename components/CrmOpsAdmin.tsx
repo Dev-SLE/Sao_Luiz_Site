@@ -3,6 +3,7 @@ import { authClient } from "../lib/auth";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
 import { EvolutionInboxPairModal, type PairInboxInfo } from "./EvolutionInboxPairModal";
+import { AppMessageModal, type AppMessageVariant } from "./AppOverlays";
 
 const CrmOpsAdmin: React.FC = () => {
   const [teams, setTeams] = useState<any[]>([]);
@@ -46,6 +47,11 @@ const CrmOpsAdmin: React.FC = () => {
   const [pairInbox, setPairInbox] = useState<PairInboxInfo | null>(null);
   const [evolutionDefaultsConfigured, setEvolutionDefaultsConfigured] = useState(false);
   const [evoAdvancedOpen, setEvoAdvancedOpen] = useState(false);
+  const [opsNotice, setOpsNotice] = useState<{
+    title: string;
+    message: string;
+    variant: AppMessageVariant;
+  } | null>(null);
   const [intakeSettings, setIntakeSettings] = useState({
     leadFilterMode: "BUSINESS_ONLY",
     aiEnabled: true,
@@ -136,11 +142,19 @@ const CrmOpsAdmin: React.FC = () => {
       const json = XLSX.utils.sheet_to_json(ws, { defval: "" });
       numbers = extractNumbersFromRows(json as any[]);
     } else {
-      alert("Formato não suportado. Use CSV, XLSX ou XLS.");
+      setOpsNotice({
+        title: "Importação",
+        message: "Formato não suportado. Use arquivos CSV, XLSX ou XLS.",
+        variant: "warning",
+      });
       return;
     }
     if (!numbers.length) {
-      alert("Nenhum número válido encontrado no arquivo.");
+      setOpsNotice({
+        title: "Importação",
+        message: "Nenhum número válido (últimos 10 dígitos) foi encontrado no arquivo.",
+        variant: "warning",
+      });
       return;
     }
     setIntakeSettings((s) => {
@@ -155,7 +169,11 @@ const CrmOpsAdmin: React.FC = () => {
         denylistLast10: mergeLast10List(s.denylistLast10, numbers),
       };
     });
-    alert(`${numbers.length} número(s) importado(s) para ${target === "ALLOW" ? "allowlist" : "denylist"}.`);
+    setOpsNotice({
+      title: "Importação concluída",
+      message: `${numbers.length} número(s) mesclado(s) na ${target === "ALLOW" ? "allowlist" : "denylist"}. Lembre-se de salvar as configurações de triagem.`,
+      variant: "success",
+    });
   };
 
   const downloadTemplateCsv = () => {
@@ -232,6 +250,13 @@ const CrmOpsAdmin: React.FC = () => {
 
   return (
     <>
+    <AppMessageModal
+      open={!!opsNotice}
+      title={opsNotice?.title || ""}
+      message={opsNotice?.message || ""}
+      variant={opsNotice?.variant || "info"}
+      onClose={() => setOpsNotice(null)}
+    />
     <EvolutionInboxPairModal open={Boolean(pairInbox)} onClose={() => setPairInbox(null)} inbox={pairInbox} />
     <div className="space-y-4">
       <div className="surface-card-strong p-4 border border-[#2c348c]/25 bg-gradient-to-br from-[#f8faff] to-white">

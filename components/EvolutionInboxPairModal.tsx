@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { X, Loader2, Wifi, WifiOff } from "lucide-react";
+import { X, Loader2, Wifi, WifiOff, CheckCircle2 } from "lucide-react";
 
 export type PairInboxInfo = {
   id: string;
@@ -50,6 +50,12 @@ export const EvolutionInboxPairModal: React.FC<Props> = ({ open, onClose, inbox 
   const [waitingQr, setWaitingQr] = useState(false);
   const [webhookQr, setWebhookQr] = useState<string | null>(null);
   const autoPairLaunchedRef = useRef(false);
+  /** Sessão conectada: mensagem de sucesso e fechamento automático. */
+  const [pairSuccess, setPairSuccess] = useState(false);
+  const closeSuccessTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const closeScheduledRef = useRef(false);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     if (!open) {
@@ -62,6 +68,12 @@ export const EvolutionInboxPairModal: React.FC<Props> = ({ open, onClose, inbox 
       setWaitingQr(false);
       setWebhookQr(null);
       autoPairLaunchedRef.current = false;
+      setPairSuccess(false);
+      closeScheduledRef.current = false;
+      if (closeSuccessTimerRef.current) {
+        clearTimeout(closeSuccessTimerRef.current);
+        closeSuccessTimerRef.current = null;
+      }
     }
   }, [open, inbox?.id]);
 
@@ -187,6 +199,47 @@ export const EvolutionInboxPairModal: React.FC<Props> = ({ open, onClose, inbox 
     };
   }, [waitingQr, inbox?.id]);
 
+  const stateLower = (conn?.state || "").toLowerCase();
+  const looksConnected =
+    stateLower.includes("open") ||
+    stateLower === "connected" ||
+    stateLower.includes("success");
+
+  useEffect(() => {
+    if (!open) {
+      closeScheduledRef.current = false;
+      setPairSuccess(false);
+      if (closeSuccessTimerRef.current) {
+        clearTimeout(closeSuccessTimerRef.current);
+        closeSuccessTimerRef.current = null;
+      }
+      return;
+    }
+    if (!looksConnected) {
+      closeScheduledRef.current = false;
+      setPairSuccess(false);
+      if (closeSuccessTimerRef.current) {
+        clearTimeout(closeSuccessTimerRef.current);
+        closeSuccessTimerRef.current = null;
+      }
+      return;
+    }
+    if (closeScheduledRef.current) return;
+    closeScheduledRef.current = true;
+    setPairSuccess(true);
+    if (closeSuccessTimerRef.current) clearTimeout(closeSuccessTimerRef.current);
+    closeSuccessTimerRef.current = setTimeout(() => {
+      closeSuccessTimerRef.current = null;
+      onCloseRef.current();
+    }, 2800);
+    return () => {
+      if (closeSuccessTimerRef.current) {
+        clearTimeout(closeSuccessTimerRef.current);
+        closeSuccessTimerRef.current = null;
+      }
+    };
+  }, [open, looksConnected]);
+
   if (!open || !inbox) return null;
 
   const ev = evolution;
@@ -195,12 +248,6 @@ export const EvolutionInboxPairModal: React.FC<Props> = ({ open, onClose, inbox 
     ev?.base64 ||
     ev?.qrcode?.base64 ||
     (typeof ev?.code === "string" && ev.code.startsWith("data:image") ? ev.code : null);
-
-  const stateLower = (conn?.state || "").toLowerCase();
-  const looksConnected =
-    stateLower.includes("open") ||
-    stateLower === "connected" ||
-    stateLower.includes("success");
 
   return (
     <div
@@ -246,6 +293,26 @@ export const EvolutionInboxPairModal: React.FC<Props> = ({ open, onClose, inbox 
             {looksConnected && " · sessão ativa"}
           </span>
         </div>
+
+        {pairSuccess && (
+          <div className="mt-3 flex gap-3 rounded-xl border border-emerald-200 bg-emerald-50/95 px-3 py-3 text-[11px] text-emerald-900">
+            <CheckCircle2 className="h-10 w-10 shrink-0 text-emerald-600" aria-hidden />
+            <div className="min-w-0">
+              <p className="font-bold text-emerald-950">WhatsApp conectado com sucesso</p>
+              <p className="mt-1 text-emerald-900/90 leading-relaxed">
+                A sessão Web desta caixa está ativa. Esta janela fechará em instantes. Você pode fechar agora se
+                preferir.
+              </p>
+              <button
+                type="button"
+                className="mt-2 rounded-lg border border-emerald-300 bg-white px-3 py-1.5 text-[10px] font-bold text-emerald-900 hover:bg-emerald-50"
+                onClick={() => onClose()}
+              >
+                Fechar agora
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="mt-4">
           <p className="text-[10px] font-semibold text-slate-700">Onde você vai escanear o QR?</p>
@@ -293,10 +360,11 @@ export const EvolutionInboxPairModal: React.FC<Props> = ({ open, onClose, inbox 
           Número do WhatsApp (com DDI 55 — recomendado)
         </label>
         <input
-          className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900"
+          className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 disabled:opacity-60"
           placeholder="5562991234567"
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
+          disabled={pairSuccess}
         />
 
         {err && (
@@ -308,7 +376,7 @@ export const EvolutionInboxPairModal: React.FC<Props> = ({ open, onClose, inbox 
         <div className="mt-4 flex flex-wrap gap-2">
           <button
             type="button"
-            disabled={loading}
+            disabled={loading || pairSuccess}
             onClick={() => runConnect(false)}
             className="inline-flex items-center gap-1 rounded-lg bg-gradient-to-r from-[#2c348c] to-[#1f2f86] px-4 py-2 text-xs font-bold text-white disabled:opacity-60"
           >
@@ -317,7 +385,7 @@ export const EvolutionInboxPairModal: React.FC<Props> = ({ open, onClose, inbox 
           </button>
           <button
             type="button"
-            disabled={loading}
+            disabled={loading || pairSuccess}
             onClick={() => runConnect(true)}
             className="inline-flex items-center gap-1 rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-2 text-xs font-bold text-emerald-900 disabled:opacity-60"
           >
@@ -334,7 +402,13 @@ export const EvolutionInboxPairModal: React.FC<Props> = ({ open, onClose, inbox 
         )}
 
         <div className="mt-4 flex flex-col items-center justify-center rounded-xl border border-slate-200 bg-slate-50 p-4 min-h-[200px]">
-          {base64 ? (
+          {pairSuccess ? (
+            <div className="flex flex-col items-center gap-2 py-8 text-center text-[11px] text-emerald-800">
+              <CheckCircle2 className="h-14 w-14 text-emerald-500" aria-hidden />
+              <p className="font-semibold">Conexão estabelecida</p>
+              <p className="max-w-xs text-emerald-800/85">Não é necessário escanear o QR enquanto a sessão estiver aberta.</p>
+            </div>
+          ) : base64 ? (
             <img src={base64} alt="QR Code WhatsApp" className="max-w-[240px] rounded-lg border border-white shadow" />
           ) : waitingQr ? (
             <div className="text-center text-[11px] text-slate-600">

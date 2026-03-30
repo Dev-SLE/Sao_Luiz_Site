@@ -5,6 +5,7 @@ import { Trash2, UserPlus, Save, Copy, Shield, Users, CheckSquare, Square, X, Ac
 import clsx from 'clsx';
 import { authClient } from '../lib/auth';
 import CrmOpsAdmin from './CrmOpsAdmin';
+import { AppConfirmModal, AppMessageModal, type AppMessageVariant } from './AppOverlays';
 
 const excludedViewPages = new Set<Page>([
   Page.CONFIGURACOES,
@@ -86,6 +87,13 @@ const Settings: React.FC = () => {
   });
   const [isAddingUser, setIsAddingUser] = useState(false);
   const [editingUsername, setEditingUsername] = useState<string | null>(null);
+  const [settingsNotice, setSettingsNotice] = useState<{
+    title: string;
+    message: string;
+    variant: AppMessageVariant;
+  } | null>(null);
+  const [confirmDeleteUser, setConfirmDeleteUser] = useState<string | null>(null);
+  const [confirmDeleteProfile, setConfirmDeleteProfile] = useState<string | null>(null);
 
   // --- Profiles Tab State ---
   const [editingProfile, setEditingProfile] = useState<ProfileData | null>(null);
@@ -105,11 +113,19 @@ const Settings: React.FC = () => {
       e.preventDefault();
       const isEditing = !!editingUsername;
       if (!newUser.username || !newUser.role) {
-          alert("Preencha os campos obrigatórios");
+          setSettingsNotice({
+            title: 'Campos obrigatórios',
+            message: 'Preencha usuário e perfil antes de salvar.',
+            variant: 'warning',
+          });
           return;
       }
       if (!isEditing && !newUser.password) {
-          alert("Senha é obrigatória ao criar um novo usuário");
+          setSettingsNotice({
+            title: 'Senha obrigatória',
+            message: 'Ao criar um novo usuário, é necessário definir uma senha inicial.',
+            variant: 'warning',
+          });
           return;
       }
       await addUser(newUser);
@@ -358,7 +374,7 @@ const Settings: React.FC = () => {
                                         </button>
                                         {u.username.toLowerCase() !== 'admin' && (
                                             <button 
-                                              onClick={() => { if(confirm(`Remover ${u.username}?`)) deleteUser(u.username) }}
+                                              onClick={() => setConfirmDeleteUser(u.username)}
                                               className="text-slate-500 hover:text-red-500 p-1"
                                               title="Excluir usuário"
                                             >
@@ -418,7 +434,7 @@ const Settings: React.FC = () => {
                                       <button 
                                         onClick={(e) => {
                                             e.stopPropagation();
-                                            if(confirm(`Excluir perfil ${p.name}?`)) deleteProfile(p.name);
+                                            setConfirmDeleteProfile(p.name);
                                         }}
                                         className="p-1 text-slate-500 hover:text-red-500" title="Excluir"
                                       >
@@ -678,6 +694,54 @@ const Settings: React.FC = () => {
           )}
         </div>
       )}
+
+      <AppMessageModal
+        open={!!settingsNotice}
+        title={settingsNotice?.title || ''}
+        message={settingsNotice?.message || ''}
+        variant={settingsNotice?.variant || 'info'}
+        onClose={() => setSettingsNotice(null)}
+      />
+
+      <AppConfirmModal
+        open={!!confirmDeleteUser}
+        title="Remover usuário"
+        message={
+          confirmDeleteUser
+            ? `Remover o usuário "${confirmDeleteUser}"? Ele perderá acesso imediato ao sistema.`
+            : ''
+        }
+        confirmLabel="Remover"
+        cancelLabel="Cancelar"
+        danger
+        onCancel={() => setConfirmDeleteUser(null)}
+        onConfirm={() => {
+          if (confirmDeleteUser) {
+            void deleteUser(confirmDeleteUser);
+            setConfirmDeleteUser(null);
+          }
+        }}
+      />
+
+      <AppConfirmModal
+        open={!!confirmDeleteProfile}
+        title="Excluir perfil"
+        message={
+          confirmDeleteProfile
+            ? `Excluir o perfil "${confirmDeleteProfile}"? Usuários que usem esse perfil precisarão ser reatribuídos.`
+            : ''
+        }
+        confirmLabel="Excluir perfil"
+        cancelLabel="Cancelar"
+        danger
+        onCancel={() => setConfirmDeleteProfile(null)}
+        onConfirm={() => {
+          if (confirmDeleteProfile) {
+            void deleteProfile(confirmDeleteProfile);
+            setConfirmDeleteProfile(null);
+          }
+        }}
+      />
     </div>
   );
 };
