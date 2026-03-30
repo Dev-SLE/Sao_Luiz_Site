@@ -46,6 +46,9 @@ export async function POST(req: Request) {
     let agencySlaMinutes: number | null = null;
     const assignedUsername = body?.assignedUsername != null ? String(body.assignedUsername) : (body?.ownerUsername != null ? String(body.ownerUsername) : null);
     const assignmentMode = body?.assignmentMode != null ? String(body.assignmentMode).toUpperCase() : "AUTO";
+    const isRecurringFreight = body?.isRecurringFreight === true;
+    const trackingActive = body?.trackingActive === true;
+    const observations = body?.observations != null ? String(body.observations) : null;
 
     const pipelineId =
       body?.pipelineId
@@ -143,11 +146,14 @@ export async function POST(req: Request) {
           agency_id,
           agency_requested_at,
           agency_sla_minutes,
+          is_recurring_freight,
+          tracking_active,
+          observations,
           position,
           created_at,
           updated_at
         )
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,NOW(),NOW())
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,NOW(),NOW())
         RETURNING *
       `,
       [
@@ -178,6 +184,9 @@ export async function POST(req: Request) {
         agencyRequestedAt,
         agencySlaMinutes,
         position,
+        isRecurringFreight,
+        trackingActive,
+        observations,
       ]
     );
 
@@ -217,6 +226,9 @@ export async function POST(req: Request) {
         agencyId: lead.agency_id as string | null,
         agencyRequestedAt: lead.agency_requested_at as string | null,
         agencySlaMinutes: lead.agency_sla_minutes != null ? Number(lead.agency_sla_minutes) : null,
+        isRecurringFreight: !!lead.is_recurring_freight,
+        trackingActive: !!lead.tracking_active,
+        observations: lead.observations ? String(lead.observations) : "",
         stageId: lead.stage_id as string,
         logs: [`Lead criado em "${stageName}"`],
       },
@@ -285,6 +297,9 @@ export async function PATCH(req: Request) {
         ? String(body.assignedUsername).trim()
         : null;
     const assignmentMode = body?.assignmentMode != null ? String(body.assignmentMode).toUpperCase() : "AUTO";
+    const isRecurringFreight = body?.isRecurringFreight !== undefined ? !!body.isRecurringFreight : undefined;
+    const trackingActive = body?.trackingActive !== undefined ? !!body.trackingActive : undefined;
+    const observations = body?.observations !== undefined ? String(body.observations || "") : undefined;
 
     const currentLocation =
       body?.currentLocation != null && String(body.currentLocation).trim() !== ""
@@ -351,6 +366,9 @@ export async function PATCH(req: Request) {
           agency_id = CASE WHEN $22::text IS NULL THEN agency_id ELSE $22::uuid END,
           stage_id = $23,
           position = $24,
+          is_recurring_freight = COALESCE($26, is_recurring_freight),
+          tracking_active = COALESCE($27, tracking_active),
+          observations = CASE WHEN $28::text IS NULL THEN observations ELSE $28::text END,
           updated_at = NOW()
         WHERE id = $25
         RETURNING *
@@ -381,6 +399,9 @@ export async function PATCH(req: Request) {
         nextStageId,
         nextPosition,
         leadId,
+        isRecurringFreight ?? null,
+        trackingActive ?? null,
+        observations ?? null,
       ]
     );
 

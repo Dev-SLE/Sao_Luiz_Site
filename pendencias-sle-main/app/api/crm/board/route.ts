@@ -26,6 +26,22 @@ function parseJsonbArray(value: any): string[] {
   return [];
 }
 
+function parsePermissions(value: any): string[] {
+  if (Array.isArray(value)) return value.map((x) => String(x));
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) return parsed.map((x) => String(x));
+    } catch {
+      return value
+        .split(",")
+        .map((x) => x.trim())
+        .filter(Boolean);
+    }
+  }
+  return [];
+}
+
 async function ensureDefaultPipeline(pool: any) {
   const existing = await pool.query(
     "SELECT id FROM pendencias.crm_pipelines WHERE is_default = true ORDER BY created_at ASC LIMIT 1"
@@ -105,10 +121,49 @@ async function ensureOperationalStages(pool: any, pipelineId: string) {
   }
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
     await ensureCrmSchemaTables();
     const pool = getPool();
+    const { searchParams } = new URL(req.url);
+    const requestUsername = searchParams.get("requestUsername");
+    const requestRole = (searchParams.get("requestRole") || "").toLowerCase();
+    const mineOnlyRequested = (searchParams.get("mineOnly") || "false").toLowerCase() === "true";
+    const teamId = searchParams.get("teamId");
+
+    let scope: "ALL" | "TEAM" | "SELF" = "SELF";
+    let teamIds: string[] = [];
+    if (requestUsername) {
+      const ures = await pool.query(
+        `
+          SELECT u.role, p.permissions
+          FROM pendencias.users u
+          LEFT JOIN pendencias.profiles p ON LOWER(p.name) = LOWER(u.role)
+          WHERE LOWER(u.username) = LOWER($1)
+          LIMIT 1
+        `,
+        [requestUsername]
+      );
+      const row = ures.rows?.[0];
+      const role = String(row?.role || requestRole || "").toLowerCase();
+      const perms = parsePermissions(row?.permissions);
+      if (role === "admin" || perms.includes("CRM_SCOPE_ALL")) scope = "ALL";
+      else if (perms.includes("CRM_SCOPE_TEAM")) scope = "TEAM";
+      else scope = "SELF";
+
+      if (scope === "TEAM") {
+        const teamRes = await pool.query(
+          `
+            SELECT team_id::text AS team_id
+            FROM pendencias.crm_team_members
+            WHERE LOWER(username) = LOWER($1) AND is_active = true
+          `,
+          [requestUsername]
+        );
+        teamIds = (teamRes.rows || []).map((r: any) => String(r.team_id));
+      }
+    }
+    const mineOnly = mineOnlyRequested || scope === "SELF";
 
     const pipelineId = await ensureDefaultPipeline(pool);
     await ensureOperationalStages(pool, pipelineId);
@@ -164,6 +219,9 @@ export async function GET() {
         l.assigned_team_id,
         l.assigned_username,
         l.assignment_mode,
+        conv_last.conv_assigned_team_id,
+        conv_last.conv_assigned_username,
+        conv_last.conv_assignment_mode,
         l.protocol_number,
         l.mdfe_date,
         l.route_origin,
@@ -175,6 +233,9 @@ export async function GET() {
         l.agency_id,
         l.agency_requested_at,
         l.agency_sla_minutes,
+        l.is_recurring_freight,
+        l.tracking_active,
+        l.observations,
         ag.name AS agency_name,
         l.stage_id,
         l.position,
@@ -184,15 +245,50 @@ export async function GET() {
       JOIN pendencias.crm_stages st ON st.id = l.stage_id
       LEFT JOIN pendencias.crm_agencies ag ON ag.id = l.agency_id
       LEFT JOIN LATERAL (
+        SELECT
+          c.assigned_username AS conv_assigned_username,
+          c.assigned_team_id AS conv_assigned_team_id,
+          c.assignment_mode AS conv_assignment_mode
+        FROM pendencias.crm_conversations c
+        WHERE c.lead_id = l.id
+        ORDER BY c.last_message_at DESC NULLS LAST, c.created_at DESC
+        LIMIT 1
+      ) conv_last ON true
+      LEFT JOIN LATERAL (
         SELECT jsonb_agg(a.description ORDER BY a.created_at DESC) AS logs
         FROM pendencias.crm_activities a
         WHERE a.lead_id = l.id
         LIMIT 15
       ) logs_sub ON true
       WHERE l.pipeline_id = $1
+        AND ($2::uuid IS NULL OR l.assigned_team_id = $2::uuid)
+        AND (
+          $3::boolean = false
+          OR $4::text IS NULL
+          OR lower(COALESCE(l.assigned_username, l.owner_username, '')) = lower($4::text)
+        )
+        AND (
+          $5::text = 'ALL'
+          OR $3::boolean = true
+          OR (
+            $5::text = 'TEAM'
+            AND (
+              lower(COALESCE(l.assigned_username, l.owner_username, '')) = lower($4::text)
+              OR l.assigned_team_id::text = ANY($6::text[])
+              OR (
+                l.assigned_team_id IS NULL
+                AND l.assigned_username IS NULL
+                AND l.owner_username IS NULL
+              )
+            )
+          )
+          OR l.assigned_username IS NULL
+          OR lower(l.assigned_username) = lower(COALESCE($4::text, ''))
+          OR lower(l.owner_username) = lower(COALESCE($4::text, ''))
+        )
       ORDER BY st.position ASC, l.position ASC
       `,
-      [pipelineId]
+      [pipelineId, teamId || null, mineOnly, requestUsername || null, scope, teamIds]
     );
 
     const leads = (leadsRes.rows || []).map((r: any) => ({
@@ -207,9 +303,9 @@ export async function GET() {
       currentLocation: r.current_location as string | null,
       ownerUsername: r.owner_username as string | null,
       topic: r.topic as string | null,
-      assignedTeamId: r.assigned_team_id as string | null,
-      assignedUsername: r.assigned_username as string | null,
-      assignmentMode: r.assignment_mode as string | null,
+      assignedTeamId: (r.assigned_team_id || r.conv_assigned_team_id) as string | null,
+      assignedUsername: (r.assigned_username || r.conv_assigned_username) as string | null,
+      assignmentMode: (r.assignment_mode || r.conv_assignment_mode) as string | null,
       protocolNumber: r.protocol_number as string | null,
       mdfeDate: r.mdfe_date as string | null,
       routeOrigin: r.route_origin as string | null,
@@ -221,6 +317,9 @@ export async function GET() {
       agencyId: r.agency_id as string | null,
       agencyRequestedAt: r.agency_requested_at as string | null,
       agencySlaMinutes: r.agency_sla_minutes != null ? Number(r.agency_sla_minutes) : null,
+      isRecurringFreight: !!r.is_recurring_freight,
+      trackingActive: !!r.tracking_active,
+      observations: r.observations ? String(r.observations) : "",
       agencyName: r.agency_name as string | null,
       stageId: r.stage_id as string,
       logs: parseJsonbArray(r.logs),

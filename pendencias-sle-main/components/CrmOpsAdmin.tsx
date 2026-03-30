@@ -286,7 +286,32 @@ const CrmOpsAdmin: React.FC = () => {
         <div className="mt-3 space-y-2">
           {teams.map((t) => (
             <div key={t.id} className="flex items-center justify-between rounded border border-slate-200 bg-slate-50 px-3 py-2">
-              <div className="text-xs text-slate-800">{t.name} <span className="text-slate-500">({(t.members || []).length} membros)</span></div>
+              <div className="text-xs text-slate-800">
+                {t.name} <span className="text-slate-500">({(t.members || []).length} membros)</span>
+                {(t.members || []).length > 0 && (
+                  <div className="mt-1 flex flex-wrap gap-1.5">
+                    {(t.members || []).map((m: any) => (
+                      <span
+                        key={m.id}
+                        className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[10px] text-slate-700"
+                      >
+                        {m.username}
+                        <button
+                          type="button"
+                          className="text-red-700 hover:text-red-800"
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            await authClient.removeCrmMemberFromTeam({ username: m.username, teamId: t.id });
+                            await loadAll();
+                          }}
+                        >
+                          Remover
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
               <button className="text-[11px] text-red-700 hover:text-red-800" onClick={async () => { await authClient.deleteCrmTeam(t.id); await loadAll(); }}>Excluir</button>
             </div>
           ))}

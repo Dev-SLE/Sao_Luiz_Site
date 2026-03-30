@@ -207,7 +207,10 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
     if (!silent) setLoading(true);
     setBoardError(null);
     try {
-      const board = await authClient.getCrmBoard();
+      const board = await authClient.getCrmBoard({
+        requestUsername: user?.username || null,
+        requestRole: user?.role || null,
+      });
       setStages((board.stages || []).map((s: any) => ({ id: String(s.id), name: String(s.name) })));
       setLeads((board.leads || []).map((l: any) => ({
         id: String(l.id),
@@ -348,7 +351,9 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
     return leads.filter((lead) => {
       if (boardPriority !== 'ALL' && lead.priority !== boardPriority) return false;
       if (boardSource !== 'ALL' && lead.source !== boardSource) return false;
-      if (mine && (lead.ownerUsername || '').toLowerCase() !== mine) return false;
+      const assigned = (lead.assignedUsername || '').toLowerCase();
+      const owner = (lead.ownerUsername || '').toLowerCase();
+      if (mine && assigned !== mine && owner !== mine) return false;
       if (!term) return true;
 
       const haystack = [
@@ -388,6 +393,13 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
 
   const handleDropOnStage = (stageId: string) => {
     if (!draggingId) return;
+    const draggedLead = leads.find((l) => l.id === draggingId);
+    if (!draggedLead) return;
+    if (draggedLead.stageId === stageId) {
+      setDraggingId(null);
+      return;
+    }
+    const previousLeads = leads;
     // Otimista: move na UI imediatamente, sincroniza no backend.
     setLeads((prev) =>
       prev.map((l) => (l.id === draggingId ? { ...l, stageId } : l))
@@ -399,15 +411,19 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
         stageId,
         ownerUsername: user?.username ?? null,
       })
-      .then(() => refreshBoard({ silent: true }))
+      .then(() => {
+        // Evita "efeito elástico" por refetch imediato; confirma em segundo plano.
+        window.setTimeout(() => {
+          refreshBoard({ silent: true });
+        }, 1200);
+      })
       .catch((err) => {
         console.error('Erro ao mover lead:', err);
         setBoardError(err instanceof Error ? err.message : 'Falha ao mover lead.');
-        // rollback com estado canônico
-        refreshBoard();
+        // rollback imediato evita "efeito elástico" por refetch tardio.
+        setLeads(previousLeads);
       })
       .finally(() => setDraggingId(null));
-    setDraggingId(null);
   };
 
   const handleCreateLead = () => {
@@ -964,11 +980,11 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                           );
                         })()}
                       </div>
-                      {(lead.assignedUsername || lead.topic) && (
+                      {(lead.assignedUsername || lead.ownerUsername || lead.topic) && (
                         <div className="flex flex-wrap gap-1 mt-1">
-                          {lead.assignedUsername && (
+                          {(lead.assignedUsername || lead.ownerUsername) && (
                             <span className="px-1.5 py-0.5 rounded-full border border-slate-300 bg-slate-100 text-[9px] text-slate-800">
-                              Resp: {lead.assignedUsername}
+                              Resp: {lead.assignedUsername || lead.ownerUsername}
                             </span>
                           )}
                           {lead.topic && (

@@ -25,6 +25,7 @@ interface SofiaSettingsState {
   responseTone: 'PROFISSIONAL' | 'EMPATICO' | 'DIRETO';
   maxResponseChars: number;
   welcomeEnabled: boolean;
+  generateSummaryEnabled: boolean;
 }
 
 const defaultState: SofiaSettingsState = {
@@ -59,6 +60,7 @@ const defaultState: SofiaSettingsState = {
   responseTone: 'PROFISSIONAL',
   maxResponseChars: 480,
   welcomeEnabled: true,
+  generateSummaryEnabled: true,
 };
 
 const SofiaSettings: React.FC = () => {
@@ -101,6 +103,8 @@ const SofiaSettings: React.FC = () => {
             responseTone: (s.responseTone || prev.responseTone) as SofiaSettingsState['responseTone'],
             maxResponseChars: Number(s.maxResponseChars ?? prev.maxResponseChars),
             welcomeEnabled: s.welcomeEnabled === undefined ? prev.welcomeEnabled : !!s.welcomeEnabled,
+            generateSummaryEnabled:
+              s.generateSummaryEnabled === undefined ? prev.generateSummaryEnabled : !!s.generateSummaryEnabled,
           }));
         }
       } catch (err) {
@@ -141,6 +145,7 @@ const SofiaSettings: React.FC = () => {
         responseTone: state.responseTone,
         maxResponseChars: state.maxResponseChars,
         welcomeEnabled: state.welcomeEnabled,
+        generateSummaryEnabled: state.generateSummaryEnabled,
       });
       setSuccessText('Configurações salvas com sucesso no servidor.');
     } catch (err) {
@@ -184,6 +189,8 @@ const SofiaSettings: React.FC = () => {
           responseTone: (s.responseTone || prev.responseTone) as SofiaSettingsState['responseTone'],
           maxResponseChars: Number(s.maxResponseChars ?? prev.maxResponseChars),
           welcomeEnabled: s.welcomeEnabled === undefined ? prev.welcomeEnabled : !!s.welcomeEnabled,
+          generateSummaryEnabled:
+            s.generateSummaryEnabled === undefined ? prev.generateSummaryEnabled : !!s.generateSummaryEnabled,
         }));
       }
       setSuccessText('Template oficial da Sofia aplicado e salvo no banco.');
@@ -330,6 +337,18 @@ const SofiaSettings: React.FC = () => {
                 className="field-ui w-full"
                 value={state.autoReplyEnabled ? 'SIM' : 'NAO'}
                 onChange={(e) => setState((s) => ({ ...s, autoReplyEnabled: e.target.value === 'SIM' }))}
+              >
+                <option value="SIM">Sim</option>
+                <option value="NAO">Não</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-ui-label">Generate conversation summary</label>
+              <p className="text-[11px] text-slate-600">Gera resumo automatico da conversa ao abrir o chat.</p>
+              <select
+                className="field-ui w-full"
+                value={state.generateSummaryEnabled ? 'SIM' : 'NAO'}
+                onChange={(e) => setState((s) => ({ ...s, generateSummaryEnabled: e.target.value === 'SIM' }))}
               >
                 <option value="SIM">Sim</option>
                 <option value="NAO">Não</option>

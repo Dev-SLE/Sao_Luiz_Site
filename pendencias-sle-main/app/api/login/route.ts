@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getPool } from "../../../lib/server/db";
 import bcrypt from "../../../bcrypt.js";
 import { serverLog } from "../../../lib/server/appLog";
+import { encodeSession, SESSION_COOKIE_NAME } from "../../../lib/server/session";
 
 export const runtime = "nodejs";
 
@@ -42,7 +43,7 @@ export async function POST(req: Request) {
       username: String(username),
       data: { role: user.role },
     });
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       user: {
         username: user.username,
@@ -51,6 +52,19 @@ export async function POST(req: Request) {
         dest: user.linked_dest_unit,
       },
     });
+    response.cookies.set(SESSION_COOKIE_NAME, encodeSession({
+      username: user.username,
+      role: user.role,
+      origin: user.linked_origin_unit,
+      dest: user.linked_dest_unit,
+    }), {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: 60 * 60 * 12, // 12h
+    });
+    return response;
   } catch (error) {
     console.error("Erro no login:", error);
     await serverLog({

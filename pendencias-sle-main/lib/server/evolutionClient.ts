@@ -56,21 +56,44 @@ export async function evolutionFetchProfilePictureUrl(args: {
   if (!base || !args.apiKey || !args.instanceName) return null;
   const num = String(args.number || "").trim();
   if (!num) return null;
-  const url = `${base}/chat/fetchProfilePictureUrl/${encodeURIComponent(args.instanceName)}`;
+  const endpointCandidates = [
+    `${base}/chat/fetchProfilePictureUrl/${encodeURIComponent(args.instanceName)}`,
+    `${base}/chat/fetchProfile/${encodeURIComponent(args.instanceName)}`,
+  ];
+  const parseCandidate = (json: any): string | null => {
+    const candidates = [
+      json?.profilePictureUrl,
+      json?.profile_picture_url,
+      json?.pictureUrl,
+      json?.avatarUrl,
+      json?.data?.profilePictureUrl,
+      json?.data?.profile_picture_url,
+      json?.data?.pictureUrl,
+      json?.data?.avatarUrl,
+      json?.response?.profilePictureUrl,
+      json?.response?.profile_picture_url,
+    ];
+    for (const c of candidates) {
+      const s = String(c || "").trim();
+      if (s && /^https?:\/\//i.test(s)) return s;
+    }
+    return null;
+  };
   try {
-    const resp = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: args.apiKey,
-      },
-      body: JSON.stringify({ number: num }),
-    });
-    if (!resp.ok) return null;
-    const json = await resp.json().catch(() => ({}));
-    const u = (json as any)?.profilePictureUrl ?? (json as any)?.profile_picture_url;
-    const s = String(u || "").trim();
-    if (s && /^https?:\/\//i.test(s)) return s;
+    for (const url of endpointCandidates) {
+      const resp = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: args.apiKey,
+        },
+        body: JSON.stringify({ number: num }),
+      });
+      if (!resp.ok) continue;
+      const json = await resp.json().catch(() => ({}));
+      const parsed = parseCandidate(json);
+      if (parsed) return parsed;
+    }
     return null;
   } catch {
     return null;

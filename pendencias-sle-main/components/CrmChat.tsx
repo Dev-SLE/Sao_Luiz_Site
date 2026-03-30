@@ -43,6 +43,21 @@ interface ConversationSummary {
   topic?: string | null;
   slaDueAt?: string | null;
   slaBreachedAt?: string | null;
+  protocolNumber?: string | null;
+  routeOrigin?: string | null;
+  routeDestination?: string | null;
+  requestedAt?: string | null;
+  serviceType?: string | null;
+  cargoStatus?: string | null;
+  customerStatus?: string | null;
+  source?: string | null;
+  currentLocation?: string | null;
+  ownerUsername?: string | null;
+  isRecurringFreight?: boolean;
+  trackingActive?: boolean;
+  observations?: string | null;
+  aiSummary?: string | null;
+  aiSummaryUpdatedAt?: string | null;
   /** Caixa WhatsApp (null = linha oficial Meta / Sofia) */
   inboxName?: string | null;
   inboxProvider?: string | null;
@@ -51,6 +66,7 @@ interface ConversationSummary {
 interface Message {
   id: string;
   from: 'CLIENTE' | 'AGENTE' | 'IA';
+  fromLabel?: string;
   text: string;
   time: string;
   channel: Channel;
@@ -58,6 +74,9 @@ interface Message {
   edited?: boolean;
   attachments?: Array<{ type?: string; filename?: string | null }>;
   optimistic?: boolean;
+  replyTo?: { messageId?: string; sender?: string; text?: string } | null;
+  deleted?: boolean;
+  createdAt?: string | null;
 }
 
 interface RelatedLeadHistoryItem {
@@ -264,6 +283,8 @@ let crmChatCache: {
   savedAt: number;
 } | null = null;
 
+const READ_SIG_STORAGE_KEY = 'sle_chat_read_signatures';
+
 const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
   const { user } = useAuth();
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
@@ -278,6 +299,10 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
   const [observacoes, setObservacoes] = useState(
     'Cliente estratégico com alto volume mensal de envios.'
   );
+  const [freteRecorrente, setFreteRecorrente] = useState(false);
+  const [rastreioAtivo, setRastreioAtivo] = useState(false);
+  const [aiSummary, setAiSummary] = useState('');
+  const [replyTarget, setReplyTarget] = useState<{ messageId: string; sender: string; text: string } | null>(null);
   const [infoTab, setInfoTab] = useState<'detalhes' | 'midia' | 'resumo'>('detalhes');
   const [statusAtendimento, setStatusAtendimento] = useState<
     'PENDENTE' | 'CONCLUIDO' | 'EM_RASTREIO' | 'PERDIDO'
@@ -290,6 +315,15 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
   const [sendingAttachment, setSendingAttachment] = useState(false);
   const [clienteDestino, setClienteDestino] = useState('');
   const [clientePreferencia, setClientePreferencia] = useState<'WHATSAPP' | 'LIGACAO' | 'EMAIL'>('WHATSAPP');
+  const [leadProtocol, setLeadProtocol] = useState('');
+  const [leadRouteOrigin, setLeadRouteOrigin] = useState('');
+  const [leadRequestedAt, setLeadRequestedAt] = useState('');
+  const [leadServiceType, setLeadServiceType] = useState('ATENDIMENTO_GERAL');
+  const [leadCargoStatus, setLeadCargoStatus] = useState('SEM_STATUS');
+  const [leadCustomerStatus, setLeadCustomerStatus] = useState('PENDENTE');
+  const [leadSource, setLeadSource] = useState<'WHATSAPP' | 'IA' | 'MANUAL'>('MANUAL');
+  const [leadPriority, setLeadPriority] = useState<'ALTA' | 'MEDIA' | 'BAIXA'>('MEDIA');
+  const [leadCurrentLocation, setLeadCurrentLocation] = useState('');
   const [sofiaSuggesting, setSofiaSuggesting] = useState(false);
   const [sofiaAutoRunning, setSofiaAutoRunning] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -300,8 +334,22 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
     'Olá! Sou a Sofia, assistente virtual da São Luiz Express. Como posso te ajudar hoje?'
   );
   const [sofiaActiveToday, setSofiaActiveToday] = useState<boolean>(true);
+  const [sofiaGenerateSummaryEnabled, setSofiaGenerateSummaryEnabled] = useState<boolean>(true);
   const [savingClientData, setSavingClientData] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
+  const [readSignatures, setReadSignatures] = useState<Record<string, string>>(() => {
+    if (typeof window === 'undefined') return {};
+    try {
+      const raw = window.localStorage.getItem(READ_SIG_STORAGE_KEY);
+      const parsed = raw ? JSON.parse(raw) : {};
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+      return {};
+    }
+  });
+  const [pulseUnreadByConversationId, setPulseUnreadByConversationId] = useState<Record<string, boolean>>({});
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null);
+  const autoReplyGuardRef = useRef<string>('');
   const conversationsFetchLock = useRef(false);
   const conversationsPollInFlight = useRef(false);
   const messagesRequestSeq = useRef(0);
@@ -313,6 +361,12 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
         ? (resp.relatedLeadHistory as RelatedLeadHistoryItem[])
         : []
     );
+  };
+
+  const scrollMessagesToBottom = () => {
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
   };
 
   useLayoutEffect(() => {
@@ -334,6 +388,62 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
     }
     return conversations[0];
   }, [conversations, selectedConversationId]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem(READ_SIG_STORAGE_KEY, JSON.stringify(readSignatures));
+    } catch {
+      // noop
+    }
+  }, [readSignatures]);
+
+  const effectiveUnreadByConversationId = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const conv of conversations) {
+      const sig = `${conv.lastAt || ''}|${conv.lastMessage || ''}`;
+      const readSig = readSignatures[conv.id];
+      map[conv.id] = conv.unread > 0 && readSig !== sig ? conv.unread : 0;
+    }
+    return map;
+  }, [conversations, readSignatures]);
+
+  const prevEffectiveUnreadRef = useRef<Record<string, number>>({});
+  useEffect(() => {
+    const prev = prevEffectiveUnreadRef.current;
+    const nextPulse: Record<string, boolean> = {};
+    for (const conv of conversations) {
+      const prevCount = prev[conv.id] || 0;
+      const nextCount = effectiveUnreadByConversationId[conv.id] || 0;
+      if (nextCount > prevCount && conv.id !== selectedConversationId) {
+        nextPulse[conv.id] = true;
+      }
+    }
+    if (Object.keys(nextPulse).length > 0) {
+      setPulseUnreadByConversationId((current) => ({ ...current, ...nextPulse }));
+      window.setTimeout(() => {
+        setPulseUnreadByConversationId((current) => {
+          const updated = { ...current };
+          for (const id of Object.keys(nextPulse)) delete updated[id];
+          return updated;
+        });
+      }, 2200);
+    }
+    prevEffectiveUnreadRef.current = effectiveUnreadByConversationId;
+  }, [conversations, effectiveUnreadByConversationId, selectedConversationId]);
+
+  useEffect(() => {
+    if (!selectedConversationId) return;
+    const conv = conversations.find((c) => c.id === selectedConversationId);
+    if (!conv) return;
+    const sig = `${conv.lastAt || ''}|${conv.lastMessage || ''}`;
+    setReadSignatures((prev) => (prev[selectedConversationId] === sig ? prev : { ...prev, [selectedConversationId]: sig }));
+  }, [selectedConversationId, conversations]);
+
+  useEffect(() => {
+    const t = window.setTimeout(() => scrollMessagesToBottom(), 30);
+    return () => window.clearTimeout(t);
+  }, [selectedConversationId, messages.length]);
 
   const conversationPreviewSigRef = useRef<string>('');
 
@@ -404,7 +514,19 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
         title: selectedConversation.leadName || 'Lead',
         phone: clientePhone || null,
         email: clienteEmail || null,
+        protocolNumber: leadProtocol || null,
+        routeOrigin: leadRouteOrigin || null,
         routeDestination: clienteDestino || null,
+        requestedAt: leadRequestedAt || null,
+        serviceType: leadServiceType || null,
+        cargoStatus: leadCargoStatus || null,
+        customerStatus: leadCustomerStatus || null,
+        source: leadSource,
+        priority: leadPriority,
+        currentLocation: leadCurrentLocation || null,
+        observations: observacoes,
+        isRecurringFreight: freteRecorrente,
+        trackingActive: rastreioAtivo,
         updatedByUsername: user?.username ?? null,
       });
     } catch (e) {
@@ -490,6 +612,13 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
         status: 'pending',
         optimistic: true,
         attachments: attachmentsPayload,
+        replyTo: replyTarget
+          ? {
+              messageId: replyTarget.messageId,
+              sender: replyTarget.sender,
+              text: replyTarget.text,
+            }
+          : null,
       };
       setMessages((prev) => [...prev, optimisticMessage]);
       const resp = await authClient.sendCrmMessage({
@@ -500,6 +629,13 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
         body: text,
         senderUsername: user?.username ?? null,
         attachments: attachmentsPayload,
+        replyTo: replyTarget
+          ? {
+              messageId: replyTarget.messageId,
+              sender: replyTarget.sender,
+              text: replyTarget.text,
+            }
+          : null,
       });
 
       const nextConversationId = resp?.conversationId || selectedConversationId;
@@ -514,6 +650,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
       );
       if (nextConversationId) setSelectedConversationId(nextConversationId);
       setAttachmentFiles([]);
+      setReplyTarget(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
     } catch (err) {
       console.error('Erro ao enviar mensagem CRM:', err);
@@ -585,6 +722,22 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
 
       const allowAuto = !!resp?.governance?.allowAutoSend;
       if (!allowAuto) {
+        if (resp?.governance?.reason === 'keyword_detected' && suggestionText) {
+          const leadForSend = leadId ?? selectedConversation?.leadId ?? null;
+          await authClient.sendCrmMessage({
+            conversationId: selectedConversationId,
+            leadId: leadForSend,
+            channel: (selectedConversation?.channel as any) || 'WHATSAPP',
+            senderType: 'IA',
+            body: suggestionText,
+            senderUsername: sofiaName || 'Sofia',
+          });
+          const msgsResp = await authClient.getCrmMessages(selectedConversationId);
+          applyMessagesResponse(msgsResp);
+          setInput('');
+          alert('Palavra-chave de handoff detectada. Sofia pausada e atendimento encaminhado para humano.');
+          return;
+        }
         const reason = String(resp?.governance?.reason || 'governance_blocked');
         setInput(suggestionText);
         alert(`Governança bloqueou autoenvio (${reason}). A resposta foi colocada no campo para revisão humana.`);
@@ -726,7 +879,29 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
     if (!selectedConversation) return;
     setClientePhone(selectedConversation.leadPhone ? String(selectedConversation.leadPhone) : '');
     setClienteEmail(selectedConversation.leadEmail ? String(selectedConversation.leadEmail) : '');
-    // Observações ainda são locais (fase 2: persistir).
+    setLeadProtocol(selectedConversation?.protocolNumber ? String(selectedConversation.protocolNumber) : '');
+    setLeadRouteOrigin(selectedConversation?.routeOrigin ? String(selectedConversation.routeOrigin) : '');
+    setClienteDestino(selectedConversation?.routeDestination ? String(selectedConversation.routeDestination) : '');
+    setLeadRequestedAt(selectedConversation?.requestedAt ? String(selectedConversation.requestedAt).slice(0, 16) : '');
+    setLeadServiceType(selectedConversation?.serviceType ? String(selectedConversation.serviceType) : 'ATENDIMENTO_GERAL');
+    setLeadCargoStatus(selectedConversation?.cargoStatus ? String(selectedConversation.cargoStatus) : 'SEM_STATUS');
+    setLeadCustomerStatus(selectedConversation?.customerStatus ? String(selectedConversation.customerStatus) : 'PENDENTE');
+    setLeadSource(
+      selectedConversation?.source && ['WHATSAPP', 'IA', 'MANUAL'].includes(String(selectedConversation.source))
+        ? (String(selectedConversation.source) as any)
+        : 'MANUAL'
+    );
+    setLeadPriority(
+      selectedConversation?.priority && ['ALTA', 'MEDIA', 'BAIXA'].includes(String(selectedConversation.priority))
+        ? (String(selectedConversation.priority) as any)
+        : 'MEDIA'
+    );
+    setLeadCurrentLocation(selectedConversation?.currentLocation ? String(selectedConversation.currentLocation) : '');
+    setObservacoes(selectedConversation?.observations ? String(selectedConversation.observations) : '');
+    setFreteRecorrente(!!selectedConversation?.isRecurringFreight);
+    setRastreioAtivo(!!selectedConversation?.trackingActive);
+    setAiSummary(selectedConversation?.aiSummary ? String(selectedConversation.aiSummary) : '');
+    setReplyTarget(null);
   }, [selectedConversation?.id]);
 
   useEffect(() => {
@@ -890,12 +1065,51 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
         const key = map[weekday];
         const dayActive = !!days[key];
         setSofiaActiveToday(!!s.autoReplyEnabled && dayActive);
+        setSofiaGenerateSummaryEnabled(s.generateSummaryEnabled !== false);
       } catch {
         // ignore
       }
     };
     run();
   }, []);
+
+  useEffect(() => {
+    const run = async () => {
+      if (!selectedConversationId) return;
+      if (!sofiaGenerateSummaryEnabled) return;
+      if ((aiSummary || "").trim().length > 0) return;
+      try {
+        const resp = await authClient.getSofiaReplySuggestion({
+          conversationId: selectedConversationId,
+          text: messages[messages.length - 1]?.text || selectedConversation?.lastMessage || "",
+          mode: "SUMMARY",
+        });
+        const nextSummary = String(resp?.summary || "").trim();
+        if (nextSummary) {
+          setAiSummary(nextSummary);
+          await applyConversationUpdate({ aiSummary: nextSummary });
+        }
+      } catch {
+        // noop
+      }
+    };
+    run();
+  }, [selectedConversationId, sofiaGenerateSummaryEnabled]);
+
+  useEffect(() => {
+    if (!selectedConversationId || !sofiaActiveToday) return;
+    if (!messages.length) return;
+    const last = messages[messages.length - 1];
+    if (!last || last.from !== "CLIENTE") return;
+    const guardKey = `${selectedConversationId}:${last.id}`;
+    if (autoReplyGuardRef.current === guardKey) return;
+    autoReplyGuardRef.current = guardKey;
+    window.setTimeout(() => {
+      handleSofiaAutoReply().catch(() => {
+        // noop
+      });
+    }, 200);
+  }, [messages, selectedConversationId, sofiaActiveToday]);
 
   useEffect(() => {
     const run = async () => {
@@ -969,12 +1183,17 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
           {conversations.map((conv) => {
             const active = conv.id === selectedConversationId;
             const channel = getChannelUi(conv.channel);
+            const unreadCount = effectiveUnreadByConversationId[conv.id] ?? 0;
+            const hasUnread = unreadCount > 0;
+            const pulseUnread = !!pulseUnreadByConversationId[conv.id];
             return (
               <button
                 key={conv.id}
                 type="button"
                 onClick={() => {
                   setSelectedConversationId(conv.id);
+                  const sig = `${conv.lastAt || ''}|${conv.lastMessage || ''}`;
+                  setReadSignatures((prev) => ({ ...prev, [conv.id]: sig }));
                   const cached = crmChatCache?.messagesByConversation?.[conv.id];
                   if (cached) {
                     setMessages(cached);
@@ -1004,14 +1223,14 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-1">
-                    <span className="truncate text-xs font-semibold text-slate-900">
+                    <span className={clsx('truncate text-xs text-slate-900', hasUnread ? 'font-extrabold' : 'font-semibold')}>
                       {conv.leadName}
                     </span>
                     <span className="text-[10px] text-slate-600 whitespace-nowrap">
                       {conv.lastAt}
                     </span>
                   </div>
-                  <p className="mt-0.5 truncate text-[11px] text-slate-500">
+                  <p className={clsx('mt-0.5 truncate text-[11px]', hasUnread ? 'font-semibold text-slate-700' : 'text-slate-500')}>
                     {conv.lastMessage}
                   </p>
                   <div className="flex items-center gap-1 mt-1 flex-wrap">
@@ -1033,9 +1252,14 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                         Meta · Sofia
                       </span>
                     )}
-                    {conv.unread > 0 && (
-                      <span className="ml-auto inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#e42424] text-[9px] font-bold text-white">
-                        {conv.unread}
+                    {hasUnread && (
+                      <span
+                        className={clsx(
+                          'ml-auto inline-flex min-w-[16px] h-4 items-center justify-center rounded-full bg-[#e42424] px-1 text-[9px] font-bold text-white',
+                          pulseUnread && 'animate-pulse'
+                        )}
+                      >
+                        {unreadCount > 9 ? '9+' : unreadCount}
                       </span>
                     )}
                   </div>
@@ -1118,7 +1342,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
           </div>
         </div>
 
-        <div className="flex-1 min-h-0 overflow-y-auto bg-gradient-to-b from-white to-slate-50/70 px-3 py-3 space-y-2">
+        <div ref={messagesContainerRef} className="flex-1 min-h-0 overflow-y-auto bg-gradient-to-b from-white to-slate-50/70 px-3 py-3 space-y-2">
           {messagesLoading && (
             <div className="text-[11px] text-slate-500">Atualizando mensagens...</div>
           )}
@@ -1151,9 +1375,21 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                       ? 'Cliente'
                       : m.from === 'IA'
                       ? 'IA'
-                      : 'Atendente'}
+                      : m.fromLabel || 'Atendente'}
                   </div>
                   <MediaPlaceholderHint text={m.text} isMe={isMe} />
+                  {m.replyTo?.text && (
+                    <div
+                      className={clsx(
+                        'mb-1 rounded-lg border px-2 py-1 text-[10px] truncate',
+                        isMe
+                          ? 'border-white/25 bg-white/10 text-white/90'
+                          : 'border-slate-200 bg-slate-50 text-slate-600'
+                      )}
+                    >
+                      {m.replyTo?.sender || 'Mensagem'}: {m.replyTo.text}
+                    </div>
+                  )}
                   {!isSingleLinePlaceholder(m.text) && (
                     <div
                       className={clsx(
@@ -1178,7 +1414,13 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                     )}
                   >
                     <span className="flex items-center gap-1">
-                      {m.time}
+                      {m.createdAt
+                        ? new Intl.DateTimeFormat('pt-BR', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            timeZone: 'America/Sao_Paulo',
+                          }).format(new Date(m.createdAt))
+                        : m.time}
                       {m.edited && (
                         <span
                           className={clsx(
@@ -1191,6 +1433,42 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                       )}
                     </span>
                     <div className="flex items-center gap-1">
+                      {!m.deleted && (
+                        <button
+                          type="button"
+                          className={clsx(
+                            'text-[9px] underline underline-offset-2',
+                            isMe ? 'text-white/80' : 'text-slate-500'
+                          )}
+                          onClick={() =>
+                            setReplyTarget({
+                              messageId: m.id,
+                              sender: m.from === 'CLIENTE' ? 'Cliente' : m.from === 'IA' ? 'IA' : (m.fromLabel || 'Atendente'),
+                              text: m.text,
+                            })
+                          }
+                        >
+                          responder
+                        </button>
+                      )}
+                      {!m.deleted && isMe && (
+                        <button
+                          type="button"
+                          className={clsx(
+                            'text-[9px] underline underline-offset-2',
+                            isMe ? 'text-white/80' : 'text-slate-500'
+                          )}
+                          onClick={async () => {
+                            if (!selectedConversationId) return;
+                            if (!window.confirm('Remover esta mensagem do CRM?')) return;
+                            await authClient.deleteCrmMessage({ conversationId: selectedConversationId, messageId: m.id });
+                            const msgsResp = await authClient.getCrmMessages(selectedConversationId);
+                            applyMessagesResponse(msgsResp);
+                          }}
+                        >
+                          excluir
+                        </button>
+                      )}
                       <span className="text-[9px]">
                         {m.status === 'read'
                           ? 'Lida'
@@ -1328,11 +1606,25 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
               onChange={(e) => setAttachmentFiles(e.target.files ? Array.from(e.target.files) : [])}
             />
             <div className="flex-1">
+              {replyTarget && (
+                <div className="mb-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1 text-[10px] text-slate-700 flex items-center justify-between gap-2">
+                  <span className="truncate">Respondendo {replyTarget.sender}: {replyTarget.text}</span>
+                  <button type="button" className="text-[10px] text-slate-500 hover:text-[#e42424]" onClick={() => setReplyTarget(null)}>
+                    limpar
+                  </button>
+                </div>
+              )}
               <textarea
                 ref={messageInputRef}
                 rows={1}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    if (!sendingAttachment) handleSend();
+                  }
+                }}
                 placeholder="Digite sua mensagem..."
                 className="w-full resize-none rounded-2xl border border-slate-300 bg-white px-4 py-2 text-xs text-slate-900 outline-none placeholder:text-slate-500 focus:border-[#2c348c]/45 focus:ring-2 focus:ring-[#2c348c]/25"
                 style={{ minHeight: 38, maxHeight: 168 }}
@@ -1463,10 +1755,10 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
               </div>
               <div className="flex flex-wrap gap-1.5 pt-1">
                 <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] text-emerald-800">
-                  Frete recorrente
+                  {freteRecorrente ? 'Frete recorrente' : 'Frete pontual'}
                 </span>
                 <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] text-sky-800">
-                  Rastreio ativo
+                  {rastreioAtivo ? 'Rastreio ativo' : 'Rastreio inativo'}
                 </span>
               </div>
             </div>
@@ -1498,6 +1790,16 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                   onChange={(e) => setObservacoes(e.target.value)}
                 />
               </div>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="flex items-center gap-2 text-[11px] text-slate-700">
+                  <input type="checkbox" checked={freteRecorrente} onChange={(e) => setFreteRecorrente(e.target.checked)} />
+                  Frete recorrente
+                </label>
+                <label className="flex items-center gap-2 text-[11px] text-slate-700">
+                  <input type="checkbox" checked={rastreioAtivo} onChange={(e) => setRastreioAtivo(e.target.checked)} />
+                  Rastreio ativo
+                </label>
+              </div>
               <div className="space-y-1">
                 <label className="text-[11px] font-semibold text-slate-700">Unidade de destino</label>
                 <select
@@ -1510,6 +1812,108 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                     <option key={u} value={u}>{u}</option>
                   ))}
                 </select>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <label className="text-[11px] font-semibold text-slate-700">Protocolo</label>
+                  <input
+                    className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-900 outline-none focus:border-[#2c348c]/45 focus:ring-2 focus:ring-[#2c348c]/25"
+                    value={leadProtocol}
+                    onChange={(e) => setLeadProtocol(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] font-semibold text-slate-700">Origem da rota</label>
+                  <input
+                    className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-900 outline-none focus:border-[#2c348c]/45 focus:ring-2 focus:ring-[#2c348c]/25"
+                    value={leadRouteOrigin}
+                    onChange={(e) => setLeadRouteOrigin(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <label className="text-[11px] font-semibold text-slate-700">Origem</label>
+                  <select
+                    className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-900 outline-none focus:border-[#2c348c]/45 focus:ring-2 focus:ring-[#2c348c]/25"
+                    value={leadSource}
+                    onChange={(e) => setLeadSource(e.target.value as any)}
+                  >
+                    <option value="WHATSAPP">WhatsApp</option>
+                    <option value="IA">IA</option>
+                    <option value="MANUAL">Manual</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] font-semibold text-slate-700">Prioridade</label>
+                  <select
+                    className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-900 outline-none focus:border-[#2c348c]/45 focus:ring-2 focus:ring-[#2c348c]/25"
+                    value={leadPriority}
+                    onChange={(e) => setLeadPriority(e.target.value as any)}
+                  >
+                    <option value="ALTA">Alta</option>
+                    <option value="MEDIA">Média</option>
+                    <option value="BAIXA">Baixa</option>
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <label className="text-[11px] font-semibold text-slate-700">Tipo de atendimento</label>
+                  <input
+                    className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-900 outline-none focus:border-[#2c348c]/45 focus:ring-2 focus:ring-[#2c348c]/25"
+                    value={leadServiceType}
+                    onChange={(e) => setLeadServiceType(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] font-semibold text-slate-700">Solicitação</label>
+                  <input
+                    type="datetime-local"
+                    className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-900 outline-none focus:border-[#2c348c]/45 focus:ring-2 focus:ring-[#2c348c]/25"
+                    value={leadRequestedAt}
+                    onChange={(e) => setLeadRequestedAt(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <label className="text-[11px] font-semibold text-slate-700">Status da carga</label>
+                  <select
+                    className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-900 outline-none focus:border-[#2c348c]/45 focus:ring-2 focus:ring-[#2c348c]/25"
+                    value={leadCargoStatus}
+                    onChange={(e) => setLeadCargoStatus(e.target.value)}
+                  >
+                    <option value="SEM_STATUS">Sem status</option>
+                    <option value="EM_COLETA">Em coleta</option>
+                    <option value="EM_TRANSFERENCIA">Em transferencia</option>
+                    <option value="EM_ENTREGA">Em entrega</option>
+                    <option value="ENTREGUE">Entregue</option>
+                    <option value="OCORRENCIA">Ocorrencia</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] font-semibold text-slate-700">Status do cliente</label>
+                  <select
+                    className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-900 outline-none focus:border-[#2c348c]/45 focus:ring-2 focus:ring-[#2c348c]/25"
+                    value={leadCustomerStatus}
+                    onChange={(e) => setLeadCustomerStatus(e.target.value)}
+                  >
+                    <option value="PENDENTE">Pendente</option>
+                    <option value="EM_ATENDIMENTO">Em atendimento</option>
+                    <option value="AGUARDANDO_RETORNO_AGENCIA">Aguardando agencia</option>
+                    <option value="HUMANO_SOLICITADO">Humano solicitado</option>
+                    <option value="CONCLUIDO">Concluido</option>
+                  </select>
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] font-semibold text-slate-700">Localização / rastreio</label>
+                <input
+                  className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-900 outline-none focus:border-[#2c348c]/45 focus:ring-2 focus:ring-[#2c348c]/25"
+                  value={leadCurrentLocation}
+                  onChange={(e) => setLeadCurrentLocation(e.target.value)}
+                />
               </div>
               <div className="space-y-1">
                 <label className="text-[11px] font-semibold text-slate-700">Canal preferido</label>
@@ -1611,6 +2015,24 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
               <p className="text-[11px] text-slate-700">
                 Última interação: {messages[messages.length - 1]?.time || '--'}
               </p>
+            </div>
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2">
+              <p className="text-[11px] text-slate-500 uppercase tracking-wide">
+                Resumo incremental
+              </p>
+              <textarea
+                className="min-h-[100px] w-full resize-none rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-900 outline-none focus:border-[#2c348c]/45 focus:ring-2 focus:ring-[#2c348c]/25"
+                value={aiSummary}
+                onChange={(e) => setAiSummary(e.target.value)}
+                placeholder="Contexto geral, pendências e próximo passo (estilo resumo de e-mail)."
+              />
+              <button
+                type="button"
+                onClick={() => applyConversationUpdate({ aiSummary })}
+                className="rounded-lg bg-[#2c348c] border border-slate-300 px-2 py-1.5 text-[11px] text-white hover:bg-[#e42424]"
+              >
+                Salvar resumo IA
+              </button>
             </div>
           </div>
         )}

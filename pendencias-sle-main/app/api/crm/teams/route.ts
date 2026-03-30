@@ -20,6 +20,7 @@ export async function GET() {
       `
         SELECT id, team_id, username, member_role, is_active
         FROM pendencias.crm_team_members
+        WHERE is_active = true
         ORDER BY username ASC
       `
     );
@@ -135,6 +136,48 @@ export async function POST(req: Request) {
       const id = body?.id ? String(body.id) : null;
       if (!id) return NextResponse.json({ error: "id obrigatório" }, { status: 400 });
       await pool.query("DELETE FROM pendencias.crm_team_members WHERE id = $1", [id]);
+      return NextResponse.json({ success: true });
+    }
+
+    if (action === "REMOVE_MEMBER_FROM_TEAM") {
+      const username = body?.username ? String(body.username) : null;
+      const teamId = body?.teamId ? String(body.teamId) : null;
+      if (!username) {
+        return NextResponse.json({ error: "username obrigatório" }, { status: 400 });
+      }
+      if (teamId) {
+        await pool.query(
+          `
+            DELETE FROM pendencias.crm_team_members
+            WHERE LOWER(username) = LOWER($1) AND team_id = $2::uuid
+          `,
+          [username, teamId]
+        );
+      } else {
+        await pool.query(
+          `
+            DELETE FROM pendencias.crm_team_members
+            WHERE LOWER(username) = LOWER($1)
+          `,
+          [username]
+        );
+      }
+      await pool.query(
+        `
+          UPDATE pendencias.crm_conversations
+          SET assigned_team_id = NULL
+          WHERE LOWER(COALESCE(assigned_username, '')) = LOWER($1)
+        `,
+        [username]
+      );
+      await pool.query(
+        `
+          UPDATE pendencias.crm_leads
+          SET assigned_team_id = NULL, updated_at = NOW()
+          WHERE LOWER(COALESCE(assigned_username, owner_username, '')) = LOWER($1)
+        `,
+        [username]
+      );
       return NextResponse.json({ success: true });
     }
 

@@ -1,5 +1,12 @@
 import { getCommercialPool, getPool } from "./db";
 
+let crmSchemaReady = false;
+let crmSchemaPromise: Promise<void> | null = null;
+let operationalSchemaReady = false;
+let operationalSchemaPromise: Promise<void> | null = null;
+let commercialSchemaReady = false;
+let commercialSchemaPromise: Promise<void> | null = null;
+
 export async function ensureUserTokensTable() {
   const pool = getPool();
   await pool.query(`
@@ -49,6 +56,9 @@ export async function ensureAppLogsTable() {
 }
 
 export async function ensureCrmSchemaTables() {
+  if (crmSchemaReady) return;
+  if (crmSchemaPromise) return crmSchemaPromise;
+  crmSchemaPromise = (async () => {
   const pool = getPool();
 
   // UUID helper
@@ -142,6 +152,9 @@ export async function ensureCrmSchemaTables() {
   await pool.query(`ALTER TABLE pendencias.crm_leads ADD COLUMN IF NOT EXISTS agency_requested_at timestamptz`);
   await pool.query(`ALTER TABLE pendencias.crm_leads ADD COLUMN IF NOT EXISTS agency_sla_minutes int`);
   await pool.query(`ALTER TABLE pendencias.crm_leads ADD COLUMN IF NOT EXISTS contact_avatar_url text`);
+  await pool.query(`ALTER TABLE pendencias.crm_leads ADD COLUMN IF NOT EXISTS is_recurring_freight boolean NOT NULL DEFAULT false`);
+  await pool.query(`ALTER TABLE pendencias.crm_leads ADD COLUMN IF NOT EXISTS tracking_active boolean NOT NULL DEFAULT false`);
+  await pool.query(`ALTER TABLE pendencias.crm_leads ADD COLUMN IF NOT EXISTS observations text`);
   await pool.query(`
     DO $$
     BEGIN
@@ -191,6 +204,8 @@ export async function ensureCrmSchemaTables() {
   await pool.query(`ALTER TABLE pendencias.crm_conversations ADD COLUMN IF NOT EXISTS sla_minutes int`);
   await pool.query(`ALTER TABLE pendencias.crm_conversations ADD COLUMN IF NOT EXISTS sla_due_at timestamptz`);
   await pool.query(`ALTER TABLE pendencias.crm_conversations ADD COLUMN IF NOT EXISTS sla_breached_at timestamptz`);
+  await pool.query(`ALTER TABLE pendencias.crm_conversations ADD COLUMN IF NOT EXISTS ai_summary text`);
+  await pool.query(`ALTER TABLE pendencias.crm_conversations ADD COLUMN IF NOT EXISTS ai_summary_updated_at timestamptz`);
   await pool.query(
     `ALTER TABLE pendencias.crm_conversations ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now()`
   );
@@ -295,6 +310,7 @@ export async function ensureCrmSchemaTables() {
   await pool.query(`ALTER TABLE pendencias.crm_sofia_settings ADD COLUMN IF NOT EXISTS response_tone text NOT NULL DEFAULT 'PROFISSIONAL'`);
   await pool.query(`ALTER TABLE pendencias.crm_sofia_settings ADD COLUMN IF NOT EXISTS max_response_chars int NOT NULL DEFAULT 480`);
   await pool.query(`ALTER TABLE pendencias.crm_sofia_settings ADD COLUMN IF NOT EXISTS welcome_enabled boolean NOT NULL DEFAULT true`);
+  await pool.query(`ALTER TABLE pendencias.crm_sofia_settings ADD COLUMN IF NOT EXISTS generate_summary_enabled boolean NOT NULL DEFAULT true`);
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS pendencias.crm_evolution_intake_settings (
@@ -492,9 +508,19 @@ export async function ensureCrmSchemaTables() {
       updated_at timestamptz NOT NULL DEFAULT now()
     )
   `);
+  })();
+  try {
+    await crmSchemaPromise;
+    crmSchemaReady = true;
+  } finally {
+    crmSchemaPromise = null;
+  }
 }
 
 export async function ensureOperationalTrackingTables() {
+  if (operationalSchemaReady) return;
+  if (operationalSchemaPromise) return operationalSchemaPromise;
+  operationalSchemaPromise = (async () => {
   const pool = getPool();
 
   await pool.query(`CREATE EXTENSION IF NOT EXISTS pgcrypto`);
@@ -530,9 +556,19 @@ export async function ensureOperationalTrackingTables() {
     CREATE INDEX IF NOT EXISTS idx_operacional_tracking_events_cte_serie_time
     ON pendencias.operacional_tracking_events(cte, serie, event_time DESC)
   `);
+  })();
+  try {
+    await operationalSchemaPromise;
+    operationalSchemaReady = true;
+  } finally {
+    operationalSchemaPromise = null;
+  }
 }
 
 export async function ensureCommercialTables() {
+  if (commercialSchemaReady) return;
+  if (commercialSchemaPromise) return commercialSchemaPromise;
+  commercialSchemaPromise = (async () => {
   const pool = getCommercialPool();
   await pool.query(`
     CREATE TABLE IF NOT EXISTS public.tb_auditoria_metas (
@@ -589,5 +625,12 @@ export async function ensureCommercialTables() {
     )
   `);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_tb_robo_supremo_runs_started ON public.tb_robo_supremo_runs(started_at DESC)`);
+  })();
+  try {
+    await commercialSchemaPromise;
+    commercialSchemaReady = true;
+  } finally {
+    commercialSchemaPromise = null;
+  }
 }
 

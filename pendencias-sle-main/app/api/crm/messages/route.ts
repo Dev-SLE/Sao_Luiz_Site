@@ -23,7 +23,11 @@ function mapSenderFromDb(senderType: string) {
 
 function formatTime(d: Date | null | undefined) {
   if (!d) return "--";
-  return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleTimeString("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "America/Sao_Paulo",
+  });
 }
 
 function safeJsonParse(value: any) {
@@ -253,11 +257,15 @@ export async function GET(req: Request) {
       metadata: meta,
       id: r.id as string,
       from: mapSenderFromDb(r.sender_type),
+      fromLabel: meta?.sender_label ? String(meta.sender_label) : undefined,
       text: String(r.body || ""),
+      replyTo: meta?.reply_to || null,
+      createdAt: r.created_at ? new Date(r.created_at).toISOString() : null,
       time: formatTime(r.created_at ? new Date(r.created_at) : null),
       channel: String(r.channel || "WHATSAPP") as any,
       status: statusForUi,
       edited: Boolean(meta?.wa_edited || meta?.edited_at),
+      deleted: Boolean(meta?.deleted_at),
       attachments: Array.isArray(meta?.attachments) ? meta.attachments : [],
     };
     });
@@ -278,6 +286,7 @@ export async function POST(req: Request) {
     const senderType = String(body?.senderType || "AGENTE");
     const text = String(body?.body || "").trim();
     const attachments = Array.isArray(body?.attachments) ? body.attachments : [];
+    const replyTo = body?.replyTo && typeof body.replyTo === "object" ? body.replyTo : null;
     if (!text && attachments.length === 0) {
       return NextResponse.json({ error: "body ou attachments obrigatório" }, { status: 400 });
     }
@@ -324,6 +333,15 @@ export async function POST(req: Request) {
         attachments.length > 0,
         JSON.stringify({
           attachments,
+          ...(replyTo
+            ? {
+                reply_to: {
+                  messageId: replyTo.messageId ? String(replyTo.messageId) : null,
+                  sender: replyTo.sender ? String(replyTo.sender) : null,
+                  text: replyTo.text ? String(replyTo.text).slice(0, 280) : null,
+                },
+              }
+            : {}),
         }),
       ]
     );
@@ -516,6 +534,41 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     console.error("CRM messages POST error:", error);
+    return NextResponse.json({ error: "Erro interno" }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: Request) {
+  try {
+    await ensureCrmSchemaTables();
+    const pool = getPool();
+    const { searchParams } = new URL(req.url);
+    const messageId = searchParams.get("messageId");
+    const conversationId = searchParams.get("conversationId");
+    if (!messageId || !conversationId) {
+      return NextResponse.json({ error: "messageId e conversationId obrigatórios" }, { status: 400 });
+    }
+    const patch = {
+      deleted_at: new Date().toISOString(),
+      deleted_by: "operator",
+    };
+    const res = await pool.query(
+      `
+        UPDATE pendencias.crm_messages
+        SET body = '[Mensagem removida pelo atendente]',
+            metadata = COALESCE(metadata, '{}'::jsonb) || $1::jsonb
+        WHERE id = $2::uuid
+          AND conversation_id = $3::uuid
+        RETURNING id
+      `,
+      [JSON.stringify(patch), messageId, conversationId]
+    );
+    if (!res.rows?.[0]?.id) {
+      return NextResponse.json({ error: "mensagem não encontrada" }, { status: 404 });
+    }
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("CRM messages DELETE error:", error);
     return NextResponse.json({ error: "Erro interno" }, { status: 500 });
   }
 }

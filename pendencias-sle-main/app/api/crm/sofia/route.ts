@@ -18,7 +18,7 @@ export async function GET() {
           blocked_topics, blocked_statuses,
           require_human_if_sla_breached, require_human_after_customer_messages,
           system_instructions, fallback_message, handoff_message,
-          response_tone, max_response_chars, welcome_enabled,
+          response_tone, max_response_chars, welcome_enabled, generate_summary_enabled,
           updated_at
         FROM pendencias.crm_sofia_settings
         ORDER BY updated_at DESC
@@ -53,6 +53,8 @@ export async function GET() {
             responseTone: String(row.response_tone || "PROFISSIONAL"),
             maxResponseChars: Number(row.max_response_chars || 480),
             welcomeEnabled: row.welcome_enabled === undefined ? true : !!row.welcome_enabled,
+            generateSummaryEnabled:
+              row.generate_summary_enabled === undefined ? true : !!row.generate_summary_enabled,
           }
         : null,
     });
@@ -91,6 +93,8 @@ export async function POST(req: Request) {
       responseTone: body?.responseTone ? String(body.responseTone).toUpperCase() : "PROFISSIONAL",
       maxResponseChars: Number(body?.maxResponseChars ?? 480),
       welcomeEnabled: body?.welcomeEnabled === undefined ? true : !!body.welcomeEnabled,
+      generateSummaryEnabled:
+        body?.generateSummaryEnabled === undefined ? true : !!body.generateSummaryEnabled,
     };
 
     const existing = await pool.query("SELECT id FROM pendencias.crm_sofia_settings ORDER BY updated_at DESC LIMIT 1");
@@ -105,10 +109,10 @@ export async function POST(req: Request) {
             business_hours_start, business_hours_end, blocked_topics, blocked_statuses,
             require_human_if_sla_breached, require_human_after_customer_messages,
             system_instructions, fallback_message, handoff_message,
-            response_tone, max_response_chars, welcome_enabled,
+            response_tone, max_response_chars, welcome_enabled, generate_summary_enabled,
             updated_at
           )
-          VALUES ($1, $2, $3, $4::jsonb, $5, $6::jsonb, $7, $8, $9, $10, $11, $12, $13, $14::jsonb, $15::jsonb, $16, $17, $18, $19, $20, $21, $22, $23, NOW())
+          VALUES ($1, $2, $3, $4::jsonb, $5, $6::jsonb, $7, $8, $9, $10, $11, $12, $13, $14::jsonb, $15::jsonb, $16, $17, $18, $19, $20, $21, $22, $23, $24, NOW())
           RETURNING id
         `,
         [
@@ -135,6 +139,7 @@ export async function POST(req: Request) {
           payload.responseTone,
           payload.maxResponseChars,
           payload.welcomeEnabled,
+          payload.generateSummaryEnabled,
         ]
       );
       return NextResponse.json({ id: created.rows?.[0]?.id, success: true });
@@ -167,6 +172,7 @@ export async function POST(req: Request) {
           response_tone = $22,
           max_response_chars = $23,
           welcome_enabled = $24,
+          generate_summary_enabled = $25,
           updated_at = NOW()
         WHERE id = $1
       `,
@@ -195,6 +201,7 @@ export async function POST(req: Request) {
         payload.responseTone,
         payload.maxResponseChars,
         payload.welcomeEnabled,
+        payload.generateSummaryEnabled,
       ]
     );
 

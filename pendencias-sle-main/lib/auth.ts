@@ -61,6 +61,7 @@ export class NeonDataClient {
     const response = await fetch(this.makeApiUrl('/login'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({ username, password }),
     });
     if (!response.ok) {
@@ -75,6 +76,25 @@ export class NeonDataClient {
 
   async logout(): Promise<void> {
     this.apiKey = null;
+    try {
+      await fetch(this.makeApiUrl('/auth/session'), {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+    } catch {
+      // Não bloqueia logout local quando API falha.
+    }
+  }
+
+  async getSession(): Promise<AuthResponse | null> {
+    const response = await fetch(this.makeApiUrl('/auth/session'), {
+      method: 'GET',
+      credentials: 'include',
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    if (!data?.authenticated || !data?.user) return null;
+    return { success: true, user: data.user };
   }
 
 
@@ -322,7 +342,12 @@ export class NeonDataClient {
   // CRM (Fase 1 - DB + rotas)
   // ----------------------------
 
-  async getCrmBoard(): Promise<{
+  async getCrmBoard(params?: {
+    requestUsername?: string | null;
+    requestRole?: string | null;
+    mineOnly?: boolean;
+    teamId?: string | null;
+  }): Promise<{
     pipeline: { id: string; name: string } | null;
     stages: Array<{ id: string; name: string; position: number }>;
     leads: Array<{
@@ -369,7 +394,13 @@ export class NeonDataClient {
       notes?: string | null;
     }>;
   }> {
-    const url = this.makeApiUrl('/crm/board');
+    const usp = new URLSearchParams();
+    if (params?.requestUsername) usp.set("requestUsername", params.requestUsername);
+    if (params?.requestRole) usp.set("requestRole", params.requestRole);
+    if (params?.mineOnly) usp.set("mineOnly", "true");
+    if (params?.teamId) usp.set("teamId", params.teamId);
+    const qs = usp.toString();
+    const url = `${this.makeApiUrl('/crm/board')}${qs ? `?${qs}` : ""}`;
     const cached = this.getCached(url);
     if (cached) return cached;
     const resp = await fetch(url);
@@ -494,8 +525,16 @@ export class NeonDataClient {
     body: string;
     senderUsername?: string | null;
     attachments?: Array<{ type?: string; filename?: string; url?: string }>;
+    replyTo?: { messageId?: string; sender?: string; text?: string } | null;
   }): Promise<any> {
     return this.postJson("/crm/messages", payload);
+  }
+
+  async deleteCrmMessage(payload: { conversationId: string; messageId: string }): Promise<any> {
+    const url = `${this.makeApiUrl('/crm/messages')}?conversationId=${encodeURIComponent(payload.conversationId)}&messageId=${encodeURIComponent(payload.messageId)}`;
+    const response = await fetch(url, { method: "DELETE" });
+    if (!response.ok) throw await this.buildHttpError('Erro na API', response);
+    return response.json();
   }
 
   async getCrmAgents(): Promise<any> {
@@ -565,6 +604,10 @@ export class NeonDataClient {
 
   async deleteCrmTeamMember(id: string): Promise<any> {
     return this.postJson("/crm/teams", { action: "DELETE_MEMBER", id });
+  }
+
+  async removeCrmMemberFromTeam(payload: { username: string; teamId?: string | null }): Promise<any> {
+    return this.postJson("/crm/teams", { action: "REMOVE_MEMBER_FROM_TEAM", ...payload });
   }
 
   async getCrmRoutingRules(): Promise<any> {
@@ -638,7 +681,7 @@ export class NeonDataClient {
     return this.postJson("/crm/sofia", payload);
   }
 
-  async getSofiaReplySuggestion(payload: { conversationId: string; text: string }): Promise<any> {
+  async getSofiaReplySuggestion(payload: { conversationId: string; text: string; mode?: "REPLY" | "SUMMARY" }): Promise<any> {
     return this.postJson("/crm/sofia/respond", payload);
   }
 

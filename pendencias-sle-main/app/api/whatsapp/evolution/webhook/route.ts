@@ -261,11 +261,12 @@ async function shouldCreateLeadForNewContact(input: {
   bufferedText: string;
 }) {
   if (input.denylisted) return false;
+  // fromMe precisa espelhar no CRM mesmo em primeiro contato.
+  if (input.isFromMe) return true;
   if (input.allowlisted || input.isAgencyContact) return true;
   if (input.mode === "OFF") return true;
   if (input.mode === "AGENCY_ONLY") return false;
   // BUSINESS_ONLY (padrão): evita poluição por contatos pessoais.
-  if (input.isFromMe) return false;
   const basicSignal = hasBusinessSignals({
     text: input.text,
     profileName: input.profileName,
@@ -371,6 +372,18 @@ function extractEvolutionEvent(req: Request, body: Record<string, unknown>): str
   return "";
 }
 
+function extractEvolutionInstance(body: Record<string, unknown>): string {
+  const raw =
+    body?.instance ||
+    body?.instanceName ||
+    (body?.data as any)?.instance ||
+    (body?.data as any)?.instanceName ||
+    (body?.data as any)?.instance_name ||
+    (body as any)?.instance_name ||
+    "";
+  return String(raw || "").trim();
+}
+
 /** QRCODE_UPDATED → qrcode.updated; QR_CODE_UPDATED → qr.code.updated (antes não batia). */
 function isQrcodeUpdatedEvent(eventNorm: string): boolean {
   if (!eventNorm) return false;
@@ -416,6 +429,102 @@ function looksLikeMessageEditEvent(eventNorm: string): boolean {
 function looksLikeMessagesUpdateEvent(eventNorm: string): boolean {
   if (!eventNorm) return false;
   return eventNorm.includes("messages.update");
+}
+
+function collectMessageUpdateItems(data: any): any[] {
+  if (!data) return [];
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data.messages)) return data.messages;
+  if (Array.isArray(data.messageUpdates)) return data.messageUpdates;
+  if (Array.isArray(data.updates)) return data.updates;
+  if (data.key || data.id || data.messageId) return [data];
+  return [];
+}
+
+function normalizeOutboundStatus(rawStatus: unknown): string | null {
+  const s = String(rawStatus || "").trim().toLowerCase();
+  if (!s) return null;
+  if (["pending", "queued", "sending", "sent", "delivered", "read", "played", "failed", "error"].includes(s)) {
+    return s;
+  }
+  // ack comum de libs WhatsApp: -1 erro, 0 pendente, 1 enviado, 2 entregue, 3 lido, 4 reproduzido.
+  const ackNum = Number(s);
+  if (Number.isFinite(ackNum)) {
+    if (ackNum <= -1) return "failed";
+    if (ackNum === 0) return "pending";
+    if (ackNum === 1) return "sent";
+    if (ackNum === 2) return "delivered";
+    if (ackNum === 3) return "read";
+    if (ackNum >= 4) return "played";
+  }
+  if (s.includes("deliv")) return "delivered";
+  if (s.includes("read")) return "read";
+  if (s.includes("play")) return "played";
+  if (s.includes("sent")) return "sent";
+  if (s.includes("pend")) return "pending";
+  if (s.includes("fail") || s.includes("error")) return "failed";
+  return null;
+}
+
+function extractUpdateMessageId(item: any): string {
+  return String(
+    item?.key?.id ||
+      item?.id ||
+      item?.messageId ||
+      item?.message_id ||
+      item?.data?.key?.id ||
+      item?.data?.id ||
+      ""
+  ).trim();
+}
+
+function extractUpdateStatus(item: any): string | null {
+  const raw =
+    item?.status ??
+    item?.ack ??
+    item?.update?.status ??
+    item?.update?.ack ??
+    item?.data?.status ??
+    item?.data?.ack ??
+    item?.messageStatus ??
+    item?.messageAck ??
+    null;
+  return normalizeOutboundStatus(raw);
+}
+
+function isDeliveredLikeStatus(status: string) {
+  return status === "sent" || status === "delivered" || status === "read" || status === "played";
+}
+
+async function processWebhookMessageStatusUpdates(pool: any, body: Record<string, unknown>) {
+  const items = collectMessageUpdateItems(body?.data);
+  let applied = 0;
+  for (const item of items) {
+    const waMessageId = extractUpdateMessageId(item);
+    const status = extractUpdateStatus(item);
+    if (!waMessageId || !status) continue;
+    const patch = {
+      status,
+      delivered: isDeliveredLikeStatus(status),
+      updated_at: new Date().toISOString(),
+    };
+    const res = await pool.query(
+      `
+        UPDATE pendencias.crm_messages
+        SET metadata = jsonb_set(
+          COALESCE(metadata, '{}'::jsonb),
+          '{outbound_whatsapp}',
+          COALESCE(COALESCE(metadata, '{}'::jsonb)->'outbound_whatsapp', '{}'::jsonb) || $1::jsonb,
+          true
+        )
+        WHERE metadata->>'message_id' = $2
+           OR metadata#>>'{outbound_whatsapp,message_id}' = $2
+      `,
+      [JSON.stringify(patch), waMessageId]
+    );
+    applied += Number(res.rowCount || 0);
+  }
+  return applied;
 }
 
 function hasRenderableEditInPayload(body: Record<string, unknown>): boolean {
@@ -478,14 +587,41 @@ async function processWebhookMessageEdits(pool: any, body: Record<string, unknow
 
 export async function POST(req: Request) {
   try {
+    const reqUrl = (() => {
+      try {
+        return new URL(req.url).pathname;
+      } catch {
+        return req.url;
+      }
+    })();
     if (!verifyEvolutionWebhook(req)) {
+      console.warn("[evolution-webhook] unauthorized", {
+        path: reqUrl,
+        hasQueryToken: (() => {
+          try {
+            const u = new URL(req.url);
+            return !!u.searchParams.get("token");
+          } catch {
+            return false;
+          }
+        })(),
+      });
       return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
     }
 
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
-    const instance = String(body?.instance || body?.instanceName || "").trim();
+    const instance = extractEvolutionInstance(body);
     const eventRaw = extractEvolutionEvent(req, body);
     const eventNorm = normalizeEventName(eventRaw);
+    console.log("[evolution-webhook] hit", {
+      path: reqUrl,
+      eventRaw: eventRaw || null,
+      eventNorm: eventNorm || null,
+      instance: instance || null,
+      bodyKeys: body && typeof body === "object" ? Object.keys(body) : [],
+      dataKeys:
+        body?.data && typeof body.data === "object" ? Object.keys(body.data as object) : [],
+    });
 
     if (process.env.NODE_ENV === "development") {
       console.log("[evolution-webhook] POST", {
@@ -562,8 +698,36 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, message_edits_applied: applied });
     }
 
+    /** Updates de status/ack (MESSAGES_UPDATE): tira mensagens de "Enviando" no CRM. */
+    if (looksLikeMessagesUpdateEvent(eventNorm)) {
+      await ensureCrmSchemaTables();
+      const pool = getPool();
+      if (!instance) {
+        return NextResponse.json({ ok: false, error: "instance ausente" }, { status: 400 });
+      }
+      const inboxUpdateRes = await pool.query(
+        `
+          SELECT id
+          FROM pendencias.crm_whatsapp_inboxes
+          WHERE is_active = true
+            AND provider = 'EVOLUTION'
+            AND lower(btrim(evolution_instance_name)) = lower(btrim($1))
+          LIMIT 1
+        `,
+        [instance]
+      );
+      if (!inboxUpdateRes.rows?.[0]?.id) {
+        console.warn("[evolution-webhook] status update ignored: unknown instance", { instance, eventNorm });
+        return NextResponse.json({ ok: true, skipped: "unknown_instance_for_update" });
+      }
+      const applied = await processWebhookMessageStatusUpdates(pool, body);
+      console.log("[evolution-webhook] status updates applied", { instance, applied });
+      return NextResponse.json({ ok: true, message_updates_applied: applied });
+    }
+
     // Só messages.upsert precisa de inbox no CRM — demais eventos não consultam DB (evita log enganoso e ~15s).
     if (!looksLikeMessagesUpsert(body, eventNorm)) {
+      console.log("[evolution-webhook] ignored event", { instance, eventRaw, eventNorm });
       return NextResponse.json({ ok: true, ignored_event: eventRaw || null });
     }
 
@@ -593,6 +757,7 @@ export async function POST(req: Request) {
     const inboxId = String(inboxRow.id);
 
     const items = collectUpsertItems(body?.data);
+    console.log("[evolution-webhook] upsert items", { instance, count: items.length });
     if (!items.length) {
       return NextResponse.json({ ok: true, empty: true });
     }
@@ -850,6 +1015,8 @@ export async function POST(req: Request) {
             provider: "EVOLUTION",
             evolution_instance: instance,
             message_id: msgId,
+            from_me: isFromMe,
+            sender_label: isFromMe ? "Sistema/Empresa" : "Cliente",
             remote_jid: remoteJid,
             raw: item,
           }),

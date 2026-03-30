@@ -21,8 +21,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Verificar se há usuário salvo ao carregar
   useEffect(() => {
     const checkAuth = async () => {
-      // Por enquanto, sem persistência de sessão
-      setLoading(false);
+      setLoading(true);
+      try {
+        const session = await authClient.getSession();
+        if (session?.user) {
+          setUser({
+            username: session.user.username,
+            role: session.user.role,
+            linkedOriginUnit: session.user.origin || '',
+            linkedDestUnit: session.user.dest || '',
+          });
+        } else {
+          setUser(null);
+        }
+      } catch {
+        setUser(null);
+      } finally {
+        setLoading(false);
+      }
     };
     checkAuth();
   }, []);
