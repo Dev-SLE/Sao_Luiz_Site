@@ -508,7 +508,7 @@ const CrmOpsAdmin: React.FC = () => {
                   if (res?.webhookSync && res.webhookSync.ok === false) {
                     setOpsNotice({
                       title: "Webhook na Evolution",
-                      message: `${res.webhookSync.error || "Não foi possível gravar o webhook na API."} Se a URL no Manager continuar vazia, use “Sincronizar webhook + QR” no pareamento ou confira NEXT_PUBLIC_APP_URL na Vercel.`,
+                      message: `${res.webhookSync.error || "Não foi possível gravar o webhook na API."} Se a URL no Manager continuar vazia, gere o QR novamente no pareamento e confira NEXT_PUBLIC_APP_URL na Vercel.`,
                       variant: "warning",
                     });
                   }

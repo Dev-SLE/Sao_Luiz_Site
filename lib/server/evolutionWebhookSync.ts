@@ -46,7 +46,7 @@ function buildPublicWebhookUrl(publicBaseOverride?: string): { webhookUrl: strin
   return { webhookUrl };
 }
 
-type Attempt = { url: string; body: Record<string, unknown> };
+type Attempt = { method: "POST" | "PUT"; url: string; body: Record<string, unknown> };
 
 function buildAttempts(base: string, instance: string, webhookUrl: string, events: string[]): Attempt[] {
   const camel = {
@@ -63,12 +63,23 @@ function buildAttempts(base: string, instance: string, webhookUrl: string, event
     webhook_base64: true,
     events,
   };
+  const nested = {
+    webhook: {
+      enabled: true,
+      url: webhookUrl,
+      byEvents: false,
+      base64: true,
+      events,
+    },
+  };
   const enc = encodeURIComponent(instance);
   return [
-    { url: `${base}/webhook/set/${enc}`, body: camel },
-    { url: `${base}/webhook/set`, body: { ...camel, instanceName: instance } },
-    { url: `${base}/webhook/set/${enc}`, body: snake },
-    { url: `${base}/webhook/set`, body: { ...snake, instanceName: instance } },
+    { method: "POST", url: `${base}/webhook/set/${enc}`, body: camel },
+    { method: "POST", url: `${base}/webhook/set/${enc}`, body: snake },
+    { method: "POST", url: `${base}/webhook/set/${enc}`, body: nested },
+    { method: "PUT", url: `${base}/webhook/set/${enc}`, body: camel },
+    { method: "PUT", url: `${base}/webhook/set/${enc}`, body: snake },
+    { method: "PUT", url: `${base}/webhook/set/${enc}`, body: nested },
   ];
 }
 
@@ -112,10 +123,10 @@ export async function syncEvolutionInstanceWebhook(args: {
 
     for (const events of WEBHOOK_EVENT_SETS) {
       const attempts = buildAttempts(base, instance, webhookUrl, events);
-      for (const { url, body } of attempts) {
+      for (const { method, url, body } of attempts) {
         try {
           const r = await evolutionExternalFetch(url, {
-            method: "POST",
+            method,
             headers,
             body: JSON.stringify(body),
           });
@@ -132,7 +143,7 @@ export async function syncEvolutionInstanceWebhook(args: {
               ok: true,
               httpStatus: r.status,
               webhookUrl,
-              endpoint: url,
+              endpoint: `${method} ${url}`,
               evolution: lastEvolution,
             };
           }
@@ -152,7 +163,7 @@ export async function syncEvolutionInstanceWebhook(args: {
 
   return {
     ok: false,
-    error: `A Evolution não aceitou a configuração do webhook (último HTTP ${lastStatus || "—"}). Confira instância, chave e logs do servidor Evolution. Resposta: ${lastBody.slice(0, 180)}`,
+    error: `A Evolution não aceitou a configuração do webhook (último HTTP ${lastStatus || "—"}). Se aparecer "Cannot POST /webhook/set", revise a versão da Evolution/API exposta. Resposta: ${lastBody.slice(0, 180)}`,
     httpStatus: lastStatus,
     webhookUrl,
     evolution: lastEvolution,
