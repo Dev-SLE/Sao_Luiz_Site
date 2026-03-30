@@ -1,4 +1,5 @@
 import { evolutionQrStoreFromRest } from "./evolutionLastQr";
+import { evolutionExternalFetch, normalizeEvolutionServerUrl } from "./evolutionUrl";
 
 export function mergeEvolutionQr(connectBody: any, fetchBody: any): any {
   const out = connectBody && typeof connectBody === "object" ? { ...connectBody } : {};
@@ -43,7 +44,10 @@ export async function runEvolutionConnect(args: {
   evolution: any;
   fetchInstancesBody: any;
 }> {
-  const base = args.baseUrl.replace(/\/+$/, "");
+  const base = normalizeEvolutionServerUrl(args.baseUrl).replace(/\/+$/, "");
+  if (!base) {
+    throw new Error("URL do servidor Evolution inválida ou vazia");
+  }
   const inst = String(args.instance).trim();
   const path = encodeURIComponent(inst);
   const qs =
@@ -51,7 +55,7 @@ export async function runEvolutionConnect(args: {
       ? `?number=${encodeURIComponent(String(args.numberDigits).replace(/\D/g, ""))}`
       : "";
   const url = `${base}/instance/connect/${path}${qs}`;
-  const r = await fetch(url, {
+  const r = await evolutionExternalFetch(url, {
     method: "GET",
     headers: { apikey: args.apiKey, accept: "application/json" },
     cache: "no-store",
@@ -67,7 +71,7 @@ export async function runEvolutionConnect(args: {
   let fetchInst: any = null;
   try {
     const fu = `${base}/instance/fetchInstances?instanceName=${encodeURIComponent(inst)}`;
-    const fr = await fetch(fu, {
+    const fr = await evolutionExternalFetch(fu, {
       method: "GET",
       headers: { apikey: args.apiKey, accept: "application/json" },
       cache: "no-store",

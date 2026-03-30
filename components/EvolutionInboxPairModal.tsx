@@ -23,6 +23,22 @@ function digitsForEvolution(raw: string): string {
   return d;
 }
 
+const EVOLUTION_PAIR_FRIENDLY_ERROR =
+  "Erro de conexão: O servidor da Evolution demorou a responder. Verifique se a URL e a porta estão corretas.";
+
+function isFetchOrTimeoutMessage(msg: string): boolean {
+  const m = String(msg || "").toLowerCase();
+  return (
+    m.includes("fetch failed") ||
+    m.includes("failed to fetch") ||
+    m.includes("networkerror") ||
+    m.includes("timeout") ||
+    m.includes("timed out") ||
+    m.includes("aborted") ||
+    m.includes("connect timeout")
+  );
+}
+
 export const EvolutionInboxPairModal: React.FC<Props> = ({ open, onClose, inbox }) => {
   const [phone, setPhone] = useState("");
   const [deviceOs, setDeviceOs] = useState<"any" | "android" | "ios">("any");
@@ -67,9 +83,18 @@ export const EvolutionInboxPairModal: React.FC<Props> = ({ open, onClose, inbox 
             syncWebhook,
           }),
         });
-        const j = await r.json();
+        const j = await r.json().catch(() => ({}));
         if (!r.ok) {
-          setErr(String(j?.error || "Falha ao conectar"));
+          if (j?.userMessage) {
+            setErr(String(j.userMessage));
+            return;
+          }
+          const raw = String(j?.error || "Falha ao conectar");
+          setErr(
+            isFetchOrTimeoutMessage(raw) || raw === "EVOLUTION_CONNECTION_FAILED"
+              ? EVOLUTION_PAIR_FRIENDLY_ERROR
+              : raw
+          );
           return;
         }
         setEvolution(j.evolution);
@@ -88,7 +113,8 @@ export const EvolutionInboxPairModal: React.FC<Props> = ({ open, onClose, inbox 
           setWaitingQr(false);
         }
       } catch (e: any) {
-        setErr(e?.message || String(e));
+        const msg = e?.message || String(e);
+        setErr(isFetchOrTimeoutMessage(msg) ? EVOLUTION_PAIR_FRIENDLY_ERROR : msg);
       } finally {
         setLoading(false);
       }

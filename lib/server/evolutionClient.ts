@@ -3,6 +3,8 @@
  * Doc: https://doc.evolution-api.com/v2/
  */
 
+import { evolutionExternalFetch, normalizeEvolutionServerUrl } from "./evolutionUrl";
+
 export function evolutionNumberDigits(remoteJid: string | null | undefined): string | null {
   if (!remoteJid) return null;
   const user = String(remoteJid).split("@")[0] || "";
@@ -44,7 +46,42 @@ export function extractEvolutionMessageText(message: any): string {
   return "[Mensagem recebida]";
 }
 
-/** POST /chat/fetchProfilePictureUrl/{instance} — foto quando o webhook não traz URL. */
+function parseEvolutionProfilePictureResponse(json: any): string | null {
+  const urlKeys = [
+    json?.profilePictureUrl,
+    json?.profile_picture_url,
+    json?.pictureUrl,
+    json?.url,
+    json?.avatarUrl,
+    json?.imgUrl,
+    json?.wuid,
+    json?.data?.profilePictureUrl,
+    json?.data?.profile_picture_url,
+    json?.data?.pictureUrl,
+    json?.data?.url,
+    json?.data?.avatarUrl,
+    json?.data?.wuid,
+    json?.response?.profilePictureUrl,
+    json?.response?.profile_picture_url,
+    json?.response?.pictureUrl,
+  ];
+  for (const c of urlKeys) {
+    const s = String(c || "").trim();
+    if (s && /^https?:\/\//i.test(s)) return s;
+  }
+  const b64 =
+    json?.base64 ||
+    json?.profilePictureBase64 ||
+    json?.pictureBase64 ||
+    json?.data?.base64 ||
+    json?.data?.profilePictureBase64;
+  if (typeof b64 === "string" && b64.length > 40) {
+    return b64.startsWith("data:") ? b64 : `data:image/jpeg;base64,${b64}`;
+  }
+  return null;
+}
+
+/** POST em rotas de perfil da Evolution — foto quando o webhook não traz URL. */
 export async function evolutionFetchProfilePictureUrl(args: {
   serverUrl: string;
   apiKey: string;
@@ -52,47 +89,46 @@ export async function evolutionFetchProfilePictureUrl(args: {
   /** Número E.164 ou JID (ex.: 5511999999999 ou 5511...@s.whatsapp.net) */
   number: string;
 }): Promise<string | null> {
-  const base = String(args.serverUrl || "").replace(/\/+$/, "");
+  const base = normalizeEvolutionServerUrl(args.serverUrl).replace(/\/+$/, "");
   if (!base || !args.apiKey || !args.instanceName) return null;
-  const num = String(args.number || "").trim();
-  if (!num) return null;
-  const endpointCandidates = [
-    `${base}/chat/fetchProfilePictureUrl/${encodeURIComponent(args.instanceName)}`,
-    `${base}/chat/fetchProfile/${encodeURIComponent(args.instanceName)}`,
+  const rawNum = String(args.number || "").trim();
+  if (!rawNum) return null;
+  const jidUser = rawNum.includes("@") ? rawNum.split("@")[0].split(":")[0] : rawNum.replace(/\D/g, "");
+  const jid =
+    rawNum.includes("@") ? rawNum : jidUser ? `${jidUser.replace(/\D/g, "")}@s.whatsapp.net` : "";
+  if (!jid) return null;
+  const digits = evolutionNumberDigits(rawNum.includes("@") ? rawNum : `${rawNum}@s.whatsapp.net`);
+  const pathSuffixes = [
+    `fetchProfilePictureUrl/${encodeURIComponent(args.instanceName)}`,
+    `fetchProfile/${encodeURIComponent(args.instanceName)}`,
+    `fetchProfilePicture/${encodeURIComponent(args.instanceName)}`,
   ];
-  const parseCandidate = (json: any): string | null => {
-    const candidates = [
-      json?.profilePictureUrl,
-      json?.profile_picture_url,
-      json?.pictureUrl,
-      json?.avatarUrl,
-      json?.data?.profilePictureUrl,
-      json?.data?.profile_picture_url,
-      json?.data?.pictureUrl,
-      json?.data?.avatarUrl,
-      json?.response?.profilePictureUrl,
-      json?.response?.profile_picture_url,
-    ];
-    for (const c of candidates) {
-      const s = String(c || "").trim();
-      if (s && /^https?:\/\//i.test(s)) return s;
-    }
-    return null;
-  };
+  const bodyVariants: Record<string, string>[] = [];
+  if (digits) {
+    bodyVariants.push({ number: digits });
+    bodyVariants.push({ number: `${digits}@s.whatsapp.net` });
+  }
+  bodyVariants.push({ jid });
+  bodyVariants.push({ remoteJid: jid });
+  if (digits) bodyVariants.push({ wid: digits });
   try {
-    for (const url of endpointCandidates) {
-      const resp = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: args.apiKey,
-        },
-        body: JSON.stringify({ number: num }),
-      });
-      if (!resp.ok) continue;
-      const json = await resp.json().catch(() => ({}));
-      const parsed = parseCandidate(json);
-      if (parsed) return parsed;
+    for (const suffix of pathSuffixes) {
+      const url = `${base}/chat/${suffix}`;
+      for (const bodyObj of bodyVariants) {
+        const resp = await evolutionExternalFetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: args.apiKey,
+            accept: "application/json",
+          },
+          body: JSON.stringify(bodyObj),
+        });
+        if (!resp.ok) continue;
+        const json = await resp.json().catch(() => ({}));
+        const parsed = parseEvolutionProfilePictureResponse(json);
+        if (parsed) return parsed;
+      }
     }
     return null;
   } catch {
@@ -107,7 +143,7 @@ export async function evolutionSendText(args: {
   numberDigits: string;
   text: string;
 }) {
-  const base = String(args.serverUrl || "").replace(/\/+$/, "");
+  const base = normalizeEvolutionServerUrl(args.serverUrl).replace(/\/+$/, "");
   if (!base) {
     return { ok: false, error: "evolution_server_url vazio", response: null as any };
   }
@@ -117,7 +153,7 @@ export async function evolutionSendText(args: {
     return { ok: false, error: "número inválido", response: null as any };
   }
   try {
-    const resp = await fetch(url, {
+    const resp = await evolutionExternalFetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getPool } from "../../../../lib/server/db";
 import { ensureCrmSchemaTables } from "../../../../lib/server/ensureSchema";
 import { getEvolutionServerDefaults, slugifyInstancePart } from "../../../../lib/server/evolutionDefaults";
+import { evolutionExternalFetch, normalizeEvolutionServerUrl } from "../../../../lib/server/evolutionUrl";
 import { getSitePublicBaseUrl } from "../../../../lib/sitePublicUrl";
 
 export const runtime = "nodejs";
@@ -29,7 +30,8 @@ async function evolutionTryCreateInstance(args: {
   apiKey: string;
   instanceName: string;
 }): Promise<{ ok: boolean; duplicate?: boolean; error?: string }> {
-  const base = String(args.serverUrl || "").replace(/\/+$/, "");
+  const base = normalizeEvolutionServerUrl(args.serverUrl).replace(/\/+$/, "");
+  if (!base) return { ok: false, error: "URL do servidor Evolution inválida" };
   const url = `${base}/instance/create`;
   const body = {
     instanceName: String(args.instanceName || "").trim(),
@@ -38,7 +40,7 @@ async function evolutionTryCreateInstance(args: {
   };
   if (!body.instanceName) return { ok: false, error: "Nome da instância vazio" };
   try {
-    const r = await fetch(url, {
+    const r = await evolutionExternalFetch(url, {
       method: "POST",
       headers: { apikey: args.apiKey, "Content-Type": "application/json", accept: "application/json" },
       body: JSON.stringify(body),
@@ -91,7 +93,10 @@ async function syncEvolutionWebhookForInstance(args: {
     ],
   };
   try {
-    const base = args.serverUrl.replace(/\/+$/, "");
+    const base = normalizeEvolutionServerUrl(args.serverUrl).replace(/\/+$/, "");
+    if (!base) {
+      return { ok: false, error: "URL do servidor Evolution inválida" };
+    }
     const endpoints = [
       `${base}/webhook/set/${encodeURIComponent(args.instance)}`,
       `${base}/webhook/set`,
@@ -101,7 +106,7 @@ async function syncEvolutionWebhookForInstance(args: {
         endpoint.endsWith("/webhook/set")
           ? { ...payload, instanceName: args.instance }
           : payload;
-      const r = await fetch(endpoint, {
+      const r = await evolutionExternalFetch(endpoint, {
         method: "POST",
         headers: { apikey: args.apiKey, "Content-Type": "application/json", accept: "application/json" },
         body: JSON.stringify(bodyToSend),
@@ -199,9 +204,11 @@ export async function POST(req: Request) {
     const name = String(body?.name || "").trim();
     const simpleConnect = body?.simpleConnect === true;
     let evolutionInstanceName = String(body?.evolutionInstanceName || "").trim();
-    let evolutionServerUrl = String(body?.evolutionServerUrl || "")
-      .trim()
-      .replace(/\/+$/, "");
+    let evolutionServerUrl = normalizeEvolutionServerUrl(
+      String(body?.evolutionServerUrl || "")
+        .trim()
+        .replace(/\/+$/, "")
+    );
     let evolutionApiKey = body?.evolutionApiKey != null ? String(body.evolutionApiKey).trim() : "";
     const teamId =
       body?.teamId != null && String(body.teamId).trim() ? String(body.teamId).trim() : null;
@@ -229,7 +236,7 @@ export async function POST(req: Request) {
       );
       const row = cur.rows?.[0];
       if (!evolutionServerUrl && row?.evolution_server_url) {
-        evolutionServerUrl = String(row.evolution_server_url).trim().replace(/\/+$/, "");
+        evolutionServerUrl = normalizeEvolutionServerUrl(String(row.evolution_server_url).trim());
       }
       if (!evolutionApiKey && row?.evolution_api_key) {
         evolutionApiKey = String(row.evolution_api_key).trim();

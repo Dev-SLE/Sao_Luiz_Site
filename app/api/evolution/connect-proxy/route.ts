@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { runEvolutionConnect } from "../../../../lib/server/evolutionConnectHelpers";
+import { normalizeEvolutionServerUrl } from "../../../../lib/server/evolutionUrl";
 
 export const runtime = "nodejs";
 
@@ -15,7 +16,9 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Proxy desativado em produção" }, { status: 403 });
   }
 
-  const base = (process.env.EVOLUTION_API_URL || "http://127.0.0.1:8080").replace(/\/+$/, "");
+  const base = normalizeEvolutionServerUrl(
+    process.env.EVOLUTION_API_URL || "http://127.0.0.1:8080"
+  ).replace(/\/+$/, "");
   const apiKey = process.env.EVOLUTION_API_KEY || "";
   const { searchParams } = new URL(req.url);
   const instance = searchParams.get("instance");

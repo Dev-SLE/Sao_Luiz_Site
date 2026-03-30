@@ -3,6 +3,12 @@ import { getPool } from "../../../../lib/server/db";
 import { ensureCrmSchemaTables } from "../../../../lib/server/ensureSchema";
 import { evolutionQrGetLast } from "../../../../lib/server/evolutionLastQr";
 import { runEvolutionConnect, summarizeEvolutionInstance } from "../../../../lib/server/evolutionConnectHelpers";
+import {
+  evolutionExternalFetch,
+  EVOLUTION_CONNECTION_USER_MESSAGE,
+  isEvolutionNetworkError,
+  normalizeEvolutionServerUrl,
+} from "../../../../lib/server/evolutionUrl";
 import { getSitePublicBaseUrl } from "../../../../lib/sitePublicUrl";
 
 export const runtime = "nodejs";
@@ -39,7 +45,10 @@ async function syncEvolutionWebhookForInbox(args: { serverUrl: string; apiKey: s
   }
   const qs = token ? `?token=${encodeURIComponent(token)}` : "";
   const webhookUrl = `${publicBase.replace(/\/+$/, "")}/api/whatsapp/evolution/webhook${qs}`;
-  const base = args.serverUrl.replace(/\/+$/, "");
+  const base = normalizeEvolutionServerUrl(args.serverUrl).replace(/\/+$/, "");
+  if (!base) {
+    return { ok: false, error: "URL do servidor Evolution inválida" };
+  }
   const url = `${base}/webhook/set/${encodeURIComponent(args.instance)}`;
   const payload = {
     enabled: true,
@@ -55,7 +64,7 @@ async function syncEvolutionWebhookForInbox(args: { serverUrl: string; apiKey: s
     ],
   };
   try {
-    const r = await fetch(url, {
+    const r = await evolutionExternalFetch(url, {
       method: "POST",
       headers: { apikey: args.apiKey, "Content-Type": "application/json", accept: "application/json" },
       body: JSON.stringify(payload),
@@ -92,11 +101,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Caixa não encontrada ou inativa" }, { status: 404 });
     }
 
-    const serverUrl = String(row.evolution_server_url || "").trim();
+    const serverUrlRaw = String(row.evolution_server_url || "").trim();
+    const serverUrl = normalizeEvolutionServerUrl(serverUrlRaw);
     const apiKey = String(row.evolution_api_key || "").trim();
     const instance = String(row.evolution_instance_name || "").trim();
 
-    if (!serverUrl || !apiKey || !instance) {
+    if (!serverUrlRaw || !serverUrl || !apiKey || !instance) {
       return NextResponse.json(
         { error: "Caixa incompleta: URL do servidor, chave API e nome da instância são obrigatórios" },
         { status: 400 }
@@ -128,7 +138,14 @@ export async function POST(req: Request) {
     });
   } catch (e: any) {
     console.error("crm/evolution-pair POST:", e);
-    return NextResponse.json({ error: e?.message || "Erro interno" }, { status: 500 });
+    const msg = e?.message || String(e);
+    if (isEvolutionNetworkError(msg)) {
+      return NextResponse.json(
+        { error: "EVOLUTION_CONNECTION_FAILED", userMessage: EVOLUTION_CONNECTION_USER_MESSAGE },
+        { status: 502 }
+      );
+    }
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
 
@@ -150,11 +167,12 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Caixa não encontrada" }, { status: 404 });
     }
 
-    const serverUrl = String(row.evolution_server_url || "").trim();
+    const serverUrlRaw = String(row.evolution_server_url || "").trim();
+    const serverUrl = normalizeEvolutionServerUrl(serverUrlRaw);
     const apiKey = String(row.evolution_api_key || "").trim();
     const instance = String(row.evolution_instance_name || "").trim();
 
-    if (!serverUrl || !apiKey || !instance) {
+    if (!serverUrlRaw || !serverUrl || !apiKey || !instance) {
       return NextResponse.json({ error: "Caixa incompleta" }, { status: 400 });
     }
 
@@ -169,7 +187,7 @@ export async function GET(req: Request) {
     }
 
     const fu = `${base}/instance/fetchInstances?instanceName=${encodeURIComponent(instance)}`;
-    const fr = await fetch(fu, {
+    const fr = await evolutionExternalFetch(fu, {
       method: "GET",
       headers: { apikey: apiKey, accept: "application/json" },
       cache: "no-store",
@@ -190,6 +208,13 @@ export async function GET(req: Request) {
     });
   } catch (e: any) {
     console.error("crm/evolution-pair GET:", e);
-    return NextResponse.json({ error: e?.message || "Erro interno" }, { status: 500 });
+    const msg = e?.message || String(e);
+    if (isEvolutionNetworkError(msg)) {
+      return NextResponse.json(
+        { error: "EVOLUTION_CONNECTION_FAILED", userMessage: EVOLUTION_CONNECTION_USER_MESSAGE },
+        { status: 502 }
+      );
+    }
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
