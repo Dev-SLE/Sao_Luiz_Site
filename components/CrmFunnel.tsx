@@ -94,6 +94,16 @@ const sourceConfig: Record<Source, { label: string; className: string }> = {
   },
 };
 
+function getPriorityUi(priorityRaw: unknown): { label: string; className: string } {
+  const key = String(priorityRaw || "").toUpperCase() as Priority;
+  return priorityConfig[key] || priorityConfig.MEDIA;
+}
+
+function getSourceUi(sourceRaw: unknown): { label: string; className: string } {
+  const key = String(sourceRaw || "").toUpperCase() as Source;
+  return sourceConfig[key] || sourceConfig.MANUAL;
+}
+
 interface Props {
   onGoToChat?: (leadId: string) => void;
   onOpenTracking?: (cte: string, serie?: string) => void;
@@ -197,7 +207,10 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
     if (!silent) setLoading(true);
     setBoardError(null);
     try {
-      const board = await authClient.getCrmBoard();
+      const board = await authClient.getCrmBoard({
+        requestUsername: user?.username || null,
+        requestRole: user?.role || null,
+      });
       setStages((board.stages || []).map((s: any) => ({ id: String(s.id), name: String(s.name) })));
       setLeads((board.leads || []).map((l: any) => ({
         id: String(l.id),
@@ -338,7 +351,9 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
     return leads.filter((lead) => {
       if (boardPriority !== 'ALL' && lead.priority !== boardPriority) return false;
       if (boardSource !== 'ALL' && lead.source !== boardSource) return false;
-      if (mine && (lead.ownerUsername || '').toLowerCase() !== mine) return false;
+      const assigned = (lead.assignedUsername || '').toLowerCase();
+      const owner = (lead.ownerUsername || '').toLowerCase();
+      if (mine && assigned !== mine && owner !== mine) return false;
       if (!term) return true;
 
       const haystack = [
@@ -378,6 +393,13 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
 
   const handleDropOnStage = (stageId: string) => {
     if (!draggingId) return;
+    const draggedLead = leads.find((l) => l.id === draggingId);
+    if (!draggedLead) return;
+    if (draggedLead.stageId === stageId) {
+      setDraggingId(null);
+      return;
+    }
+    const previousLeads = leads;
     // Otimista: move na UI imediatamente, sincroniza no backend.
     setLeads((prev) =>
       prev.map((l) => (l.id === draggingId ? { ...l, stageId } : l))
@@ -393,11 +415,10 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
       .catch((err) => {
         console.error('Erro ao mover lead:', err);
         setBoardError(err instanceof Error ? err.message : 'Falha ao mover lead.');
-        // rollback com estado canônico
-        refreshBoard();
+        // rollback imediato evita "efeito elástico" por refetch tardio.
+        setLeads(previousLeads);
       })
       .finally(() => setDraggingId(null));
-    setDraggingId(null);
   };
 
   const handleCreateLead = () => {
@@ -775,7 +796,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
         </div>
       </div>
 
-      <div className="overflow-x-auto pb-4">
+      <div className="flex-1 min-h-0 overflow-x-auto overflow-y-auto pb-4">
         {boardError && (
           <div className="mb-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2">
             <div className="flex items-center justify-between gap-2">
@@ -793,7 +814,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
           </div>
         )}
         <div
-          className="flex gap-4 h-full flex-nowrap"
+          className="flex gap-4 flex-nowrap items-start"
           style={{ minWidth: KANBAN_COLUMNS.length * (COLUMN_WIDTH + COLUMN_GAP_PX) }}
         >
           {KANBAN_COLUMNS.map((columnName) => {
@@ -801,7 +822,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
               return (
                 <div
                   key="agencias-fixed"
-                  className="flex-none w-[260px] min-w-[260px] bg-white border border-slate-200 rounded-xl flex flex-col"
+                  className="flex-none w-[260px] min-w-[260px] shrink-0 bg-white border border-slate-200 rounded-xl flex flex-col self-stretch"
                 >
                   <div className="px-3 py-3 border-b border-slate-200 flex items-center justify-between">
                     <div>
@@ -847,7 +868,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
             return (
             <div
               key={columnName}
-              className="flex-none w-[260px] min-w-[260px] bg-white border border-slate-200 rounded-xl flex flex-col"
+              className="flex-none w-[260px] min-w-[260px] shrink-0 bg-white border border-slate-200 rounded-xl flex flex-col"
               onDragOver={(e) => e.preventDefault()}
               onDrop={() => {
                 if (stageId) handleDropOnStage(stageId);
@@ -873,8 +894,8 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
               </div>
               <div className="p-2 space-y-2">
                 {stageLeads.map((lead) => {
-                  const priority = priorityConfig[lead.priority];
-                  const source = sourceConfig[lead.source];
+                  const priority = getPriorityUi(lead.priority);
+                  const source = getSourceUi(lead.source);
                   return (
                     <div
                       key={lead.id}
@@ -1836,6 +1857,11 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
               <p className="text-xs text-slate-700">
                 Telefone: {selectedLead.phone || '—'}
               </p>
+              {(selectedLead.ownerUsername || selectedLead.assignedUsername) && (
+                <p className="text-xs text-slate-800 font-semibold">
+                  Responsável: {selectedLead.assignedUsername || selectedLead.ownerUsername}
+                </p>
+              )}
               <p className="text-xs text-slate-700">
                 CTE vinculado: {selectedLead.cte || '—'}
               </p>

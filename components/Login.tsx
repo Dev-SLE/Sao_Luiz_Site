@@ -110,6 +110,7 @@ const Login: React.FC = () => {
                     onBlur={() => setIsFocused(null)}
                     className="w-full border-0 bg-transparent px-3 py-3.5 text-sm font-medium text-slate-900 outline-none placeholder:text-slate-400"
                     placeholder="Digite seu usuário"
+                    autoComplete="username"
                     required
                   />
                 </div>
@@ -127,6 +128,7 @@ const Login: React.FC = () => {
                     onBlur={() => setIsFocused(null)}
                     className="w-full border-0 bg-transparent px-3 py-3.5 text-sm font-medium text-slate-900 outline-none placeholder:text-slate-400"
                     placeholder="Digite sua senha"
+                    autoComplete="current-password"
                     required
                   />
                   <button

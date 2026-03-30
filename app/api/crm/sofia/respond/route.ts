@@ -5,6 +5,11 @@ import { countTrailingClientStreak } from "../../../../../lib/server/sofiaStreak
 
 export const runtime = "nodejs";
 
+type AiTurn = {
+  role: "user" | "model";
+  text: string;
+};
+
 function extractCteFromText(text: string): string | null {
   const raw = String(text || "");
   if (/^\s*\d{3,12}\s*$/.test(raw)) return raw.trim();
@@ -57,7 +62,7 @@ function fallbackReply(input: { customerName?: string; cte?: string; text?: stri
   const lower = String(input.text || "").toLowerCase();
   const isGreeting =
     /\b(oi|ola|olá|bom dia|boa tarde|boa noite|tudo bem|blz|beleza)\b/i.test(String(input.text || ""));
-  const slots = detectConversationSlots(`${String(input.text || "")}\n${String(input.customFallback || "")}`);
+  const slots = detectConversationSlots(String(input.text || ""));
   const cte = String(input.cte || slots.cte || "").trim();
   const custom = String(input.customFallback || "").trim();
   const variantsNoCte = [
@@ -108,11 +113,53 @@ function parseHmToMinutes(hm: string | null | undefined) {
   return h * 60 + m;
 }
 
-async function callOpenAi(prompt: string, modelOverride?: string | null) {
+function buildAiTurnsFromMessages(rowsDesc: any[]): AiTurn[] {
+  const rows = [...(rowsDesc || [])].reverse();
+  return rows
+    .map((m: any) => {
+      const sender = String(m?.sender_type || "").toUpperCase();
+      const body = String(m?.body || "").trim();
+      if (!body) return null;
+      if (sender === "CLIENT") return { role: "user", text: body } as AiTurn;
+      return { role: "model", text: body } as AiTurn;
+    })
+    .filter(Boolean) as AiTurn[];
+}
+
+function normalizeForCompare(text: string) {
+  return String(text || "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isRepeatedAgainstRecentIa(candidate: string, lastIaMessages: string[]) {
+  const c = normalizeForCompare(candidate);
+  if (!c) return true;
+  return lastIaMessages.some((m) => normalizeForCompare(m) === c);
+}
+
+async function callOpenAi(args: {
+  prompt: string;
+  turns: AiTurn[];
+  modelOverride?: string | null;
+  systemInstructions?: string | null;
+}) {
   const apiKey = process.env.OPENAI_API_KEY;
   const model =
-    (modelOverride && String(modelOverride).trim()) || process.env.OPENAI_MODEL || "gpt-4o-mini";
+    (args.modelOverride && String(args.modelOverride).trim()) || process.env.OPENAI_MODEL || "gpt-4o-mini";
   if (!apiKey) return null;
+  const systemBase =
+    "Você é Sofia, assistente de CRM logístico. Seja cordial, humana e objetiva. Não repita frases idênticas da última resposta. Sempre avance com uma pergunta útil quando faltar dado.";
+  const customSystem = String(args.systemInstructions || "").trim();
+  const messages = [
+    { role: "system", content: customSystem ? `${systemBase}\n${customSystem}` : systemBase },
+    ...args.turns.map((t) => ({
+      role: t.role === "user" ? "user" : "assistant",
+      content: t.text,
+    })),
+    { role: "user", content: args.prompt },
+  ];
   const resp = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -122,14 +169,7 @@ async function callOpenAi(prompt: string, modelOverride?: string | null) {
     body: JSON.stringify({
       model,
       temperature: 0.55,
-      messages: [
-        {
-          role: "system",
-          content:
-            "Você é Sofia, assistente de CRM logístico. Seja cordial, humana e objetiva. Não repita frases idênticas da última resposta. Sempre avance com uma pergunta útil quando faltar dado.",
-        },
-        { role: "user", content: prompt },
-      ],
+      messages,
     }),
   });
   if (!resp.ok) return null;
@@ -137,12 +177,28 @@ async function callOpenAi(prompt: string, modelOverride?: string | null) {
   return json?.choices?.[0]?.message?.content ? String(json.choices[0].message.content) : null;
 }
 
-async function callGemini(prompt: string, modelOverride?: string | null) {
+async function callGemini(args: {
+  prompt: string;
+  turns: AiTurn[];
+  modelOverride?: string | null;
+  systemInstructions?: string | null;
+}) {
   const apiKey = process.env.GEMINI_API_KEY;
   const model =
-    (modelOverride && String(modelOverride).trim()) || process.env.GEMINI_MODEL || "gemini-1.5-flash";
+    (args.modelOverride && String(args.modelOverride).trim()) || process.env.GEMINI_MODEL || "gemini-1.5-flash";
   if (!apiKey) return null;
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const customSystem = String(args.systemInstructions || "").trim();
+  const contents = [
+    ...(customSystem
+      ? [{ role: "user", parts: [{ text: `Instruções do sistema:\n${customSystem}` }] }]
+      : []),
+    ...args.turns.map((t) => ({
+      role: t.role,
+      parts: [{ text: t.text }],
+    })),
+    { role: "user", parts: [{ text: args.prompt }] },
+  ];
   const resp = await fetch(url, {
     method: "POST",
     headers: {
@@ -150,7 +206,7 @@ async function callGemini(prompt: string, modelOverride?: string | null) {
     },
     body: JSON.stringify({
       generationConfig: { temperature: 0.55 },
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      contents,
     }),
   });
   if (!resp.ok) return null;
@@ -159,16 +215,42 @@ async function callGemini(prompt: string, modelOverride?: string | null) {
   return text ? String(text) : null;
 }
 
-async function callAiProvider(opts: { provider?: string | null; prompt: string; modelOverride?: string | null }) {
+async function callAiProvider(opts: {
+  provider?: string | null;
+  prompt: string;
+  turns: AiTurn[];
+  modelOverride?: string | null;
+  systemInstructions?: string | null;
+}) {
   const selected = String(opts.provider || process.env.AI_PROVIDER || "OPENAI").toUpperCase();
   if (selected === "GEMINI") {
-    const gemini = await callGemini(opts.prompt, opts.modelOverride);
+    const gemini = await callGemini({
+      prompt: opts.prompt,
+      turns: opts.turns,
+      modelOverride: opts.modelOverride,
+      systemInstructions: opts.systemInstructions,
+    });
     if (gemini) return gemini;
-    return callOpenAi(opts.prompt, process.env.OPENAI_MODEL || null);
+    return callOpenAi({
+      prompt: opts.prompt,
+      turns: opts.turns,
+      modelOverride: process.env.OPENAI_MODEL || null,
+      systemInstructions: opts.systemInstructions,
+    });
   }
-  const openai = await callOpenAi(opts.prompt, opts.modelOverride);
+  const openai = await callOpenAi({
+    prompt: opts.prompt,
+    turns: opts.turns,
+    modelOverride: opts.modelOverride,
+    systemInstructions: opts.systemInstructions,
+  });
   if (openai) return openai;
-  return callGemini(opts.prompt, process.env.GEMINI_MODEL || null);
+  return callGemini({
+    prompt: opts.prompt,
+    turns: opts.turns,
+    modelOverride: process.env.GEMINI_MODEL || null,
+    systemInstructions: opts.systemInstructions,
+  });
 }
 
 function normalizeAiText(input: string, maxChars: number) {
@@ -246,6 +328,7 @@ export async function POST(req: Request) {
       .reverse()
       .map((m: any) => `${String(m.sender_type)}: ${String(m.body)}`)
       .join("\n");
+    const aiTurns = buildAiTurnsFromMessages(lastMsgsRes.rows || []);
     const escalationKeywords: string[] = Array.isArray(settings.escalation_keywords)
       ? settings.escalation_keywords.map((x: any) => String(x).toLowerCase())
       : [];
@@ -278,6 +361,69 @@ export async function POST(req: Request) {
     const cteCandidate = String(conv.cte_number || extractCteFromText(contextText) || "").trim();
     const cteSummary = await lookupCteSummary(pool, cteCandidate);
 
+    // C8: intercepta palavra-chave antes de chamar Gemini/OpenAI (handoff imediato).
+    if (shouldEscalate) {
+      const handoffText = normalizeAiText(
+        String(settings.handoff_message || "Entendi. Vou transferir agora seu atendimento para um atendente humano."),
+        Number(settings.max_response_chars || 480)
+      );
+      await pool.query(
+        `
+          UPDATE pendencias.crm_conversations
+          SET status = 'PENDENTE', updated_at = NOW()
+          WHERE id = $1
+        `,
+        [conversationId]
+      );
+      await pool.query(
+        `
+          UPDATE pendencias.crm_leads l
+          SET customer_status = 'HUMANO_SOLICITADO', updated_at = NOW()
+          FROM pendencias.crm_conversations c
+          WHERE c.id = $1
+            AND l.id = c.lead_id
+        `,
+        [conversationId]
+      );
+      await pool.query(
+        `
+          INSERT INTO pendencias.crm_activities (lead_id, user_username, type, description, data, created_at)
+          SELECT
+            c.lead_id,
+            NULL,
+            'EVENT',
+            'Sofia bloqueada por palavra-chave; handoff para humano acionado.',
+            $2::jsonb,
+            NOW()
+          FROM pendencias.crm_conversations c
+          WHERE c.id = $1
+        `,
+        [conversationId, JSON.stringify({ reason: "keyword_detected", text })]
+      );
+      return NextResponse.json({
+        suggestion: handoffText,
+        autoReplyEnabled: !!settings.auto_reply_enabled,
+        shouldEscalate: true,
+        escalateReason: "keyword_detected",
+        governance: {
+          autoMode: String(settings.auto_mode || "ASSISTIDO").toUpperCase(),
+          allowAutoSend: false,
+          reason: "keyword_detected",
+          confidence: 15,
+          minConfidence: Number(settings.min_confidence || 70),
+          iaMsgCount,
+          maxAutoReplies: Number(settings.max_auto_replies_per_conversation || 2),
+          trailingClientStreak,
+          requireHumanAfterCustomerMessages: Number(settings.require_human_after_customer_messages || 4),
+          handoffShouldAutoSend: true,
+        },
+        context: {
+          topic: conv.topic || null,
+          channel: conv.channel || "WHATSAPP",
+        },
+      });
+    }
+
     const prompt = [
       `Nome cliente: ${String(conv.title || "")}`,
       `CTE: ${String(conv.cte_number || "")}`,
@@ -291,7 +437,7 @@ export async function POST(req: Request) {
         ? `CTE encontrado no banco: CTE ${String(cteSummary.cte || "")} Série ${String(cteSummary.serie || "")} | Status ${String(cteSummary.status_calculado || cteSummary.status || "")} | Destino ${String(cteSummary.entrega || "")} | Destinatário ${String(cteSummary.destinatario || "")}.`
         : "Se o cliente enviar CTE/NF e não houver resultado no banco, avise que não encontrou e peça confirmação do número.",
       `Conhecimento: ${String(settings.knowledge_base || "")}`,
-      `Histórico:\n${transcript}`,
+      `Histórico recente já foi enviado por mensagens com papéis user/model.`,
       `Mensagem atual: ${text}`,
       `Responda em pt-BR, curta e precisa.`,
     ].join("\n\n");
@@ -299,9 +445,11 @@ export async function POST(req: Request) {
     let suggestion = await callAiProvider({
       provider: settings.ai_provider,
       prompt,
+      turns: aiTurns,
       modelOverride: settings.model_name,
+      systemInstructions: settings.system_instructions,
     });
-    const fromOpenAi = !!suggestion?.trim();
+    const aiGenerated = !!suggestion?.trim();
     if (!suggestion) {
       suggestion = fallbackReply({
         customerName: String(conv.title || ""),
@@ -311,8 +459,11 @@ export async function POST(req: Request) {
       });
     }
     suggestion = normalizeAiText(suggestion, maxResponseChars);
-    const prevIaBody = String(lastIaMessage?.body || "").trim();
-    if (!suggestion || (prevIaBody && suggestion === prevIaBody) || isGenericReply(suggestion)) {
+    const recentIaBodies = (lastMsgsRes.rows || [])
+      .filter((m: any) => String(m.sender_type || "").toUpperCase() === "IA")
+      .slice(0, 3)
+      .map((m: any) => String(m.body || ""));
+    if (!suggestion || isRepeatedAgainstRecentIa(suggestion, recentIaBodies) || isGenericReply(suggestion)) {
       suggestion = fallbackReply({
         customerName: String(conv.title || ""),
         cte: String(conv.cte_number || extractCteFromText(contextText) || ""),
@@ -322,15 +473,13 @@ export async function POST(req: Request) {
       suggestion = normalizeAiText(suggestion, maxResponseChars);
     }
 
-    const confidence = shouldEscalate
-      ? 15
-      : fromOpenAi
-        ? Math.max(minConfidence, 85)
-        : text.length > 80
-          ? 85
-          : text.length > 30
-            ? 75
-            : 65;
+    const confidence = aiGenerated
+      ? Math.max(minConfidence, 85)
+      : text.length > 80
+        ? 85
+        : text.length > 30
+          ? 75
+          : 65;
 
     let allowAutoSend = !!settings.auto_reply_enabled;
     let governanceReason = "ok";
@@ -388,10 +537,6 @@ export async function POST(req: Request) {
     if (trailingClientStreak > requireHumanAfterCustomerMessages) {
       allowAutoSend = false;
       governanceReason = "too_many_customer_messages_without_human";
-    }
-    if (shouldEscalate) {
-      allowAutoSend = false;
-      governanceReason = "keyword_detected";
     }
     if (!allowAutoSend && String(settings.handoff_message || "").trim()) {
       suggestion = String(settings.handoff_message).trim();

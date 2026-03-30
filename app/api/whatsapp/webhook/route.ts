@@ -4,6 +4,7 @@ import { getPool } from "../../../../lib/server/db";
 import { ensureCrmSchemaTables } from "../../../../lib/server/ensureSchema";
 import { countTrailingClientStreak } from "../../../../lib/server/sofiaStreak";
 import { applyInboundRouting } from "../../../../lib/server/crmRouting";
+import { ensureDefaultPipelineAndFirstStage } from "../../../../lib/server/crmDefaultPipeline";
 
 export const runtime = "nodejs";
 
@@ -300,65 +301,6 @@ function weekdayPt(d = new Date()) {
     6: "sabado",
   };
   return map[d.getDay()];
-}
-
-async function ensureDefaultPipelineAndFirstStage(pool: any) {
-  let pipelineRes = await pool.query(
-    "SELECT id FROM pendencias.crm_pipelines WHERE is_default = true ORDER BY created_at ASC LIMIT 1"
-  );
-  let pipelineId = pipelineRes.rows?.[0]?.id as string | undefined;
-  if (!pipelineId) {
-    const anyPipe = await pool.query(
-      "SELECT id FROM pendencias.crm_pipelines ORDER BY created_at ASC LIMIT 1"
-    );
-    pipelineId = anyPipe.rows?.[0]?.id as string | undefined;
-  }
-  if (!pipelineId) {
-    await pool.query("UPDATE pendencias.crm_pipelines SET is_default = false");
-    const pipelineInsert = await pool.query(
-      `
-        INSERT INTO pendencias.crm_pipelines (name, description, is_default, created_by, created_at, updated_at)
-        VALUES ('Funil Padrão', 'Funil criado automaticamente', true, 'system', NOW(), NOW())
-        RETURNING id
-      `
-    );
-    pipelineId = pipelineInsert.rows?.[0]?.id as string | undefined;
-    if (!pipelineId) return null;
-    const stages = [
-      "Aguardando atendimento",
-      "Em busca de mercadorias",
-      "Ocorrências",
-      "Atendimento finalizado",
-    ];
-    for (let i = 0; i < stages.length; i++) {
-      await pool.query(
-        `
-          INSERT INTO pendencias.crm_stages (pipeline_id, name, position, created_at)
-          VALUES ($1, $2, $3, NOW())
-        `,
-        [pipelineId, stages[i], i]
-      );
-    }
-  }
-
-  const stageRes = await pool.query(
-    "SELECT id FROM pendencias.crm_stages WHERE pipeline_id = $1 ORDER BY position ASC LIMIT 1",
-    [pipelineId]
-  );
-  let stageId = stageRes.rows?.[0]?.id as string | undefined;
-  if (!stageId) {
-    const ins = await pool.query(
-      `
-        INSERT INTO pendencias.crm_stages (pipeline_id, name, position, created_at)
-        VALUES ($1, 'Aguardando atendimento', 0, NOW())
-        RETURNING id
-      `,
-      [pipelineId]
-    );
-    stageId = ins.rows?.[0]?.id as string | undefined;
-  }
-  if (!pipelineId || !stageId) return null;
-  return { pipelineId, stageId };
 }
 
 /** OpenAI + envio WhatsApp — roda fora do caminho crítico do webhook para responder rápido à Meta. */
@@ -751,12 +693,13 @@ export async function POST(req: Request) {
             );
           }
 
-          // 3) Garante conversation WHATSAPP
+          // 3) Garante conversation WHATSAPP (número oficial Meta — sem inbox Web)
           const convRes = await pool.query(
             `
               SELECT id
               FROM pendencias.crm_conversations
               WHERE lead_id = $1 AND channel = 'WHATSAPP' AND is_active = true
+                AND whatsapp_inbox_id IS NULL
               ORDER BY created_at DESC
               LIMIT 1
             `,
@@ -768,8 +711,8 @@ export async function POST(req: Request) {
           } else {
             const insertConv = await pool.query(
               `
-                INSERT INTO pendencias.crm_conversations (lead_id, channel, is_active, created_at, last_message_at)
-                VALUES ($1, 'WHATSAPP', true, NOW(), NULL)
+                INSERT INTO pendencias.crm_conversations (lead_id, channel, is_active, created_at, last_message_at, whatsapp_inbox_id)
+                VALUES ($1, 'WHATSAPP', true, NOW(), NULL, NULL)
                 RETURNING id
               `,
               [leadId]
@@ -823,16 +766,54 @@ export async function POST(req: Request) {
             [leadId, JSON.stringify({ from, message_type: message.type })]
           );
 
-          // 5) Atualiza CTE no lead se detectado e estiver vazio
+          // 5) CTE no lead + reabertura de fluxo (novo envio / cliente que voltou após conclusão)
           if (cteDetected) {
+            const prevLead = await pool.query(
+              `SELECT cte_number, customer_status FROM pendencias.crm_leads WHERE id = $1::uuid`,
+              [leadId]
+            );
+            const prevCte = String(prevLead.rows?.[0]?.cte_number || "").trim();
+            const newCte = String(cteDetected).trim();
+            const cs = String(prevLead.rows?.[0]?.customer_status || "").trim().toUpperCase();
+            const wasClosed =
+              cs === "CONCLUIDO" ||
+              cs === "PERDIDO" ||
+              cs.includes("CONCLU") ||
+              cs.includes("FINALIZ");
+            const newShipment = Boolean(prevCte && newCte && prevCte !== newCte);
+            const reopen = newShipment || (wasClosed && Boolean(newCte));
+
             await pool.query(
               `
                 UPDATE pendencias.crm_leads
-                SET cte_number = COALESCE(cte_number, $1)
-                WHERE id = $2
+                SET
+                  cte_number = $1,
+                  customer_status = CASE WHEN $3::boolean THEN 'PENDENTE' ELSE customer_status END,
+                  updated_at = NOW()
+                WHERE id = $2::uuid
               `,
-              [cteDetected, leadId]
+              [newCte, leadId, reopen]
             );
+
+            if (reopen) {
+              try {
+                await pool.query(
+                  `
+                    INSERT INTO pendencias.crm_activities (lead_id, user_username, type, description, data, created_at)
+                    VALUES ($1::uuid, NULL, 'EVENT', $2, $3::jsonb, NOW())
+                  `,
+                  [
+                    leadId,
+                    newShipment
+                      ? "Novo CTE informado — fluxo reaberto para acompanhamento do envio."
+                      : "Cliente retornou após atendimento concluído — fluxo reaberto.",
+                    JSON.stringify({ previousCte: prevCte || null, newCte, customer_status_reset: true }),
+                  ]
+                );
+              } catch {
+                // noop
+              }
+            }
           }
 
           // 6) Roteamento: tópico + regras (estágio/atribuição) logo após lead + conversa + mensagem

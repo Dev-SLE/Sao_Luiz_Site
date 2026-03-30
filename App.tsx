@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { DataProvider as GlobalDataProvider, useData } from './context/DataContext';
 import Login from './components/Login';
@@ -22,7 +22,7 @@ import { ChevronDown, CircleDot, LogOut, KeyRound, User as UserIcon } from 'luci
 import clsx from 'clsx';
 
 const AppContent: React.FC = () => {
-  const { user, logout } = useAuth();
+  const { user, logout, loading } = useAuth();
   const {
     pendencias,
     criticos,
@@ -41,7 +41,13 @@ const AppContent: React.FC = () => {
     setConcluidosLimit,
     hasPermission,
   } = useData();
-  const [currentPage, setCurrentPage] = useState<Page>(Page.DASHBOARD);
+  const [currentPage, setCurrentPage] = useState<Page>(() => {
+    if (typeof window === 'undefined') return Page.DASHBOARD;
+    const saved = window.localStorage.getItem('sle_current_page');
+    const values = Object.values(Page) as string[];
+    if (saved && values.includes(saved)) return saved as Page;
+    return Page.DASHBOARD;
+  });
   const [selectedCte, setSelectedCte] = useState<CteData | null>(null);
   const [selectedCrmLeadId, setSelectedCrmLeadId] = useState<string | null>(null);
   const [selectedTrackingCte, setSelectedTrackingCte] = useState<string | null>(null);
@@ -49,12 +55,41 @@ const AppContent: React.FC = () => {
   const [profileOpen, setProfileOpen] = useState(false);
   const isCrmPage = currentPage === Page.CRM_FUNIL || currentPage === Page.CRM_CHAT;
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem('sle_current_page', currentPage);
+  }, [currentPage]);
+
   const noAccess = (message: string) => (
     <div className="surface-card p-6">
       <h3 className="text-lg font-bold text-slate-900">Sem permissão</h3>
       <p className="mt-1 text-sm text-slate-600">{message}</p>
     </div>
   );
+
+  if (loading) {
+    return (
+      <div className="loading-screen relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-b from-[#dbe7ff] via-[#cfd9e8] to-[#c4d2e6] text-slate-700">
+        <div className="pointer-events-none absolute -left-16 -top-10 h-56 w-56 rounded-full bg-[#2c348c]/20 blur-3xl animate-pulse" />
+        <div className="pointer-events-none absolute -right-16 top-1/3 h-64 w-64 rounded-full bg-[#e42424]/20 blur-3xl animate-pulse" />
+        <div className="pointer-events-none absolute bottom-[-90px] left-1/2 h-56 w-56 -translate-x-1/2 rounded-full bg-white/35 blur-3xl" />
+
+        <div className="relative z-10 flex flex-col items-center gap-5 rounded-3xl border border-white/50 bg-white/55 px-10 py-9 shadow-[0_24px_50px_rgba(44,52,140,0.20)] backdrop-blur-md">
+          <div className="relative h-14 w-14 [perspective:800px]">
+            <div className="absolute inset-0 rounded-xl border border-[#2c348c]/40 bg-gradient-to-br from-[#2c348c] to-[#06183e] shadow-[0_8px_20px_rgba(44,52,140,0.35)] animate-spin" />
+            <div className="absolute inset-2 rounded-lg border border-white/60 bg-white/20 animate-pulse" />
+          </div>
+          <div className="text-center">
+            <p className="text-sm font-black tracking-wide text-[#132b66]">Validando sessão</p>
+            <p className="mt-1 text-[11px] text-slate-600">Preparando ambiente seguro do CRM...</p>
+          </div>
+          <div className="h-1.5 w-44 overflow-hidden rounded-full bg-white/70">
+            <div className="h-full w-1/2 animate-pulse rounded-full bg-gradient-to-r from-[#2c348c] via-[#4f5cb6] to-[#e42424]" />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!user) {
     return <Login />;

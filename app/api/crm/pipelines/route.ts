@@ -70,35 +70,74 @@ export async function POST(req: Request) {
     }
 
     // Mantém a experiência do front: a board sempre mostra o funil padrão.
-    // Então movemos os leads do pipeline antigo (default) para o novo pipeline (stage inicial).
+    // Ao trocar o default, preserva estágio relativo dos leads (por posição da coluna),
+    // evitando reset de todos para a primeira etapa.
     if (makeDefault && moveLeadsFromOldDefault && previousDefaultId) {
-      if (ownerUsernameForMovedLeads) {
-        await pool.query(
-          `
-            UPDATE pendencias.crm_leads
-            SET
-              pipeline_id = $1,
-              stage_id = $2,
-              position = 0,
-              owner_username = $3,
-              updated_at = NOW()
-            WHERE pipeline_id = $4
-          `,
-          [pipelineId, stageIds[0], ownerUsernameForMovedLeads, previousDefaultId]
-        );
-      } else {
-        await pool.query(
-          `
-            UPDATE pendencias.crm_leads
-            SET
-              pipeline_id = $1,
-              stage_id = $2,
-              position = 0,
-              updated_at = NOW()
-            WHERE pipeline_id = $3
-          `,
-          [pipelineId, stageIds[0], previousDefaultId]
-        );
+      const movedLeadsRes = await pool.query(
+        `
+          SELECT
+            l.id,
+            l.position,
+            st.position AS stage_position
+          FROM pendencias.crm_leads l
+          JOIN pendencias.crm_stages st ON st.id = l.stage_id
+          WHERE l.pipeline_id = $1
+          ORDER BY st.position ASC, l.position ASC, l.created_at ASC
+        `,
+        [previousDefaultId]
+      );
+      const movedLeads = movedLeadsRes.rows || [];
+      if (movedLeads.length > 0) {
+        const targetStageCount = stageIds.length;
+        const buckets = new Map<number, Array<{ id: string }>>();
+        for (const row of movedLeads) {
+          const oldStagePos = Math.max(0, Number(row.stage_position || 0));
+          const targetStagePos = Math.min(oldStagePos, Math.max(0, targetStageCount - 1));
+          if (!buckets.has(targetStagePos)) buckets.set(targetStagePos, []);
+          buckets.get(targetStagePos)!.push({ id: String(row.id) });
+        }
+
+        await pool.query("BEGIN");
+        try {
+          for (let stagePos = 0; stagePos < targetStageCount; stagePos++) {
+            const list = buckets.get(stagePos) || [];
+            for (let idx = 0; idx < list.length; idx++) {
+              const lead = list[idx];
+              if (ownerUsernameForMovedLeads) {
+                await pool.query(
+                  `
+                    UPDATE pendencias.crm_leads
+                    SET
+                      pipeline_id = $1,
+                      stage_id = $2,
+                      position = $3,
+                      owner_username = $4,
+                      updated_at = NOW()
+                    WHERE id = $5
+                  `,
+                  [pipelineId, stageIds[stagePos], idx, ownerUsernameForMovedLeads, lead.id]
+                );
+              } else {
+                await pool.query(
+                  `
+                    UPDATE pendencias.crm_leads
+                    SET
+                      pipeline_id = $1,
+                      stage_id = $2,
+                      position = $3,
+                      updated_at = NOW()
+                    WHERE id = $4
+                  `,
+                  [pipelineId, stageIds[stagePos], idx, lead.id]
+                );
+              }
+            }
+          }
+          await pool.query("COMMIT");
+        } catch (e) {
+          await pool.query("ROLLBACK");
+          throw e;
+        }
       }
     }
 

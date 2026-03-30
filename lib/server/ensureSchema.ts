@@ -141,6 +141,10 @@ export async function ensureCrmSchemaTables() {
   await pool.query(`ALTER TABLE pendencias.crm_leads ADD COLUMN IF NOT EXISTS agency_id uuid`);
   await pool.query(`ALTER TABLE pendencias.crm_leads ADD COLUMN IF NOT EXISTS agency_requested_at timestamptz`);
   await pool.query(`ALTER TABLE pendencias.crm_leads ADD COLUMN IF NOT EXISTS agency_sla_minutes int`);
+  await pool.query(`ALTER TABLE pendencias.crm_leads ADD COLUMN IF NOT EXISTS contact_avatar_url text`);
+  await pool.query(`ALTER TABLE pendencias.crm_leads ADD COLUMN IF NOT EXISTS is_recurring_freight boolean NOT NULL DEFAULT false`);
+  await pool.query(`ALTER TABLE pendencias.crm_leads ADD COLUMN IF NOT EXISTS tracking_active boolean NOT NULL DEFAULT false`);
+  await pool.query(`ALTER TABLE pendencias.crm_leads ADD COLUMN IF NOT EXISTS observations text`);
   await pool.query(`
     DO $$
     BEGIN
@@ -190,6 +194,8 @@ export async function ensureCrmSchemaTables() {
   await pool.query(`ALTER TABLE pendencias.crm_conversations ADD COLUMN IF NOT EXISTS sla_minutes int`);
   await pool.query(`ALTER TABLE pendencias.crm_conversations ADD COLUMN IF NOT EXISTS sla_due_at timestamptz`);
   await pool.query(`ALTER TABLE pendencias.crm_conversations ADD COLUMN IF NOT EXISTS sla_breached_at timestamptz`);
+  await pool.query(`ALTER TABLE pendencias.crm_conversations ADD COLUMN IF NOT EXISTS ai_summary text`);
+  await pool.query(`ALTER TABLE pendencias.crm_conversations ADD COLUMN IF NOT EXISTS ai_summary_updated_at timestamptz`);
   await pool.query(
     `ALTER TABLE pendencias.crm_conversations ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now()`
   );
@@ -296,6 +302,25 @@ export async function ensureCrmSchemaTables() {
   await pool.query(`ALTER TABLE pendencias.crm_sofia_settings ADD COLUMN IF NOT EXISTS welcome_enabled boolean NOT NULL DEFAULT true`);
 
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS pendencias.crm_evolution_intake_settings (
+      id int PRIMARY KEY DEFAULT 1,
+      lead_filter_mode text NOT NULL DEFAULT 'BUSINESS_ONLY',
+      ai_enabled boolean NOT NULL DEFAULT true,
+      min_messages_before_create int NOT NULL DEFAULT 2,
+      allowlist_last10 text,
+      denylist_last10 text,
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      CONSTRAINT crm_evolution_intake_settings_singleton CHECK (id = 1)
+    )
+  `);
+  await pool.query(`
+    INSERT INTO pendencias.crm_evolution_intake_settings (id)
+    VALUES (1)
+    ON CONFLICT (id) DO NOTHING
+  `);
+
+
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS pendencias.crm_whatsapp_inboxes (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       name text NOT NULL,
@@ -308,6 +333,51 @@ export async function ensureCrmSchemaTables() {
       team_id uuid REFERENCES pendencias.crm_teams(id) ON DELETE SET NULL,
       created_at timestamptz NOT NULL DEFAULT now(),
       updated_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+
+  await pool.query(`ALTER TABLE pendencias.crm_whatsapp_inboxes DROP CONSTRAINT IF EXISTS crm_whatsapp_inboxes_phone_number_id_key`);
+  await pool.query(`ALTER TABLE pendencias.crm_whatsapp_inboxes ALTER COLUMN phone_number_id DROP NOT NULL`);
+  await pool.query(`ALTER TABLE pendencias.crm_whatsapp_inboxes ADD COLUMN IF NOT EXISTS provider text NOT NULL DEFAULT 'META'`);
+  await pool.query(`ALTER TABLE pendencias.crm_whatsapp_inboxes ADD COLUMN IF NOT EXISTS evolution_instance_name text`);
+  await pool.query(`ALTER TABLE pendencias.crm_whatsapp_inboxes ADD COLUMN IF NOT EXISTS evolution_server_url text`);
+  await pool.query(`ALTER TABLE pendencias.crm_whatsapp_inboxes ADD COLUMN IF NOT EXISTS evolution_api_key text`);
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_crm_wa_inbox_meta_phone
+    ON pendencias.crm_whatsapp_inboxes (phone_number_id)
+    WHERE provider = 'META' AND phone_number_id IS NOT NULL AND btrim(phone_number_id) <> ''
+  `);
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_crm_wa_inbox_evo_instance
+    ON pendencias.crm_whatsapp_inboxes (lower(evolution_instance_name))
+    WHERE provider = 'EVOLUTION' AND evolution_instance_name IS NOT NULL AND btrim(evolution_instance_name) <> ''
+  `);
+
+  await pool.query(`
+    ALTER TABLE pendencias.crm_conversations
+    ADD COLUMN IF NOT EXISTS whatsapp_inbox_id uuid REFERENCES pendencias.crm_whatsapp_inboxes(id) ON DELETE SET NULL
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_crm_conversations_whatsapp_inbox
+    ON pendencias.crm_conversations(whatsapp_inbox_id)
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS pendencias.crm_evolution_intake_buffer (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      inbox_id uuid NOT NULL REFERENCES pendencias.crm_whatsapp_inboxes(id) ON DELETE CASCADE,
+      phone_last10 text NOT NULL,
+      phone_digits text,
+      profile_name text,
+      message_count int NOT NULL DEFAULT 0,
+      sample_text text,
+      business_score int NOT NULL DEFAULT 0,
+      last_decision text,
+      created_lead_id uuid REFERENCES pendencias.crm_leads(id) ON DELETE SET NULL,
+      first_seen_at timestamptz NOT NULL DEFAULT now(),
+      last_seen_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      UNIQUE (inbox_id, phone_last10)
     )
   `);
 
