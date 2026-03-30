@@ -4,7 +4,7 @@
     "dev": "npm run dev --prefix pendencias-sle-main",
     "build": "npm run build --prefix pendencias-sle-main",
     "start": "npm run start --prefix pendencias-sle-main",
-    "vercel-build": "npm install --include=dev --prefix pendencias-sle-main && npm run build --prefix pendencias-sle-main"
+    "vercel-build": "node ./scripts/vercel-build.mjs"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
