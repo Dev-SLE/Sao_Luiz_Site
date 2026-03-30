@@ -502,7 +502,16 @@ const CrmOpsAdmin: React.FC = () => {
                   const res = (await authClient.saveCrmWhatsappInbox(payload as any)) as {
                     id?: string;
                     evolutionInstanceName?: string;
+                    webhookSync?: { ok?: boolean; error?: string };
                   };
+
+                  if (res?.webhookSync && res.webhookSync.ok === false) {
+                    setOpsNotice({
+                      title: "Webhook na Evolution",
+                      message: `${res.webhookSync.error || "Não foi possível gravar o webhook na API."} Se a URL no Manager continuar vazia, use “Sincronizar webhook + QR” no pareamento ou confira NEXT_PUBLIC_APP_URL na Vercel.`,
+                      variant: "warning",
+                    });
+                  }
 
                   if (useSimple && res?.id) {
                     setPairInbox({

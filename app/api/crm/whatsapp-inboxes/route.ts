@@ -3,7 +3,7 @@ import { getPool } from "../../../../lib/server/db";
 import { ensureCrmSchemaTables } from "../../../../lib/server/ensureSchema";
 import { getEvolutionServerDefaults, slugifyInstancePart } from "../../../../lib/server/evolutionDefaults";
 import { evolutionExternalFetch, normalizeEvolutionServerUrl } from "../../../../lib/server/evolutionUrl";
-import { getSitePublicBaseUrl } from "../../../../lib/sitePublicUrl";
+import { syncEvolutionInstanceWebhook } from "../../../../lib/server/evolutionWebhookSync";
 
 export const runtime = "nodejs";
 
@@ -62,70 +62,6 @@ function maskKey(key: string | null | undefined): string | null {
   const s = String(key);
   if (s.length <= 4) return "****";
   return `…${s.slice(-4)}`;
-}
-
-async function syncEvolutionWebhookForInstance(args: {
-  serverUrl: string;
-  apiKey: string;
-  instance: string;
-}) {
-  const token = String(process.env.EVOLUTION_WEBHOOK_TOKEN ?? "").trim();
-  const publicBase = getSitePublicBaseUrl();
-  if (!publicBase) {
-    return {
-      ok: false,
-      error: "Defina NEXT_PUBLIC_APP_URL ou EVOLUTION_WEBHOOK_PUBLIC_BASE para sincronizar webhook.",
-    };
-  }
-  const qs = token ? `?token=${encodeURIComponent(token)}` : "";
-  const webhookUrl = `${publicBase.replace(/\/+$/, "")}/api/whatsapp/evolution/webhook${qs}`;
-  const payload = {
-    enabled: true,
-    url: webhookUrl,
-    webhookByEvents: false,
-    webhookBase64: true,
-    events: [
-      "QRCODE_UPDATED",
-      "CONNECTION_UPDATE",
-      "MESSAGES_UPSERT",
-      "MESSAGES_UPDATE",
-      "MESSAGES_EDITED",
-    ],
-  };
-  try {
-    const base = normalizeEvolutionServerUrl(args.serverUrl).replace(/\/+$/, "");
-    if (!base) {
-      return { ok: false, error: "URL do servidor Evolution inválida" };
-    }
-    const endpoints = [
-      `${base}/webhook/set/${encodeURIComponent(args.instance)}`,
-      `${base}/webhook/set`,
-    ];
-    for (const endpoint of endpoints) {
-      const bodyToSend =
-        endpoint.endsWith("/webhook/set")
-          ? { ...payload, instanceName: args.instance }
-          : payload;
-      const r = await evolutionExternalFetch(endpoint, {
-        method: "POST",
-        headers: { apikey: args.apiKey, "Content-Type": "application/json", accept: "application/json" },
-        body: JSON.stringify(bodyToSend),
-      });
-      const text = await r.text();
-      let evolution: unknown;
-      try {
-        evolution = JSON.parse(text);
-      } catch {
-        evolution = { raw: text };
-      }
-      if (r.ok) {
-        return { ok: true, httpStatus: r.status, webhookUrl, evolution, endpoint };
-      }
-    }
-    return { ok: false, error: "Falha ao sincronizar webhook na Evolution" };
-  } catch (e: any) {
-    return { ok: false, error: e?.message || String(e) };
-  }
 }
 
 export async function GET(req: Request) {
@@ -272,7 +208,7 @@ export async function POST(req: Request) {
         `,
         [id, name, evolutionInstanceName, evolutionServerUrl, evolutionApiKey, teamId]
       );
-      const webhookSync = await syncEvolutionWebhookForInstance({
+      const webhookSync = await syncEvolutionInstanceWebhook({
         serverUrl: evolutionServerUrl,
         apiKey: evolutionApiKey,
         instance: evolutionInstanceName,
@@ -334,7 +270,7 @@ export async function POST(req: Request) {
     `,
       [name, evolutionInstanceName, evolutionServerUrl, evolutionApiKey, teamId]
     );
-    const webhookSync = await syncEvolutionWebhookForInstance({
+    const webhookSync = await syncEvolutionInstanceWebhook({
       serverUrl: evolutionServerUrl,
       apiKey: evolutionApiKey,
       instance: evolutionInstanceName,

@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { getSitePublicBaseUrl } from "../../../../lib/sitePublicUrl";
+import { normalizeEvolutionServerUrl } from "../../../../lib/server/evolutionUrl";
+import { syncEvolutionInstanceWebhook } from "../../../../lib/server/evolutionWebhookSync";
 
 export const runtime = "nodejs";
 
 /**
- * Chama POST /webhook/set/{instance} na Evolution com QRCODE_UPDATED + Base64.
- * O Manager às vezes não persiste os eventos; isso força pelo REST oficial.
+ * Chama a Evolution para gravar webhook (URL pública do CRM + eventos).
  * Mesmas regras que connect-proxy (dev ou EVOLUTION_CONNECT_PROXY_ENABLED).
  */
 export async function GET(req: Request) {
@@ -15,13 +16,16 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Desativado em produção" }, { status: 403 });
   }
 
-  const base = (process.env.EVOLUTION_API_URL || "http://127.0.0.1:8080").replace(/\/+$/, "");
+  const base = normalizeEvolutionServerUrl(
+    process.env.EVOLUTION_API_URL || "http://127.0.0.1:8080"
+  ).replace(/\/+$/, "");
   const apiKey = process.env.EVOLUTION_API_KEY || "";
-  const token = String(process.env.EVOLUTION_WEBHOOK_TOKEN ?? "").trim();
   const { searchParams } = new URL(req.url);
   const instance = searchParams.get("instance");
-  const publicBase =
-    searchParams.get("publicBase")?.trim() || getSitePublicBaseUrl() || "http://host.docker.internal:3000";
+  const publicBaseParam = searchParams.get("publicBase")?.trim();
+  const publicBaseOverride =
+    publicBaseParam ||
+    (getSitePublicBaseUrl() ? undefined : "http://host.docker.internal:3000");
 
   if (!apiKey) {
     return NextResponse.json({ error: "Defina EVOLUTION_API_KEY no .env" }, { status: 500 });
@@ -30,50 +34,26 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Parâmetro instance obrigatório" }, { status: 400 });
   }
 
-  const qs = token ? `?token=${encodeURIComponent(token)}` : "";
-  const webhookUrl = `${publicBase.replace(/\/+$/, "")}/api/whatsapp/evolution/webhook${qs}`;
+  const result = await syncEvolutionInstanceWebhook({
+    serverUrl: base,
+    apiKey,
+    instance: instance.trim(),
+    publicBaseOverride: publicBaseOverride || undefined,
+  });
 
-  const payload = {
-    enabled: true,
-    url: webhookUrl,
-    webhookByEvents: false,
-    webhookBase64: true,
-    events: [
-      "QRCODE_UPDATED",
-      "CONNECTION_UPDATE",
-      "MESSAGES_UPSERT",
-      "MESSAGES_UPDATE",
-      "MESSAGES_EDITED",
-    ],
-  };
-
-  try {
-    const url = `${base}/webhook/set/${encodeURIComponent(instance.trim())}`;
-    const r = await fetch(url, {
-      method: "POST",
-      headers: { apikey: apiKey, "Content-Type": "application/json", accept: "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const text = await r.text();
-    let evolution: unknown;
-    try {
-      evolution = JSON.parse(text);
-    } catch {
-      evolution = { raw: text };
-    }
-    return NextResponse.json(
-      {
-        ok: r.ok,
-        httpStatus: r.status,
-        evolutionWebhookUrl: webhookUrl,
-        publicBaseUsed: publicBase,
-        evolution,
-        hint:
-          "No Manager, use Conectar na instância de novo. No terminal do Next deve aparecer event qrcode.updated se a Evolution emitir o QR.",
-      },
-      { status: 200 }
-    );
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message || String(e) }, { status: 502 });
-  }
+  return NextResponse.json(
+    {
+      ok: result.ok,
+      httpStatus: result.httpStatus,
+      evolutionWebhookUrl: result.webhookUrl,
+      publicBaseUsed: publicBaseParam || getSitePublicBaseUrl() || publicBaseOverride || null,
+      endpoint: result.endpoint,
+      evolution: result.evolution,
+      error: result.error,
+      hint: result.ok
+        ? "Webhook gravado via API. Recarregue o Manager se a tela ainda estiver em branco."
+        : "Confira NEXT_PUBLIC_APP_URL, chave apikey e nome exato da instância.",
+    },
+    { status: 200 }
+  );
 }

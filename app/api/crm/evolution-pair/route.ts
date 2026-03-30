@@ -9,7 +9,7 @@ import {
   isEvolutionNetworkError,
   normalizeEvolutionServerUrl,
 } from "../../../../lib/server/evolutionUrl";
-import { getSitePublicBaseUrl } from "../../../../lib/sitePublicUrl";
+import { syncEvolutionInstanceWebhook } from "../../../../lib/server/evolutionWebhookSync";
 
 export const runtime = "nodejs";
 
@@ -31,55 +31,6 @@ async function loadInbox(pool: any, inboxId: string) {
     [inboxId]
   );
   return res.rows?.[0] || null;
-}
-
-/** Sincroniza webhook na Evolution com a URL pública do CRM (mesmo payload do sync-webhook). */
-async function syncEvolutionWebhookForInbox(args: { serverUrl: string; apiKey: string; instance: string }) {
-  const token = String(process.env.EVOLUTION_WEBHOOK_TOKEN ?? "").trim();
-  const publicBase = getSitePublicBaseUrl();
-  if (!publicBase) {
-    return {
-      ok: false,
-      error: "Defina NEXT_PUBLIC_APP_URL ou EVOLUTION_WEBHOOK_PUBLIC_BASE para montar a URL do webhook.",
-    };
-  }
-  const qs = token ? `?token=${encodeURIComponent(token)}` : "";
-  const webhookUrl = `${publicBase.replace(/\/+$/, "")}/api/whatsapp/evolution/webhook${qs}`;
-  const base = normalizeEvolutionServerUrl(args.serverUrl).replace(/\/+$/, "");
-  if (!base) {
-    return { ok: false, error: "URL do servidor Evolution inválida" };
-  }
-  const url = `${base}/webhook/set/${encodeURIComponent(args.instance)}`;
-  const payload = {
-    enabled: true,
-    url: webhookUrl,
-    webhookByEvents: false,
-    webhookBase64: true,
-    events: [
-      "QRCODE_UPDATED",
-      "CONNECTION_UPDATE",
-      "MESSAGES_UPSERT",
-      "MESSAGES_UPDATE",
-      "MESSAGES_EDITED",
-    ],
-  };
-  try {
-    const r = await evolutionExternalFetch(url, {
-      method: "POST",
-      headers: { apikey: args.apiKey, "Content-Type": "application/json", accept: "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const text = await r.text();
-    let evolution: unknown;
-    try {
-      evolution = JSON.parse(text);
-    } catch {
-      evolution = { raw: text };
-    }
-    return { ok: r.ok, httpStatus: r.status, evolution, webhookUrl };
-  } catch (e: any) {
-    return { ok: false, error: e?.message || String(e) };
-  }
 }
 
 /** POST: gerar QR / reconectar; opcional sync webhook. */
@@ -115,7 +66,7 @@ export async function POST(req: Request) {
 
     let syncResult: any = null;
     if (syncWebhook) {
-      syncResult = await syncEvolutionWebhookForInbox({ serverUrl, apiKey, instance });
+      syncResult = await syncEvolutionInstanceWebhook({ serverUrl, apiKey, instance });
     }
 
     const { httpStatus, evolution, fetchInstancesBody } = await runEvolutionConnect({
