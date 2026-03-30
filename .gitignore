@@ -1,0 +1,10 @@
+# Root workspace hygiene
+.next/
+public/
+node_modules/
+
+# Local artifacts and temp files
+*.tsbuildinfo
+*.log
+.env
+.env.*
