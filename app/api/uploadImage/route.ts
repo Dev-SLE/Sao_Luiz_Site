@@ -51,7 +51,7 @@ export async function POST(req: Request) {
         mimeType: f.type || "application/octet-stream",
         body: Readable.from(buffer),
       },
-    });
+    } as any);
 
     const fileId = response.data.id;
     if (!fileId) throw new Error("Drive não retornou fileId");
