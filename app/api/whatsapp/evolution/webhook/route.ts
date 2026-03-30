@@ -467,7 +467,8 @@ function collectMessageUpdateItems(data: any): any[] {
   if (Array.isArray(data.messages)) return data.messages;
   if (Array.isArray(data.messageUpdates)) return data.messageUpdates;
   if (Array.isArray(data.updates)) return data.updates;
-  if (data.key || data.id || data.messageId) return [data];
+  /** Evolution v2: um único objeto com keyId + status (sem key.messagem). */
+  if (data.keyId || data.key || data.id || data.messageId) return [data];
   return [];
 }
 
@@ -499,10 +500,12 @@ function normalizeOutboundStatus(rawStatus: unknown): string | null {
 function extractUpdateMessageId(item: any): string {
   return String(
     item?.key?.id ||
+      item?.keyId ||
       item?.id ||
       item?.messageId ||
       item?.message_id ||
       item?.data?.key?.id ||
+      item?.data?.keyId ||
       item?.data?.id ||
       ""
   ).trim();
