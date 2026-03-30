@@ -377,24 +377,15 @@ export const EvolutionInboxPairModal: React.FC<Props> = ({ open, onClose, inbox 
           <button
             type="button"
             disabled={loading || pairSuccess}
-            onClick={() => runConnect(false)}
+            onClick={() => runConnect(true)}
             className="inline-flex items-center gap-1 rounded-lg bg-gradient-to-r from-[#2c348c] to-[#1f2f86] px-4 py-2 text-xs font-bold text-white disabled:opacity-60"
           >
             {loading && <Loader2 size={14} className="animate-spin" />}
             Gerar QR
           </button>
-          <button
-            type="button"
-            disabled={loading || pairSuccess}
-            onClick={() => runConnect(true)}
-            className="inline-flex items-center gap-1 rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-2 text-xs font-bold text-emerald-900 disabled:opacity-60"
-          >
-            Sincronizar webhook + QR
-          </button>
         </div>
         <p className="mt-2 text-[10px] text-slate-500">
-          &quot;Sincronizar webhook + QR&quot; grava no CRM a URL pública do webhook (precisa{" "}
-          <code className="bg-slate-100 px-0.5 rounded">NEXT_PUBLIC_APP_URL</code>) e pede novo QR.
+          Ao gerar o QR, o CRM já configura a URL do webhook e os eventos na instância da Evolution automaticamente.
         </p>
 
         {syncResult && !syncResult.ok && syncResult.error && (
