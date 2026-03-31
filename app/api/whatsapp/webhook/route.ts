@@ -369,7 +369,7 @@ async function callOpenAi(prompt: string, modelOverride?: string | null) {
         messages: [
           {
             role: "system",
-            content: buildSofiaSystemInstructions(s.system_instructions),
+            content: buildSofiaSystemInstructions(null),
           },
           { role: "user", content: prompt },
         ],

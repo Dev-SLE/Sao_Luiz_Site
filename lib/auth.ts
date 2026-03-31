@@ -623,6 +623,9 @@ export class NeonDataClient {
     leadFilterMode: "OFF" | "BUSINESS_ONLY" | "AGENCY_ONLY";
     aiEnabled: boolean;
     minMessagesBeforeCreate: number;
+    metaLeadFilterMode?: "OFF" | "BUSINESS_ONLY" | "AGENCY_ONLY";
+    metaAiEnabled?: boolean;
+    metaMinMessagesBeforeCreate?: number;
     allowlistLast10?: string;
     denylistLast10?: string;
   }): Promise<any> {
