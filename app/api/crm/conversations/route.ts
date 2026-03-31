@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getPool } from "../../../../lib/server/db";
 import { ensureCrmSchemaTables } from "../../../../lib/server/ensureSchema";
 import { classifyLeadTopic, pickAgentFromTeam, pickFallbackAgent, resolveRoutingByRules, resolveSlaMinutes } from "../../../../lib/server/crmRouting";
+import { can, getSessionContext } from "../../../../lib/server/authorization";
 
 export const runtime = "nodejs";
 
@@ -57,11 +58,15 @@ export async function GET(req: Request) {
   try {
     await ensureCrmSchemaTables();
     const pool = getPool();
+    const session = await getSessionContext(req);
+    if (!session || !can(session, "tab.crm.chat.view")) {
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+    }
 
     const { searchParams } = new URL(req.url);
     const leadId = searchParams.get("leadId");
-    const requestUsername = searchParams.get("requestUsername");
-    const requestRole = (searchParams.get("requestRole") || "").toLowerCase();
+    const requestUsername = session.username;
+    const requestRole = (session.role || "").toLowerCase();
     const mineOnlyRequested = (searchParams.get("mineOnly") || "false").toLowerCase() === "true";
     const teamId = searchParams.get("teamId");
 
@@ -89,8 +94,8 @@ export async function GET(req: Request) {
       const row = ures.rows?.[0];
       const role = String(row?.role || requestRole || "").toLowerCase();
       const perms = parsePermissions(row?.permissions);
-      if (role === "admin" || perms.includes("CRM_SCOPE_ALL")) scope = "ALL";
-      else if (perms.includes("CRM_SCOPE_TEAM")) scope = "TEAM";
+      if (role === "admin" || perms.includes("CRM_SCOPE_ALL") || perms.includes("scope.crm.all")) scope = "ALL";
+      else if (perms.includes("CRM_SCOPE_TEAM") || perms.includes("scope.crm.team")) scope = "TEAM";
       else scope = "SELF";
     }
 

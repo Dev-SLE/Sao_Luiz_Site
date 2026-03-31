@@ -261,9 +261,6 @@ export async function POST(req: Request) {
           { status: 400 }
         );
       }
-      if (ownerUsername && !teamId) {
-        return NextResponse.json({ error: "Defina um time ao informar dono da caixa" }, { status: 400 });
-      }
       if (ownerUsername) {
         const ownerCheck = await validateOwnerUsername(pool, ownerUsername, teamId);
         if (!ownerCheck.ok) return NextResponse.json({ error: ownerCheck.error }, { status: 400 });
@@ -312,9 +309,6 @@ export async function POST(req: Request) {
         },
         { status: 400 }
       );
-    }
-    if (ownerUsername && !teamId) {
-      return NextResponse.json({ error: "Defina um time ao informar dono da caixa" }, { status: 400 });
     }
     if (ownerUsername) {
       const ownerCheck = await validateOwnerUsername(pool, ownerUsername, teamId);

@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { getPool } from "../../../../../lib/server/db";
 import { ensureCrmSchemaTables } from "../../../../../lib/server/ensureSchema";
 import { countTrailingClientStreak } from "../../../../../lib/server/sofiaStreak";
+import {
+  buildSofiaOperationalPrompt,
+  buildSofiaSystemInstructions,
+} from "../../../../../lib/server/sofiaGovernance";
 
 export const runtime = "nodejs";
 
@@ -149,11 +153,9 @@ async function callOpenAi(args: {
   const model =
     (args.modelOverride && String(args.modelOverride).trim()) || process.env.OPENAI_MODEL || "gpt-4o-mini";
   if (!apiKey) return null;
-  const systemBase =
-    "Você é Sofia, assistente de CRM logístico. Seja cordial, humana e objetiva. Não repita frases idênticas da última resposta. Sempre avance com uma pergunta útil quando faltar dado.";
   const customSystem = String(args.systemInstructions || "").trim();
   const messages = [
-    { role: "system", content: customSystem ? `${systemBase}\n${customSystem}` : systemBase },
+    { role: "system", content: buildSofiaSystemInstructions(customSystem) },
     ...args.turns.map((t) => ({
       role: t.role === "user" ? "user" : "assistant",
       content: t.text,
@@ -446,23 +448,18 @@ export async function POST(req: Request) {
       });
     }
 
-    const prompt = [
-      `Nome cliente: ${String(conv.title || "")}`,
-      `CTE: ${String(conv.cte_number || "")}`,
-      `Tópico: ${String(conv.topic || "")}`,
-      `Tom de resposta: ${responseTone}`,
-      `Instruções do supervisor: ${String(settings.system_instructions || "")}`,
-      `Objetivo operacional: qualificar a conversa para o atendente humano, coletando os dados mínimos (CTE, origem, destino, unidade, ocorrência, urgência).`,
-      `Se não houver informação suficiente, faça pergunta curta e direta para avançar o diagnóstico.`,
-      `Não repita frase pronta já usada no histórico; varie a formulação mantendo o mesmo sentido.`,
-      cteSummary
-        ? `CTE encontrado no banco: CTE ${String(cteSummary.cte || "")} Série ${String(cteSummary.serie || "")} | Status ${String(cteSummary.status_calculado || cteSummary.status || "")} | Destino ${String(cteSummary.entrega || "")} | Destinatário ${String(cteSummary.destinatario || "")}.`
-        : "Se o cliente enviar CTE/NF e não houver resultado no banco, avise que não encontrou e peça confirmação do número.",
-      `Conhecimento: ${String(settings.knowledge_base || "")}`,
-      `Histórico recente já foi enviado por mensagens com papéis user/model.`,
-      `Mensagem atual: ${text}`,
-      `Responda em pt-BR, curta e precisa.`,
-    ].join("\n\n");
+    const prompt = buildSofiaOperationalPrompt({
+      customerName: conv.title,
+      cte: conv.cte_number,
+      topic: conv.topic,
+      responseTone,
+      supervisorInstructions: settings.system_instructions,
+      knowledgeBase: settings.knowledge_base,
+      userText: text,
+      cteSummaryText: cteSummary
+        ? `CTE ${String(cteSummary.cte || "")} Série ${String(cteSummary.serie || "")} | Status ${String(cteSummary.status_calculado || cteSummary.status || "")} | Destino ${String(cteSummary.entrega || "")} | Destinatário ${String(cteSummary.destinatario || "")}.`
+        : null,
+    });
 
     let suggestion = await callAiProvider({
       provider: settings.ai_provider,

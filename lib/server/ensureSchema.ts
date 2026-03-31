@@ -318,14 +318,20 @@ export async function ensureCrmSchemaTables() {
     CREATE TABLE IF NOT EXISTS pendencias.crm_evolution_intake_settings (
       id int PRIMARY KEY DEFAULT 1,
       lead_filter_mode text NOT NULL DEFAULT 'BUSINESS_ONLY',
+      meta_lead_filter_mode text NOT NULL DEFAULT 'BUSINESS_ONLY',
       ai_enabled boolean NOT NULL DEFAULT true,
+      meta_ai_enabled boolean NOT NULL DEFAULT true,
       min_messages_before_create int NOT NULL DEFAULT 2,
+      meta_min_messages_before_create int NOT NULL DEFAULT 1,
       allowlist_last10 text,
       denylist_last10 text,
       updated_at timestamptz NOT NULL DEFAULT now(),
       CONSTRAINT crm_evolution_intake_settings_singleton CHECK (id = 1)
     )
   `);
+  await pool.query(`ALTER TABLE pendencias.crm_evolution_intake_settings ADD COLUMN IF NOT EXISTS meta_lead_filter_mode text NOT NULL DEFAULT 'BUSINESS_ONLY'`);
+  await pool.query(`ALTER TABLE pendencias.crm_evolution_intake_settings ADD COLUMN IF NOT EXISTS meta_ai_enabled boolean NOT NULL DEFAULT true`);
+  await pool.query(`ALTER TABLE pendencias.crm_evolution_intake_settings ADD COLUMN IF NOT EXISTS meta_min_messages_before_create int NOT NULL DEFAULT 1`);
   await pool.query(`
     INSERT INTO pendencias.crm_evolution_intake_settings (id)
     VALUES (1)

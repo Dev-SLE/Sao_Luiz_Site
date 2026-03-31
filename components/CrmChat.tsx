@@ -1185,7 +1185,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
   }, [selectedConversation?.id]);
 
   return (
-    <div className="grid grid-cols-12 gap-4 h-full min-h-0">
+    <div className="crm-chat-shell grid grid-cols-12 gap-4 h-full min-h-0">
       {/* Lista de conversas */}
       <aside className="col-span-12 md:col-span-3 bg-gradient-to-b from-white to-[#f7faff] border border-[#2c348c]/20 rounded-xl flex flex-col min-h-0 shadow-[0_10px_24px_rgba(15,23,42,0.10)]">
         <div className="px-3 py-3 border-b border-slate-200 flex items-center justify-between">
@@ -1432,13 +1432,28 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                   {m.replyTo?.text && (
                     <div
                       className={clsx(
-                        'mb-1 rounded-lg border px-2 py-1 text-[10px] truncate',
+                        'mb-1 rounded-lg border px-2 py-1 text-[10px]',
                         isMe
                           ? 'border-white/25 bg-white/10 text-white/90'
                           : 'border-slate-200 bg-slate-50 text-slate-600'
                       )}
                     >
-                      {m.replyTo?.sender || 'Mensagem'}: {m.replyTo.text}
+                      <div className="flex items-start gap-2">
+                        <span
+                          className={clsx(
+                            'mt-[1px] h-6 w-[3px] shrink-0 rounded-full',
+                            isMe ? 'bg-white/70' : 'bg-slate-300'
+                          )}
+                        />
+                        <div className="min-w-0">
+                          <div className="font-semibold truncate">
+                            {m.replyTo?.sender || 'Mensagem'}
+                          </div>
+                          <div className="truncate">
+                            {m.replyTo.text}
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   )}
                   {!isSingleLinePlaceholder(m.text) && (

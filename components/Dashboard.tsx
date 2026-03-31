@@ -357,6 +357,7 @@ const Dashboard: React.FC = () => {
       type="button"
       onClick={onClick}
       className={clsx(
+        'dashboard-filter-card',
         'group relative flex h-full w-full flex-col justify-between overflow-hidden rounded-xl border text-left transition-all duration-200',
         'border-slate-200/90 bg-white shadow-sm hover:border-slate-300 hover:shadow-md',
         selected &&
@@ -593,7 +594,7 @@ const Dashboard: React.FC = () => {
       {/* KPIs */}
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-12 lg:gap-6">
         <div
-          className={clsx(cardBase, 'relative overflow-hidden p-6 lg:col-span-4')}
+          className={clsx(cardBase, 'dashboard-kpi-main-card relative overflow-hidden p-6 lg:col-span-4')}
           style={{ background: `linear-gradient(135deg, #ffffff 0%, #f4f7fb 100%)` }}
         >
           <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-[#2c348c]/[0.07]" />

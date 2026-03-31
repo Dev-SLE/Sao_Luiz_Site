@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useMemo, useState, useEffect } from 'react';
 import { authClient } from '../lib/auth';
+import { hasPermissionWithAliases } from '../lib/permissions';
 import { CteData, NoteData, UserData, GlobalData, ProfileData, ProcessData } from '../types';
 import { useAuth } from './AuthContext';
 
@@ -184,7 +185,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const roleName = (user?.role || '').trim().toLowerCase();
     if (roleName === 'admin') return true;
     if (!perm) return true;
-    return !!currentProfile?.permissions?.includes(perm);
+    return hasPermissionWithAliases(currentProfile?.permissions || [], perm) || !!currentProfile?.permissions?.includes(perm);
   };
 
   const normalizeCtes = (rows: any[]): CteData[] =>

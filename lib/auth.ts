@@ -629,6 +629,38 @@ export class NeonDataClient {
     return this.postJson('/crm/evolution-intake-settings', payload);
   }
 
+  async getCrmEvolutionIntakeBuffer(params?: { limit?: number }): Promise<any> {
+    const usp = new URLSearchParams();
+    if (params?.limit) usp.set("limit", String(params.limit));
+    const qs = usp.toString();
+    const url = this.makeApiUrl(`/crm/evolution-intake-buffer${qs ? `?${qs}` : ""}`);
+    const resp = await fetch(url);
+    if (!resp.ok) throw await this.buildHttpError('Erro ao buscar triagem pendente', resp);
+    return resp.json();
+  }
+
+  async decideCrmEvolutionIntakeBuffer(payload: {
+    action: "APPROVE" | "REJECT";
+    bufferId: string;
+    actor?: string | null;
+  }): Promise<any> {
+    return this.postJson('/crm/evolution-intake-buffer', payload);
+  }
+
+  async getOperationalNotifications(params?: { limit?: number }): Promise<any> {
+    const usp = new URLSearchParams();
+    if (params?.limit) usp.set("limit", String(params.limit));
+    const qs = usp.toString();
+    const url = this.makeApiUrl(`/operational-notifications${qs ? `?${qs}` : ""}`);
+    const resp = await fetch(url);
+    if (!resp.ok) throw await this.buildHttpError("Erro ao buscar notificações operacionais", resp);
+    return resp.json();
+  }
+
+  async ackOperationalNotifications(lastLogId: number): Promise<any> {
+    return this.postJson("/operational-notifications", { lastLogId });
+  }
+
   async saveCrmTeam(payload: any): Promise<any> {
     return this.postJson("/crm/teams", { ...payload, action: "UPSERT_TEAM" });
   }

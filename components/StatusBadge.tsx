@@ -47,7 +47,7 @@ const StatusBadge: React.FC<Props> = ({ status, onClick }) => {
     <span
       onClick={onClick}
       className={clsx(
-        'cursor-pointer whitespace-nowrap rounded-full border px-2 py-1 text-[11px] font-semibold transition-all',
+        'status-badge cursor-pointer whitespace-nowrap rounded-full border px-2 py-1 text-[11px] font-semibold transition-all',
         getColors(status),
       )}
     >

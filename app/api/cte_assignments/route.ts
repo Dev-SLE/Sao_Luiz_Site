@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getPool } from "../../../lib/server/db";
 import { ensureAppLogsTable, ensureOperationalAssignmentsTable } from "../../../lib/server/ensureSchema";
+import { can, getSessionContext } from "../../../lib/server/authorization";
 
 export const runtime = "nodejs";
 
@@ -31,6 +32,10 @@ async function logAssignmentEvent(payload: {
 
 export async function GET(req: Request) {
   try {
+    const session = await getSessionContext(req);
+    if (!session || !can(session, "module.operacional.view")) {
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+    }
     await ensureOperationalAssignmentsTable();
     const { searchParams } = new URL(req.url);
     const cte = norm(searchParams.get("cte"));
@@ -62,6 +67,10 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
+    const session = await getSessionContext(req);
+    if (!session || !can(session, "operacional.assignment.assign")) {
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+    }
     await ensureOperationalAssignmentsTable();
     const body = await req.json().catch(() => ({}));
     const cte = norm(body?.cte);
@@ -69,7 +78,7 @@ export async function POST(req: Request) {
     const agencyUnit = norm(body?.agencyUnit);
     const assignedUsername = norm(body?.assignedUsername);
     const notes = norm(body?.notes);
-    const actor = norm(body?.actor) || null;
+    const actor = norm(body?.actor) || session.username || null;
 
     if (!cte) return NextResponse.json({ error: "cte é obrigatório" }, { status: 400 });
     if (!agencyUnit) return NextResponse.json({ error: "agencyUnit é obrigatório" }, { status: 400 });
@@ -117,11 +126,15 @@ export async function POST(req: Request) {
 
 export async function DELETE(req: Request) {
   try {
+    const session = await getSessionContext(req);
+    if (!session || !can(session, "operacional.assignment.unassign")) {
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+    }
     await ensureOperationalAssignmentsTable();
     const { searchParams } = new URL(req.url);
     const cte = norm(searchParams.get("cte"));
     const serie = normSerie(searchParams.get("serie"));
-    const actor = norm(searchParams.get("actor")) || null;
+    const actor = norm(searchParams.get("actor")) || session.username || null;
     const reason = norm(searchParams.get("reason"));
     if (!cte) return NextResponse.json({ error: "cte é obrigatório" }, { status: 400 });
     if (!reason) return NextResponse.json({ error: "Motivo da devolução é obrigatório" }, { status: 400 });

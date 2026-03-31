@@ -31,6 +31,65 @@ function lastN(input: string, n: number) {
   return d.slice(-n);
 }
 
+async function getOrMergeWhatsappConversationByLead(pool: any, leadId: string, preferredInboxId?: string | null) {
+  const convsRes = await pool.query(
+    `
+      SELECT id, whatsapp_inbox_id, created_at
+      FROM pendencias.crm_conversations
+      WHERE lead_id = $1::uuid
+        AND channel = 'WHATSAPP'
+        AND is_active = true
+      ORDER BY created_at ASC
+    `,
+    [leadId]
+  );
+  const convs = convsRes.rows || [];
+  if (!convs.length) return null;
+  const primary = convs[0];
+  const primaryId = String(primary.id);
+  const extraIds = convs.slice(1).map((c: any) => String(c.id));
+
+  if (extraIds.length) {
+    await pool.query(
+      `
+        UPDATE pendencias.crm_messages
+        SET conversation_id = $1::uuid
+        WHERE conversation_id = ANY($2::uuid[])
+      `,
+      [primaryId, extraIds]
+    );
+    await pool.query(
+      `
+        UPDATE pendencias.crm_outbox
+        SET conversation_id = $1::uuid
+        WHERE conversation_id = ANY($2::uuid[])
+      `,
+      [primaryId, extraIds]
+    );
+    await pool.query(
+      `
+        UPDATE pendencias.crm_conversations
+        SET is_active = false, updated_at = NOW()
+        WHERE id = ANY($1::uuid[])
+      `,
+      [extraIds]
+    );
+  }
+
+  if (preferredInboxId && !primary.whatsapp_inbox_id) {
+    await pool.query(
+      `
+        UPDATE pendencias.crm_conversations
+        SET whatsapp_inbox_id = $2::uuid, updated_at = NOW()
+        WHERE id = $1::uuid
+      `,
+      [primaryId, preferredInboxId]
+    );
+  }
+
+  return primaryId;
+}
+
 function extractProfilePhotoUrl(item: any): string | null {
   if (!item || typeof item !== "object") return null;
   const candidates = [
@@ -52,6 +111,50 @@ function extractProfilePhotoUrl(item: any): string | null {
     if (u && /^https?:\/\//i.test(u)) return u;
   }
   return null;
+}
+
+async function getOrMergeLeadByPhoneLast10(pool: any, phoneLast10: string) {
+  const leadsRes = await pool.query(
+    `
+      SELECT id, title, contact_phone, contact_avatar_url, created_at
+      FROM pendencias.crm_leads
+      WHERE contact_phone IS NOT NULL
+        AND RIGHT(regexp_replace(contact_phone, '\\D', '', 'g'), 10) = $1
+      ORDER BY created_at ASC
+    `,
+    [phoneLast10]
+  );
+  const leads = leadsRes.rows || [];
+  if (!leads.length) return null;
+  const primary = leads[0];
+  const primaryId = String(primary.id);
+  const duplicateIds = leads.slice(1).map((l: any) => String(l.id));
+  if (duplicateIds.length) {
+    await pool.query(
+      `
+        UPDATE pendencias.crm_conversations
+        SET lead_id = $1::uuid
+        WHERE lead_id = ANY($2::uuid[])
+      `,
+      [primaryId, duplicateIds]
+    );
+    await pool.query(
+      `
+        UPDATE pendencias.crm_activities
+        SET lead_id = $1::uuid
+        WHERE lead_id = ANY($2::uuid[])
+      `,
+      [primaryId, duplicateIds]
+    );
+    await pool.query(
+      `
+        DELETE FROM pendencias.crm_leads
+        WHERE id = ANY($1::uuid[])
+      `,
+      [duplicateIds]
+    );
+  }
+  return primary;
 }
 
 function parseLast10ListFromEnv(raw: string | undefined): Set<string> {
@@ -438,6 +541,24 @@ function collectUpsertItemsFromWebhookBody(body: Record<string, unknown>): any[]
   const fromData = collectUpsertItems(body?.data);
   if (fromData.length) return fromData;
   return collectUpsertItems(body);
+}
+
+function extractEvolutionQuotedMessageId(item: any): string | null {
+  const m = item?.message || item?.msg || {};
+  const candidates = [
+    m?.extendedTextMessage?.contextInfo?.stanzaId,
+    m?.imageMessage?.contextInfo?.stanzaId,
+    m?.videoMessage?.contextInfo?.stanzaId,
+    m?.documentMessage?.contextInfo?.stanzaId,
+    m?.audioMessage?.contextInfo?.stanzaId,
+    m?.stickerMessage?.contextInfo?.stanzaId,
+    item?.contextInfo?.stanzaId,
+  ];
+  for (const c of candidates) {
+    const id = String(c || "").trim();
+    if (id) return id;
+  }
+  return null;
 }
 
 function collectMessageEditItems(data: any): any[] {
@@ -857,26 +978,47 @@ export async function POST(req: Request) {
           }));
       }
       const profileName = pushName || null;
+      const quotedMessageId = extractEvolutionQuotedMessageId(item);
       const agencyContact = await findAgencyByLast10(pool, last10);
 
-      const leadRes = await pool.query(
-        `
-          SELECT id, title, contact_phone, contact_avatar_url
-          FROM pendencias.crm_leads
-          WHERE contact_phone IS NOT NULL
-            AND RIGHT(regexp_replace(contact_phone, '\\D', '', 'g'), 10) = $1
-          ORDER BY created_at DESC
-          LIMIT 1
-        `,
-        [last10]
-      );
+      const existingLead = await getOrMergeLeadByPhoneLast10(pool, last10);
+
+      let resolvedReplyTo: { messageId?: string; sender?: string; text?: string } | null = null;
+      if (quotedMessageId) {
+        const refRes = await pool.query(
+          `
+            SELECT id, sender_type, body
+            FROM pendencias.crm_messages
+            WHERE metadata->>'message_id' = $1
+               OR metadata#>>'{outbound_whatsapp,message_id}' = $1
+            ORDER BY created_at DESC
+            LIMIT 1
+          `,
+          [quotedMessageId]
+        );
+        const ref = refRes.rows?.[0];
+        if (ref?.id) {
+          const senderType = String(ref.sender_type || "").toUpperCase();
+          resolvedReplyTo = {
+            messageId: String(ref.id),
+            sender: senderType === "AGENT" ? "AGENTE" : senderType === "IA" ? "IA" : "CLIENTE",
+            text: String(ref.body || "").slice(0, 280),
+          };
+        } else {
+          resolvedReplyTo = {
+            messageId: quotedMessageId,
+            sender: "Mensagem",
+            text: "Mensagem original",
+          };
+        }
+      }
 
       let leadId: string;
       let leadTitle: string;
 
-      if (leadRes.rows?.[0]?.id) {
-        leadId = leadRes.rows[0].id as string;
-        leadTitle = String(leadRes.rows[0].title || leadId);
+      if (existingLead?.id) {
+        leadId = String(existingLead.id);
+        leadTitle = String(existingLead.title || leadId);
         if (profileName && /^whatsapp\s+\d+/i.test(leadTitle)) {
           const upgradedTitle = `${profileName} (${last10})`;
           await pool.query(`UPDATE pendencias.crm_leads SET title = $1, updated_at = NOW() WHERE id = $2`, [
@@ -885,7 +1027,7 @@ export async function POST(req: Request) {
           ]);
           leadTitle = upgradedTitle;
         }
-        if (profilePhotoUrl && String(leadRes.rows[0].contact_avatar_url || "").trim() !== profilePhotoUrl) {
+        if (profilePhotoUrl && String(existingLead.contact_avatar_url || "").trim() !== profilePhotoUrl) {
           await pool.query(
             `UPDATE pendencias.crm_leads SET contact_avatar_url = $1, updated_at = NOW() WHERE id = $2`,
             [profilePhotoUrl, leadId]
@@ -999,22 +1141,11 @@ export async function POST(req: Request) {
         );
       }
 
-      const convRes = await pool.query(
-        `
-          SELECT id
-          FROM pendencias.crm_conversations
-          WHERE lead_id = $1 AND channel = 'WHATSAPP' AND is_active = true
-            AND whatsapp_inbox_id = $2::uuid
-          ORDER BY created_at DESC
-          LIMIT 1
-        `,
-        [leadId, inboxId]
-      );
-
       let conversationId: string;
       let isNewConversation = false;
-      if (convRes.rows?.[0]?.id) {
-        conversationId = convRes.rows[0].id as string;
+      const mergedConversationId = await getOrMergeWhatsappConversationByLead(pool, leadId, inboxId);
+      if (mergedConversationId) {
+        conversationId = mergedConversationId;
       } else {
         isNewConversation = true;
         const inboxDefault = await resolveInboxDefaultAssignment({
@@ -1099,6 +1230,7 @@ export async function POST(req: Request) {
             from_me: isFromMe,
             sender_label: isFromMe ? "Sistema/Empresa" : "Cliente",
             remote_jid: remoteJid,
+            ...(resolvedReplyTo ? { reply_to: resolvedReplyTo } : {}),
             raw: item,
           }),
         ]

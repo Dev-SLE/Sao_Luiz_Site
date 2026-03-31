@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getPool } from "../../../lib/server/db";
 import { ensureOperationalAssignmentsTable } from "../../../lib/server/ensureSchema";
+import { can, getSessionContext } from "../../../lib/server/authorization";
 
 export const runtime = "nodejs";
 
@@ -10,6 +11,10 @@ const NORMALIZED_STATUS_SQL = `
 
 export async function POST(req: Request) {
   try {
+    const session = await getSessionContext(req);
+    if (!session || !can(session, "module.operacional.view")) {
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+    }
     try {
       await ensureOperationalAssignmentsTable();
     } catch (e) {
@@ -33,7 +38,10 @@ export async function POST(req: Request) {
     } = body || {};
 
     const viewKey = ["pendencias", "criticos", "em_busca", "tad", "concluidos"].includes(String(view)) ? String(view) : "pendencias";
-    const effectiveUnit = (ignoreUnitFilter ? "" : (unit || userLinkedDestUnit || "")).trim();
+    const hasOperationalGlobal =
+      can(session, "scope.operacional.all") || can(session, "MANAGE_SETTINGS") || String(session.role || "").toLowerCase() === "admin";
+    const serverLinkedUnit = hasOperationalGlobal ? "" : String(session.dest || "").trim();
+    const effectiveUnit = (ignoreUnitFilter ? "" : (unit || serverLinkedUnit || "")).trim();
     const statusArr = Array.isArray(statusFilters) ? statusFilters.map(String) : [];
     const payArr = Array.isArray(paymentFilters) ? paymentFilters.map(String) : [];
     const note = String(noteFilter || "ALL");
@@ -42,7 +50,7 @@ export async function POST(req: Request) {
     const assignmentAgencyValue = String(assignmentAgency || "").trim();
     const assignmentUserValue = String(assignmentUser || "").trim();
     const assignmentMine = !!assignmentMineOnly;
-    const assignmentMineUser = String(currentUsername || "").trim();
+    const assignmentMineUser = String(session.username || "").trim();
 
     const noteCond = (alias: string) => {
       if (note === "WITH") return `AND ${alias}.note_count > 0`;

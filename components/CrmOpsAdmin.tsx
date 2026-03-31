@@ -4,8 +4,10 @@ import Papa from "papaparse";
 import * as XLSX from "xlsx";
 import { EvolutionInboxPairModal, type PairInboxInfo } from "./EvolutionInboxPairModal";
 import { AppMessageModal, type AppMessageVariant } from "./AppOverlays";
+import { useAuth } from "../context/AuthContext";
 
 const CrmOpsAdmin: React.FC = () => {
+  const { user } = useAuth();
   const [teams, setTeams] = useState<any[]>([]);
   const [agents, setAgents] = useState<any[]>([]);
   const [rules, setRules] = useState<any[]>([]);
@@ -57,10 +59,14 @@ const CrmOpsAdmin: React.FC = () => {
     leadFilterMode: "BUSINESS_ONLY",
     aiEnabled: true,
     minMessagesBeforeCreate: 2,
+    metaLeadFilterMode: "BUSINESS_ONLY",
+    metaAiEnabled: true,
+    metaMinMessagesBeforeCreate: 1,
     allowlistLast10: "",
     denylistLast10: "",
   });
   const [pendingIntakeCount, setPendingIntakeCount] = useState(0);
+  const [intakeBufferItems, setIntakeBufferItems] = useState<any[]>([]);
 
   const normalizeLast10 = (raw: unknown): string => {
     const digits = String(raw || "").replace(/\D/g, "");
@@ -208,12 +214,13 @@ const CrmOpsAdmin: React.FC = () => {
     setLoading(true);
     setErrorText(null);
     try {
-      const [t, a, r, w, intake] = await Promise.all([
+      const [t, a, r, w, intake, intakeBuffer] = await Promise.all([
         authClient.getCrmTeams(),
         authClient.getCrmAgents(),
         authClient.getCrmRoutingRules(),
         authClient.getCrmWhatsappInboxes().catch(() => ({ inboxes: [], evolutionDefaultsConfigured: false })),
         authClient.getCrmEvolutionIntakeSettings().catch(() => ({ settings: null, pendingBufferCount: 0 })),
+        authClient.getCrmEvolutionIntakeBuffer({ limit: 40 }).catch(() => ({ items: [] })),
       ]);
       const s = await authClient.getCrmSlaRules();
       setTeams(Array.isArray(t?.teams) ? t.teams : []);
@@ -227,11 +234,15 @@ const CrmOpsAdmin: React.FC = () => {
           leadFilterMode: String(intake.settings.leadFilterMode || "BUSINESS_ONLY"),
           aiEnabled: intake.settings.aiEnabled !== false,
           minMessagesBeforeCreate: Number(intake.settings.minMessagesBeforeCreate || 2),
+          metaLeadFilterMode: String(intake.settings.metaLeadFilterMode || "BUSINESS_ONLY"),
+          metaAiEnabled: intake.settings.metaAiEnabled !== false,
+          metaMinMessagesBeforeCreate: Number(intake.settings.metaMinMessagesBeforeCreate || 1),
           allowlistLast10: String(intake.settings.allowlistLast10 || ""),
           denylistLast10: String(intake.settings.denylistLast10 || ""),
         });
       }
       setPendingIntakeCount(Number(intake?.pendingBufferCount || 0));
+      setIntakeBufferItems(Array.isArray(intakeBuffer?.items) ? intakeBuffer.items : []);
     } catch (err) {
       setErrorText(err instanceof Error ? err.message : "Falha ao carregar operação CRM.");
     } finally {
@@ -753,6 +764,9 @@ const CrmOpsAdmin: React.FC = () => {
                 leadFilterMode: intakeSettings.leadFilterMode as any,
                 aiEnabled: !!intakeSettings.aiEnabled,
                 minMessagesBeforeCreate: Number(intakeSettings.minMessagesBeforeCreate || 2),
+                metaLeadFilterMode: intakeSettings.metaLeadFilterMode as any,
+                metaAiEnabled: !!intakeSettings.metaAiEnabled,
+                metaMinMessagesBeforeCreate: Number(intakeSettings.metaMinMessagesBeforeCreate || 1),
                 allowlistLast10: intakeSettings.allowlistLast10 || "",
                 denylistLast10: intakeSettings.denylistLast10 || "",
               });
@@ -761,6 +775,90 @@ const CrmOpsAdmin: React.FC = () => {
           >
             Salvar triagem
           </button>
+        </div>
+        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2 rounded border border-slate-200 bg-slate-50 p-2">
+          <div className="text-[11px] font-semibold text-slate-700 md:col-span-2">
+            Política da linha oficial (Meta)
+          </div>
+          <select
+            className="rounded bg-white border border-slate-200 px-2 py-2 text-xs text-slate-800"
+            value={intakeSettings.metaLeadFilterMode}
+            onChange={(e) => setIntakeSettings((s) => ({ ...s, metaLeadFilterMode: e.target.value }))}
+          >
+            <option value="OFF">OFF (cria lead para todo contato novo)</option>
+            <option value="BUSINESS_ONLY">BUSINESS_ONLY (recomendado)</option>
+            <option value="AGENCY_ONLY">AGENCY_ONLY (só agências)</option>
+          </select>
+          <input
+            type="number"
+            min={1}
+            max={10}
+            className="rounded bg-white border border-slate-200 px-2 py-2 text-xs text-slate-800"
+            value={intakeSettings.metaMinMessagesBeforeCreate}
+            onChange={(e) =>
+              setIntakeSettings((s) => ({ ...s, metaMinMessagesBeforeCreate: Number(e.target.value) || 1 }))
+            }
+          />
+          <label className="inline-flex items-center gap-2 text-xs text-slate-700 md:col-span-2">
+            <input
+              type="checkbox"
+              checked={!!intakeSettings.metaAiEnabled}
+              onChange={(e) => setIntakeSettings((s) => ({ ...s, metaAiEnabled: e.target.checked }))}
+            />
+            IA ativa para decisão de contato novo no canal Meta
+          </label>
+        </div>
+        <div className="mt-4 rounded-xl border border-violet-200 bg-white p-3">
+          <h4 className="text-xs font-bold text-slate-900">Pendentes para decisão manual</h4>
+          <p className="mt-1 text-[11px] text-slate-600">
+            Aprovar cria (ou vincula) o lead. Rejeitar remove da triagem pendente.
+          </p>
+          <div className="mt-2 max-h-72 overflow-y-auto space-y-2">
+            {intakeBufferItems.length === 0 && (
+              <div className="text-[11px] text-slate-500">Nenhum contato pendente na triagem.</div>
+            )}
+            {intakeBufferItems.map((item) => (
+              <div key={item.id} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-[11px] text-slate-800">
+                    <strong>{item.profileName || "Contato sem nome"}</strong> · {item.phoneDigits || item.phoneLast10}
+                    <span className="text-slate-500"> · caixa: {item.inboxName || "—"} · msgs: {item.messageCount}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      className="rounded border border-emerald-300 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-800"
+                      onClick={async () => {
+                        await authClient.decideCrmEvolutionIntakeBuffer({
+                          action: "APPROVE",
+                          bufferId: String(item.id),
+                          actor: user?.username || null,
+                        });
+                        await loadAll();
+                      }}
+                    >
+                      Aprovar lead
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded border border-red-300 bg-red-50 px-2 py-1 text-[11px] font-semibold text-red-800"
+                      onClick={async () => {
+                        await authClient.decideCrmEvolutionIntakeBuffer({
+                          action: "REJECT",
+                          bufferId: String(item.id),
+                          actor: user?.username || null,
+                        });
+                        await loadAll();
+                      }}
+                    >
+                      Rejeitar
+                    </button>
+                  </div>
+                </div>
+                <div className="mt-1 line-clamp-2 text-[11px] text-slate-600">{item.sampleText || "Sem texto amostra"}</div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 

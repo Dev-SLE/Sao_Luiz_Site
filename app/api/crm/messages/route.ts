@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getPool } from "../../../../lib/server/db";
 import { ensureCrmSchemaTables } from "../../../../lib/server/ensureSchema";
 import { evolutionDeleteMessageForEveryone, evolutionSendText } from "../../../../lib/server/evolutionClient";
+import { can, getSessionContext } from "../../../../lib/server/authorization";
 
 export const runtime = "nodejs";
 
@@ -53,7 +54,38 @@ function normalizePhoneToE164(phoneRaw: string | null | undefined) {
   return `55${digits}`;
 }
 
-async function sendWhatsAppText(args: { toE164: string; body: string }) {
+function normalizeAttendantLabel(raw: string | null | undefined) {
+  const name = String(raw || "").trim();
+  if (!name) return "Atendente";
+  // "joao.silva" -> "Joao Silva"
+  const cleaned = name.replace(/[._-]+/g, " ").replace(/\s+/g, " ").trim();
+  return cleaned
+    .split(" ")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
+}
+
+function buildWhatsappSignedBody(args: {
+  text: string;
+  senderType: string;
+  senderUsername?: string | null;
+}) {
+  const text = String(args.text || "").trim();
+  if (!text) return text;
+  const sender = String(args.senderType || "").toUpperCase();
+  // Padrão solicitado: identificar claramente quem atendeu no WhatsApp.
+  if (sender !== "AGENT" && sender !== "IA") return text;
+  const label =
+    sender === "IA"
+      ? `${normalizeAttendantLabel(args.senderUsername || "Sofia")} (IA)`
+      : normalizeAttendantLabel(args.senderUsername);
+  const alreadyPrefixed = new RegExp(`^${label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*:\\s*`, "i").test(text);
+  if (alreadyPrefixed) return text;
+  return `${label}: ${text}`;
+}
+
+async function sendWhatsAppText(args: { toE164: string; body: string; quotedMessageId?: string | null }) {
   const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
   const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
 
@@ -72,6 +104,7 @@ async function sendWhatsAppText(args: { toE164: string; body: string }) {
     to: args.toE164,
     type: "text",
     text: { preview_url: false, body: args.body },
+    ...(args.quotedMessageId ? { context: { message_id: String(args.quotedMessageId) } } : {}),
   };
 
   try {
@@ -157,6 +190,10 @@ export async function GET(req: Request) {
   try {
     await ensureCrmSchemaTables();
     const pool = getPool();
+    const session = await getSessionContext(req);
+    if (!session || !can(session, "tab.crm.chat.view")) {
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+    }
 
     const { searchParams } = new URL(req.url);
     const conversationId = searchParams.get("conversationId");
@@ -281,6 +318,10 @@ export async function POST(req: Request) {
   try {
     await ensureCrmSchemaTables();
     const pool = getPool();
+    const session = await getSessionContext(req);
+    if (!session || !can(session, "crm.messages.send")) {
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+    }
 
     const body = await req.json().catch(() => ({}));
     const senderType = String(body?.senderType || "AGENTE");
@@ -374,6 +415,27 @@ export async function POST(req: Request) {
       (dbSender === "AGENT" || dbSender === "IA");
     if (shouldSendWhatsApp) {
       outboundWhatsApp.attempted = true;
+      const signedText = buildWhatsappSignedBody({
+        text,
+        senderType: dbSender,
+        senderUsername: body?.senderUsername != null ? String(body.senderUsername) : session.username,
+      });
+      let replyToWhatsappMessageId: string | null = null;
+      if (replyTo?.messageId) {
+        const refRes = await pool.query(
+          `
+            SELECT metadata, sender_type, body
+            FROM pendencias.crm_messages
+            WHERE id = $1::uuid
+            LIMIT 1
+          `,
+          [String(replyTo.messageId)]
+        );
+        const refMeta = safeJsonParse(refRes.rows?.[0]?.metadata);
+        replyToWhatsappMessageId = String(
+          refMeta?.outbound_whatsapp?.message_id || refMeta?.message_id || ""
+        ).trim() || null;
+      }
       const leadInfo = await pool.query(
         `
           SELECT
@@ -410,13 +472,14 @@ export async function POST(req: Request) {
             "Anexos pelo painel nesta linha Web: em breve — por enquanto envie pelo WhatsApp no celular.";
           finalOk = false;
         }
-        if (text && finalOk) {
+        if (signedText && finalOk) {
           const waResp = await evolutionSendText({
             serverUrl: String(row.evolution_server_url),
             apiKey: String(row.evolution_api_key),
             instanceName: String(row.evolution_instance_name),
             numberDigits: toE164,
-            text,
+            text: signedText,
+            quotedMessageId: replyToWhatsappMessageId,
           });
           finalResp = waResp.response;
           finalOk = waResp.ok;
@@ -427,8 +490,12 @@ export async function POST(req: Request) {
       } else {
         let finalResp: any = null;
         let finalOk = true;
-        if (text) {
-          const waResp = await sendWhatsAppText({ toE164, body: text });
+        if (signedText) {
+          const waResp = await sendWhatsAppText({
+            toE164,
+            body: signedText,
+            quotedMessageId: replyToWhatsappMessageId,
+          });
           finalResp = waResp.response;
           finalOk = waResp.ok;
           if (!waResp.ok) outboundWhatsApp.error = waResp.error;
@@ -438,7 +505,7 @@ export async function POST(req: Request) {
           const waAttResp = await sendWhatsAppAttachment({
             toE164,
             attachment: first,
-            caption: text || undefined,
+            caption: signedText || undefined,
           });
           finalResp = waAttResp.response || finalResp;
           finalOk = finalOk && waAttResp.ok;
@@ -543,6 +610,10 @@ export async function DELETE(req: Request) {
   try {
     await ensureCrmSchemaTables();
     const pool = getPool();
+    const session = await getSessionContext(req);
+    if (!session || !can(session, "crm.messages.delete")) {
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+    }
     const { searchParams } = new URL(req.url);
     const messageId = searchParams.get("messageId");
     const conversationId = searchParams.get("conversationId");

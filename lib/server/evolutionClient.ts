@@ -163,6 +163,7 @@ export async function evolutionSendText(args: {
   instanceName: string;
   numberDigits: string;
   text: string;
+  quotedMessageId?: string | null;
 }) {
   const base = normalizeEvolutionServerUrl(args.serverUrl).replace(/\/+$/, "");
   if (!base) {
@@ -183,6 +184,13 @@ export async function evolutionSendText(args: {
       body: JSON.stringify({
         number: num,
         text: args.text,
+        ...(args.quotedMessageId
+          ? {
+              // Compatibilidade entre variantes da Evolution/Baileys
+              quoted: { key: { id: String(args.quotedMessageId) } },
+              quotedMessageId: String(args.quotedMessageId),
+            }
+          : {}),
       }),
     });
     const json = await resp.json().catch(() => ({}));

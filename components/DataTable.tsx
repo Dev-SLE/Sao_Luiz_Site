@@ -63,6 +63,7 @@ const FilterCard: React.FC<FilterCardProps> = ({ label, count, color, selected, 
     type="button"
     onClick={onClick}
     className={clsx(
+      'filter-card',
       'group relative flex h-[72px] cursor-pointer select-none flex-col justify-between overflow-hidden rounded-xl border p-3 text-left transition-all',
       'border-slate-300/80 bg-gradient-to-b from-white to-slate-50/40 text-slate-700 shadow-sm hover:border-slate-400/80 hover:shadow-md',
       selected && 'z-10 scale-[1.02] ring-2 ring-[#e42424]/30',

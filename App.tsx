@@ -18,8 +18,9 @@ import ComercialAuditoria from './components/ComercialAuditoria';
 import ComercialRoboSupremo from './components/ComercialRoboSupremo';
 import { Page, CteData } from './types';
 import OperationalTracking from './components/OperationalTracking';
-import { ChevronDown, CircleDot, LogOut, KeyRound, User as UserIcon } from 'lucide-react';
+import { ChevronDown, CircleDot, LogOut, KeyRound, User as UserIcon, Bell, Moon, Sun } from 'lucide-react';
 import clsx from 'clsx';
+import { authClient } from './lib/auth';
 
 const AppContent: React.FC = () => {
   const { user, logout, loading } = useAuth();
@@ -53,12 +54,51 @@ const AppContent: React.FC = () => {
   const [selectedTrackingCte, setSelectedTrackingCte] = useState<string | null>(null);
   const [selectedTrackingSerie, setSelectedTrackingSerie] = useState<string | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [notificationsUnread, setNotificationsUnread] = useState(0);
+  const [themeDark, setThemeDark] = useState(false);
   const isCrmPage = currentPage === Page.CRM_FUNIL || currentPage === Page.CRM_CHAT;
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
     window.localStorage.setItem('sle_current_page', currentPage);
   }, [currentPage]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const v = window.localStorage.getItem("sle_theme_dark");
+    const enabled = v === "1";
+    setThemeDark(enabled);
+    document.documentElement.classList.toggle("sle-theme-dark", enabled);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    document.documentElement.classList.toggle("sle-theme-dark", themeDark);
+    window.localStorage.setItem("sle_theme_dark", themeDark ? "1" : "0");
+  }, [themeDark]);
+
+  useEffect(() => {
+    if (!user || !hasPermission('module.operacional.view')) return;
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const resp = await authClient.getOperationalNotifications({ limit: 20 });
+        if (cancelled) return;
+        setNotifications(Array.isArray(resp?.items) ? resp.items : []);
+        setNotificationsUnread(Number(resp?.unreadCount || 0));
+      } catch {
+        // noop
+      }
+    };
+    run();
+    const id = window.setInterval(run, 20000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [user, hasPermission]);
 
   const noAccess = (message: string) => (
     <div className="surface-card p-6">
@@ -279,7 +319,63 @@ const AppContent: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setThemeDark((v) => !v)}
+              className="relative inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#2c348c]/20 bg-white/80 text-slate-700 hover:text-[#2c348c]"
+              title={themeDark ? "Tema claro" : "Tema escuro"}
+            >
+              {themeDark ? <Sun size={16} /> : <Moon size={16} />}
+            </button>
+            <div className="relative z-50">
+              <button
+                type="button"
+                onClick={() => setNotificationsOpen((v) => !v)}
+                className="relative inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#2c348c]/20 bg-white/80 text-slate-700 hover:text-[#2c348c]"
+                title="Notificações operacionais"
+              >
+                <Bell size={16} />
+                {notificationsUnread > 0 && (
+                  <span className="absolute -right-1 -top-1 inline-flex min-w-[16px] items-center justify-center rounded-full bg-[#e42424] px-1 text-[10px] font-bold text-white">
+                    {notificationsUnread > 9 ? "9+" : notificationsUnread}
+                  </span>
+                )}
+              </button>
+              {notificationsOpen && (
+                <div className="absolute right-0 top-full mt-2 w-80 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
+                  <div className="flex items-center justify-between border-b border-slate-100 px-3 py-2">
+                    <span className="text-xs font-bold text-slate-800">Atribuições operacionais</span>
+                    <button
+                      type="button"
+                      className="text-[11px] text-[#2c348c] hover:underline"
+                      onClick={async () => {
+                        const maxId = Math.max(0, ...notifications.map((n) => Number(n.id || 0)));
+                        if (maxId > 0) await authClient.ackOperationalNotifications(maxId).catch(() => null);
+                        setNotificationsUnread(0);
+                        setNotificationsOpen(false);
+                      }}
+                    >
+                      Marcar lidas
+                    </button>
+                  </div>
+                  <div className="max-h-72 overflow-y-auto">
+                    {notifications.length === 0 ? (
+                      <div className="px-3 py-3 text-[11px] text-slate-500">Sem novidades.</div>
+                    ) : (
+                      notifications.map((n) => (
+                        <div key={n.id} className="border-b border-slate-100 px-3 py-2 text-[11px] text-slate-700">
+                          <div className="font-semibold">
+                            {n.event === "CTE_ASSIGNMENT_UPSERT" ? "Atribuição criada/atualizada" : "Atribuição devolvida"}
+                          </div>
+                          <div>CTE {n.cte || "-"} / Série {n.serie || "-"}</div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
             <div className="relative z-50">
               <button
                 type="button"

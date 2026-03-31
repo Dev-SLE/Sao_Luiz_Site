@@ -10,7 +10,10 @@ export async function GET() {
     const pool = getPool();
     const settingsRes = await pool.query(
       `
-        SELECT lead_filter_mode, ai_enabled, min_messages_before_create, allowlist_last10, denylist_last10, updated_at
+        SELECT
+          lead_filter_mode, ai_enabled, min_messages_before_create,
+          meta_lead_filter_mode, meta_ai_enabled, meta_min_messages_before_create,
+          allowlist_last10, denylist_last10, updated_at
         FROM pendencias.crm_evolution_intake_settings
         WHERE id = 1
         LIMIT 1
@@ -29,6 +32,9 @@ export async function GET() {
         leadFilterMode: String(s.lead_filter_mode || "BUSINESS_ONLY"),
         aiEnabled: s.ai_enabled !== false,
         minMessagesBeforeCreate: Number(s.min_messages_before_create || 2),
+        metaLeadFilterMode: String(s.meta_lead_filter_mode || "BUSINESS_ONLY"),
+        metaAiEnabled: s.meta_ai_enabled !== false,
+        metaMinMessagesBeforeCreate: Number(s.meta_min_messages_before_create || 1),
         allowlistLast10: String(s.allowlist_last10 || ""),
         denylistLast10: String(s.denylist_last10 || ""),
         updatedAt: s.updated_at || null,
@@ -49,10 +55,13 @@ export async function POST(req: Request) {
     const leadFilterMode = String(body?.leadFilterMode || "BUSINESS_ONLY").toUpperCase();
     const aiEnabled = body?.aiEnabled !== false;
     const minMessagesBeforeCreate = Math.max(1, Math.min(10, Number(body?.minMessagesBeforeCreate || 2)));
+    const metaLeadFilterMode = String(body?.metaLeadFilterMode || "BUSINESS_ONLY").toUpperCase();
+    const metaAiEnabled = body?.metaAiEnabled !== false;
+    const metaMinMessagesBeforeCreate = Math.max(1, Math.min(10, Number(body?.metaMinMessagesBeforeCreate || 1)));
     const allowlistLast10 = String(body?.allowlistLast10 || "");
     const denylistLast10 = String(body?.denylistLast10 || "");
 
-    if (!["OFF", "BUSINESS_ONLY", "AGENCY_ONLY"].includes(leadFilterMode)) {
+    if (!["OFF", "BUSINESS_ONLY", "AGENCY_ONLY"].includes(leadFilterMode) || !["OFF", "BUSINESS_ONLY", "AGENCY_ONLY"].includes(metaLeadFilterMode)) {
       return NextResponse.json({ error: "leadFilterMode inválido" }, { status: 400 });
     }
 
@@ -63,12 +72,24 @@ export async function POST(req: Request) {
           lead_filter_mode = $1,
           ai_enabled = $2,
           min_messages_before_create = $3,
-          allowlist_last10 = $4,
-          denylist_last10 = $5,
+          meta_lead_filter_mode = $4,
+          meta_ai_enabled = $5,
+          meta_min_messages_before_create = $6,
+          allowlist_last10 = $7,
+          denylist_last10 = $8,
           updated_at = NOW()
         WHERE id = 1
       `,
-      [leadFilterMode, aiEnabled, minMessagesBeforeCreate, allowlistLast10, denylistLast10]
+      [
+        leadFilterMode,
+        aiEnabled,
+        minMessagesBeforeCreate,
+        metaLeadFilterMode,
+        metaAiEnabled,
+        metaMinMessagesBeforeCreate,
+        allowlistLast10,
+        denylistLast10,
+      ]
     );
 
     return NextResponse.json({ success: true });

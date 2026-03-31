@@ -8,6 +8,7 @@ import { authClient } from '../lib/auth';
 import CrmOpsAdmin from './CrmOpsAdmin';
 import { AppConfirmModal, AppMessageModal, type AppMessageVariant } from './AppOverlays';
 import * as XLSX from 'xlsx';
+import { PERMISSION_CATALOG } from '../lib/permissions';
 
 const excludedViewPages = new Set<Page>([
   Page.CONFIGURACOES,
@@ -67,6 +68,7 @@ const PERMISSIONS: Array<{ key: string; label: string; description: string }> = 
   { key: 'CRM_SCOPE_SELF', label: 'CRM Escopo: Somente próprio', description: 'Atendente vê apenas conversas atribuídas a ele.' },
   { key: 'CRM_SCOPE_TEAM', label: 'CRM Escopo: Equipe', description: 'Supervisor vê conversas da equipe e não atribuídas.' },
   { key: 'CRM_SCOPE_ALL', label: 'CRM Escopo: Global', description: 'Gestor vê todas as conversas.' },
+  ...PERMISSION_CATALOG.map((p) => ({ key: p.key, label: p.label, description: p.description })),
 ];
 
 const Settings: React.FC = () => {
@@ -325,7 +327,8 @@ const Settings: React.FC = () => {
                       <UserPlus size={18} /> Adicionar Usuário
                   </button>
               ) : hasPermission('MANAGE_USERS') ? (
-                  <div className="surface-card-strong p-6 animate-in slide-in-from-top-2">
+                  <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/45 p-4">
+                    <div className="surface-card-strong w-full max-w-5xl p-6 animate-in slide-in-from-top-2 max-h-[90vh] overflow-y-auto">
                       <div className="flex justify-between items-center mb-4">
                           <h3 className="text-lg font-bold text-slate-900">Novo Usuário</h3>
                           <button onClick={cancelUserForm} className="text-slate-500 hover:text-red-500"><X size={20}/></button>
@@ -393,6 +396,7 @@ const Settings: React.FC = () => {
                               </button>
                           </div>
                       </form>
+                    </div>
                   </div>
               ) : null}
 
@@ -509,7 +513,8 @@ const Settings: React.FC = () => {
               {/* Profile Editor */}
               <div className="md:col-span-2">
                   {editingProfile ? (
-                      <div className="surface-card-strong p-6 animate-in fade-in">
+                      <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/45 p-4">
+                        <div className="surface-card-strong w-full max-w-6xl p-6 animate-in fade-in max-h-[92vh] overflow-y-auto">
                           <div className="flex justify-between items-center mb-6">
                               <h3 className="text-xl font-bold text-slate-900">
                                   {editingProfile.name ? `Editando: ${editingProfile.name}` : 'Criar Novo Perfil'}
@@ -573,6 +578,7 @@ const Settings: React.FC = () => {
                                   </button>
                               </div>
                           </form>
+                        </div>
                       </div>
                   ) : (
                       <div className="h-full flex flex-col items-center justify-center text-slate-500 border-2 border-dashed border-slate-200 rounded-xl p-8 bg-white">

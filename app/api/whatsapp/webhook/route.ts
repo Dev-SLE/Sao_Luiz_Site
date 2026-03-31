@@ -5,6 +5,10 @@ import { ensureCrmSchemaTables } from "../../../../lib/server/ensureSchema";
 import { countTrailingClientStreak } from "../../../../lib/server/sofiaStreak";
 import { applyInboundRouting } from "../../../../lib/server/crmRouting";
 import { ensureDefaultPipelineAndFirstStage } from "../../../../lib/server/crmDefaultPipeline";
+import {
+  buildSofiaOperationalPrompt,
+  buildSofiaSystemInstructions,
+} from "../../../../lib/server/sofiaGovernance";
 
 export const runtime = "nodejs";
 
@@ -63,6 +67,11 @@ function buildAttachmentMeta(message: any) {
   ];
 }
 
+function extractContextMessageId(message: any): string | null {
+  const id = String(message?.context?.id || "").trim();
+  return id || null;
+}
+
 function extractCteFromText(text: string): string | null {
   const raw = String(text || "");
   if (/^\s*\d{3,12}\s*$/.test(raw)) return raw.trim();
@@ -79,6 +88,161 @@ function parseWhatsappProfileName(value: any, from: string) {
   const first = byWaId || contacts[0];
   const name = String(first?.profile?.name || "").trim();
   return name || null;
+}
+
+function parseLast10List(raw: string | undefined): Set<string> {
+  const out = new Set<string>();
+  String(raw || "")
+    .split(",")
+    .map((x) => x.trim().replace(/\D/g, ""))
+    .filter(Boolean)
+    .forEach((n) => out.add(n.length <= 10 ? n : n.slice(-10)));
+  return out;
+}
+
+function hasBusinessSignalsMeta(input: { text: string; profileName: string | null; cteDetected: string | null }) {
+  if (input.cteDetected) return true;
+  const bag = `${String(input.text || "").toLowerCase()} ${String(input.profileName || "").toLowerCase()}`;
+  const keywords = [
+    "cte",
+    "coleta",
+    "entrega",
+    "rastrei",
+    "mercadoria",
+    "nf",
+    "frete",
+    "agencia",
+    "agência",
+    "cliente",
+    "embarque",
+    "descarga",
+    "cotacao",
+    "cotação",
+  ];
+  return keywords.some((k) => bag.includes(k));
+}
+
+async function loadMetaIntakeSettings(pool: any) {
+  const res = await pool.query(
+    `
+      SELECT
+        COALESCE(meta_lead_filter_mode, lead_filter_mode, 'BUSINESS_ONLY') AS lead_filter_mode,
+        COALESCE(meta_ai_enabled, ai_enabled, true) AS ai_enabled,
+        COALESCE(meta_min_messages_before_create, 1) AS min_messages_before_create,
+        allowlist_last10,
+        denylist_last10
+      FROM pendencias.crm_evolution_intake_settings
+      WHERE id = 1
+      LIMIT 1
+    `
+  );
+  const row = res.rows?.[0] || {};
+  return {
+    mode: String(row.lead_filter_mode || "BUSINESS_ONLY").toUpperCase(),
+    aiEnabled: row.ai_enabled !== false,
+    minMessagesBeforeCreate: Math.max(1, Math.min(10, Number(row.min_messages_before_create || 1))),
+    allowlist: parseLast10List(row.allowlist_last10),
+    denylist: parseLast10List(row.denylist_last10),
+  };
+}
+
+function mapSenderFromDb(senderType: string) {
+  const s = String(senderType || "").toUpperCase();
+  if (s === "CLIENT") return "CLIENTE";
+  if (s === "AGENT") return "AGENTE";
+  if (s === "IA") return "IA";
+  return "CLIENTE";
+}
+
+async function getOrMergeLeadByPhoneLast10(pool: any, phoneLast10: string) {
+  const leadsRes = await pool.query(
+    `
+      SELECT id, title, contact_phone, created_at
+      FROM pendencias.crm_leads
+      WHERE contact_phone IS NOT NULL
+        AND RIGHT(regexp_replace(contact_phone, '\\D', '', 'g'), 10) = $1
+      ORDER BY created_at ASC
+    `,
+    [phoneLast10]
+  );
+  const leads = leadsRes.rows || [];
+  if (!leads.length) return null;
+  const primary = leads[0];
+  const primaryId = String(primary.id);
+  const duplicateIds = leads.slice(1).map((l: any) => String(l.id));
+  if (duplicateIds.length) {
+    await pool.query(
+      `
+        UPDATE pendencias.crm_conversations
+        SET lead_id = $1::uuid
+        WHERE lead_id = ANY($2::uuid[])
+      `,
+      [primaryId, duplicateIds]
+    );
+    await pool.query(
+      `
+        UPDATE pendencias.crm_activities
+        SET lead_id = $1::uuid
+        WHERE lead_id = ANY($2::uuid[])
+      `,
+      [primaryId, duplicateIds]
+    );
+    await pool.query(
+      `
+        DELETE FROM pendencias.crm_leads
+        WHERE id = ANY($1::uuid[])
+      `,
+      [duplicateIds]
+    );
+  }
+  return primary;
+}
+
+async function getOrMergeWhatsappConversationByLead(pool: any, leadId: string) {
+  const convsRes = await pool.query(
+    `
+      SELECT id, created_at
+      FROM pendencias.crm_conversations
+      WHERE lead_id = $1::uuid
+        AND channel = 'WHATSAPP'
+        AND is_active = true
+      ORDER BY created_at ASC
+    `,
+    [leadId]
+  );
+  const convs = convsRes.rows || [];
+  if (!convs.length) return null;
+  const primaryId = String(convs[0].id);
+  const extraIds = convs.slice(1).map((c: any) => String(c.id));
+
+  if (extraIds.length) {
+    await pool.query(
+      `
+        UPDATE pendencias.crm_messages
+        SET conversation_id = $1::uuid
+        WHERE conversation_id = ANY($2::uuid[])
+      `,
+      [primaryId, extraIds]
+    );
+    await pool.query(
+      `
+        UPDATE pendencias.crm_outbox
+        SET conversation_id = $1::uuid
+        WHERE conversation_id = ANY($2::uuid[])
+      `,
+      [primaryId, extraIds]
+    );
+    await pool.query(
+      `
+        UPDATE pendencias.crm_conversations
+        SET is_active = false, updated_at = NOW()
+        WHERE id = ANY($1::uuid[])
+      `,
+      [extraIds]
+    );
+  }
+
+  return primaryId;
 }
 
 async function lookupCteSummary(pool: any, cteInput: string | null | undefined) {
@@ -205,8 +369,7 @@ async function callOpenAi(prompt: string, modelOverride?: string | null) {
         messages: [
           {
             role: "system",
-            content:
-              "Você é Sofia, assistente logística da São Luiz Express. Seja cordial, humana e objetiva. Nunca repita frases idênticas da última resposta. Sempre avance a conversa com 1 pergunta útil quando faltar dado.",
+            content: buildSofiaSystemInstructions(s.system_instructions),
           },
           { role: "user", content: prompt },
         ],
@@ -402,23 +565,18 @@ async function runWebhookSofiaAutoReply(
     const confidence = text.length > 80 ? 85 : text.length > 30 ? 75 : 65;
     if (confidence < minConf) return;
 
-    const prompt = [
-      `Cliente: ${String(convInfo.title || "")}`,
-      `CTE: ${String(convInfo.cte_number || "")}`,
-      `Tópico: ${String(convInfo.topic || "")}`,
-      `Tom de resposta: ${String(s.response_tone || "PROFISSIONAL")}`,
-      `Instruções do supervisor: ${String(s.system_instructions || "")}`,
-      `Objetivo: coletar dados essenciais para o atendente humano quando faltar contexto (CTE, origem, destino, unidade, problema e prazo).`,
-      `Se faltar dado crítico, faça pergunta curta e objetiva antes de prometer solução.`,
-      `Não repita frase pronta já usada no histórico; varie a formulação mantendo o mesmo sentido.`,
-      cteSummary
-        ? `CTE encontrado no banco: CTE ${String(cteSummary.cte || "")} Série ${String(cteSummary.serie || "")} | Status ${String(cteSummary.status_calculado || cteSummary.status || "")} | Destino ${String(cteSummary.entrega || "")} | Destinatário ${String(cteSummary.destinatario || "")}.`
-        : "Se o cliente enviar número de CTE/NF e não houver resultado no banco, informe que não encontrou e peça confirmação do número.",
-      `Base: ${String(s.knowledge_base || "")}`,
-      `Histórico:\n${transcript}`,
-      `Mensagem atual: ${text}`,
-      `Responda em pt-BR, curta e útil.`,
-    ].join("\n\n");
+    const prompt = buildSofiaOperationalPrompt({
+      customerName: convInfo.title,
+      cte: convInfo.cte_number,
+      topic: convInfo.topic,
+      responseTone: s.response_tone,
+      supervisorInstructions: s.system_instructions,
+      knowledgeBase: s.knowledge_base,
+      userText: text,
+      cteSummaryText: cteSummary
+        ? `CTE ${String(cteSummary.cte || "")} Série ${String(cteSummary.serie || "")} | Status ${String(cteSummary.status_calculado || cteSummary.status || "")} | Destino ${String(cteSummary.entrega || "")} | Destinatário ${String(cteSummary.destinatario || "")}.`
+        : null,
+    });
 
     const aiReply = await callAiProvider({
       provider: s.ai_provider,
@@ -539,6 +697,13 @@ export async function POST(req: Request) {
 
     const payload = JSON.parse(rawBody || "{}");
 
+    const metaIntake = await loadMetaIntakeSettings(pool).catch(() => ({
+      mode: "BUSINESS_ONLY",
+      aiEnabled: true,
+      minMessagesBeforeCreate: 1,
+      allowlist: new Set<string>(),
+      denylist: new Set<string>(),
+    }));
     const entries = payload.entry || [];
     for (const entry of entries) {
       const changes = entry.changes || [];
@@ -611,30 +776,50 @@ export async function POST(req: Request) {
           const text = parseWhatsAppText(message);
           const cteDetected = extractCteFromText(text);
           const profileName = parseWhatsappProfileName(value, from);
+          const contextMessageId = extractContextMessageId(message);
+
+          let resolvedReplyTo: { messageId?: string; sender?: string; text?: string } | null = null;
+          if (contextMessageId) {
+            const refRes = await pool.query(
+              `
+                SELECT id, sender_type, body
+                FROM pendencias.crm_messages
+                WHERE metadata->>'message_id' = $1
+                   OR metadata#>>'{outbound_whatsapp,message_id}' = $1
+                ORDER BY created_at DESC
+                LIMIT 1
+              `,
+              [contextMessageId]
+            );
+            const ref = refRes.rows?.[0];
+            if (ref?.id) {
+              resolvedReplyTo = {
+                messageId: String(ref.id),
+                sender: mapSenderFromDb(String(ref.sender_type || "")),
+                text: String(ref.body || "").slice(0, 280),
+              };
+            } else {
+              resolvedReplyTo = {
+                messageId: contextMessageId,
+                sender: "Mensagem",
+                text: "Mensagem original",
+              };
+            }
+          }
 
           const last10 = lastN(from, 10);
           const defaultIds = await ensureDefaultPipelineAndFirstStage(pool);
           if (!defaultIds) continue;
 
           // 1) Resolve lead por telefone (last 10 digits)
-          const leadRes = await pool.query(
-            `
-              SELECT id, title, contact_phone
-              FROM pendencias.crm_leads
-              WHERE contact_phone IS NOT NULL
-                AND RIGHT(regexp_replace(contact_phone, '\\D', '', 'g'), 10) = $1
-              ORDER BY created_at DESC
-              LIMIT 1
-            `,
-            [last10]
-          );
+          const existingLead = await getOrMergeLeadByPhoneLast10(pool, last10);
 
           let leadId: string;
           let leadTitle: string;
 
-          if (leadRes.rows?.[0]?.id) {
-            leadId = leadRes.rows[0].id as string;
-            leadTitle = String(leadRes.rows[0].title || leadId);
+          if (existingLead?.id) {
+            leadId = String(existingLead.id);
+            leadTitle = String(existingLead.title || leadId);
             if (profileName && /^whatsapp\s+\d+/i.test(leadTitle)) {
               const upgradedTitle = `${profileName} (${last10 || from})`;
               await pool.query(
@@ -644,6 +829,37 @@ export async function POST(req: Request) {
               leadTitle = upgradedTitle;
             }
           } else {
+            const allowlisted = metaIntake.allowlist.has(last10);
+            const denylisted = metaIntake.denylist.has(last10);
+            const businessSignal = hasBusinessSignalsMeta({
+              text,
+              profileName,
+              cteDetected,
+            });
+            const mode = metaIntake.mode;
+            const shouldCreate =
+              !denylisted &&
+              (mode === "OFF" ||
+                allowlisted ||
+                (mode === "BUSINESS_ONLY" && businessSignal));
+            if (!shouldCreate) {
+              await pool.query(
+                `
+                  INSERT INTO pendencias.app_logs (level, source, event, username, payload)
+                  VALUES ('INFO','crm','CRM_META_INTAKE_WAIT',NULL,$1::jsonb)
+                `,
+                [
+                  JSON.stringify({
+                    from,
+                    last10,
+                    mode,
+                    businessSignal,
+                    aiEnabled: metaIntake.aiEnabled,
+                  }),
+                ]
+              );
+              continue;
+            }
             // 2) Cria lead automático para este número
             leadTitle = profileName
               ? `${profileName} (${last10 || from.slice(-4) || "Lead"})`
@@ -694,20 +910,10 @@ export async function POST(req: Request) {
           }
 
           // 3) Garante conversation WHATSAPP (número oficial Meta — sem inbox Web)
-          const convRes = await pool.query(
-            `
-              SELECT id
-              FROM pendencias.crm_conversations
-              WHERE lead_id = $1 AND channel = 'WHATSAPP' AND is_active = true
-                AND whatsapp_inbox_id IS NULL
-              ORDER BY created_at DESC
-              LIMIT 1
-            `,
-            [leadId]
-          );
           let conversationId: string;
-          if (convRes.rows?.[0]?.id) {
-            conversationId = convRes.rows[0].id as string;
+          const mergedConversationId = await getOrMergeWhatsappConversationByLead(pool, leadId);
+          if (mergedConversationId) {
+            conversationId = mergedConversationId;
           } else {
             const insertConv = await pool.query(
               `
@@ -743,6 +949,7 @@ export async function POST(req: Request) {
                 message_type: message.type,
                 id: message.id,
                 attachments,
+                ...(resolvedReplyTo ? { reply_to: resolvedReplyTo } : {}),
                 // Guarda o payload bruto pra fase 4 (arquivos)
                 raw: message,
               }),

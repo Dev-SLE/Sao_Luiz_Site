@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getPool } from "../../../lib/server/db";
 import { formatDateTime } from "../../../lib/server/datetime";
 import { ensureOperationalAssignmentsTable } from "../../../lib/server/ensureSchema";
+import { can, getSessionContext } from "../../../lib/server/authorization";
 
 export const runtime = "nodejs";
 
@@ -11,6 +12,10 @@ const NORMALIZED_STATUS_SQL = `
 
 export async function GET(req: Request) {
   try {
+    const session = await getSessionContext(req);
+    if (!session || !can(session, "module.operacional.view")) {
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+    }
     try {
       await ensureOperationalAssignmentsTable();
     } catch (e) {
@@ -23,6 +28,11 @@ export async function GET(req: Request) {
     const offset = (page - 1) * limit;
 
     const viewKey = ["pendencias", "criticos", "em_busca", "tad", "concluidos"].includes(view) ? view : "pendencias";
+    const hasOperationalGlobal =
+      can(session, "scope.operacional.all") || can(session, "MANAGE_SETTINGS") || String(session.role || "").toLowerCase() === "admin";
+    const linkedDestUnit = String(session.dest || "").trim();
+    const opScopeFilterSql =
+      hasOperationalGlobal || !linkedDestUnit ? "" : " AND c.entrega = $2 ";
 
     const pool = getPool();
     const assignmentReg = await pool.query(`SELECT to_regclass('pendencias.cte_assignments') AS reg`);
@@ -92,11 +102,13 @@ export async function GET(req: Request) {
             AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'RESOLVIDO%'
             AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'CANCELADO%'
           )
+        ${opScopeFilterSql}
       `,
-      [viewKey]
+      hasOperationalGlobal || !linkedDestUnit ? [viewKey] : [viewKey, linkedDestUnit]
     );
     const total = totalResult.rows?.[0]?.total || 0;
 
+    const paginationSql = hasOperationalGlobal || !linkedDestUnit ? "LIMIT $2 OFFSET $3" : "LIMIT $3 OFFSET $4";
     const result = await pool.query(
       `
         SELECT
@@ -156,10 +168,13 @@ export async function GET(req: Request) {
             AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'RESOLVIDO%'
             AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'CANCELADO%'
           )
+        ${opScopeFilterSql}
         ORDER BY c.data_emissao DESC
-        LIMIT $2 OFFSET $3
+        ${paginationSql}
       `,
-      [viewKey, limit, offset]
+      hasOperationalGlobal || !linkedDestUnit
+        ? [viewKey, limit, offset]
+        : [viewKey, linkedDestUnit, limit, offset]
     );
 
     const rows = (result.rows || []).map((row: any) => ({

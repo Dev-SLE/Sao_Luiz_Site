@@ -268,7 +268,6 @@ export async function resolveInboxDefaultAssignment(args: {
   if (!inbox?.id) return { assignedUsername: null as string | null, assignedTeamId: null as string | null, source: "NONE" as const };
   const teamId = inbox.team_id ? String(inbox.team_id) : null;
   const ownerUsername = inbox.owner_username ? String(inbox.owner_username).trim() : "";
-  const maxOfflineMinutes = Math.max(1, Number(process.env.CRM_OWNER_OFFLINE_MINUTES || 45));
 
   if (ownerUsername) {
     const ownerRes = await pool.query(
@@ -283,22 +282,9 @@ export async function resolveInboxDefaultAssignment(args: {
     );
     const owner = ownerRes.rows?.[0];
     const ownerCanAttend = !!owner && canAttendCrm(String(owner.role || ""), owner.permissions);
-    let ownerInTeam = true;
-    if (teamId && ownerCanAttend) {
-      const memberRes = await pool.query(
-        `
-          SELECT 1
-          FROM pendencias.crm_team_members
-          WHERE team_id = $1::uuid
-            AND LOWER(username) = LOWER($2)
-            AND is_active = true
-          LIMIT 1
-        `,
-        [teamId, ownerUsername]
-      );
-      ownerInTeam = !!memberRes.rows?.length;
-    }
-    if (ownerCanAttend && ownerInTeam && hasRecentLogin(owner?.last_login_at, maxOfflineMinutes)) {
+    // Regra operacional atual:
+    // conversa nova sempre entra no dono da caixa, sem depender de login recente/rateio.
+    if (ownerCanAttend) {
       return {
         assignedUsername: String(owner.username),
         assignedTeamId: teamId,
