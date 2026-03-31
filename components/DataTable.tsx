@@ -230,9 +230,22 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
       }
       setAllViewLoading(true);
       try {
-        const resp = await authClient.getCtesView(serverView as any, 1, 10000);
+        const batchSize = 1000;
+        const first = await authClient.getCtesView(serverView as any, 1, batchSize);
+        const firstRows = normalizeCtes(first?.data || []);
+        const total = Number(first?.total || firstRows.length || 0);
+        let merged = [...firstRows];
+        let pageCursor = 2;
+        while (!cancelled && merged.length < total) {
+          const next = await authClient.getCtesView(serverView as any, pageCursor, batchSize);
+          const nextRows = normalizeCtes(next?.data || []);
+          if (!nextRows.length) break;
+          merged = merged.concat(nextRows);
+          pageCursor += 1;
+          if (pageCursor > 500) break; // trava de segurança para evitar loop infinito
+        }
         if (cancelled) return;
-        setAllViewData(normalizeCtes(resp?.data || []));
+        setAllViewData(merged);
       } catch (e) {
         if (!cancelled) setAllViewData([]);
       } finally {
@@ -393,7 +406,7 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
   }, [filteredData, sortConfig]);
 
   const total = shouldUseLocalPagination
-    ? (serverCounts?.total ?? sortedData.length)
+    ? sortedData.length
     : (typeof totalFromServer === 'number' ? totalFromServer : sortedData.length);
   const totalPages = Math.max(1, Math.ceil(total / limit));
   const paginatedData = useMemo(() => {
