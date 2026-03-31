@@ -31,6 +31,7 @@ export async function GET(req: Request) {
             AND UPPER(COALESCE(c.status, '')) NOT LIKE 'CONCLUIDO%'
             AND UPPER(COALESCE(c.status, '')) NOT LIKE 'RESOLVIDO%'
             AND UPPER(COALESCE(c.status, '')) NOT LIKE 'ENTREGUE%'
+            AND UPPER(COALESCE(c.status, '')) NOT LIKE 'CANCELADO%'
           GROUP BY c.cte, c.serie
         ) x
       `,
@@ -69,6 +70,7 @@ export async function GET(req: Request) {
             AND UPPER(COALESCE(c.status, '')) NOT LIKE 'CONCLUIDO%'
             AND UPPER(COALESCE(c.status, '')) NOT LIKE 'RESOLVIDO%'
             AND UPPER(COALESCE(c.status, '')) NOT LIKE 'ENTREGUE%'
+            AND UPPER(COALESCE(c.status, '')) NOT LIKE 'CANCELADO%'
         )
         SELECT
           *

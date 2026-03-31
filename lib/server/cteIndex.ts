@@ -54,6 +54,7 @@ export async function rebuildCteViewIndexAll(toleranceDays = DEFAULT_TOLERANCE_D
         COALESCE(nc.note_count, 0) AS note_count,
         ${statusCalculadoSQL()} AS status_calculado,
         CASE
+          WHEN ${normalizedStatusExpr("c.status")} LIKE 'CANCELADO%' THEN 'concluidos'
           WHEN c.status IN ('RESOLVIDO', 'LOCALIZADA') THEN 'concluidos'
           WHEN lp.process_status IN ('RESOLVIDO', 'LOCALIZADA') THEN 'concluidos'
           WHEN ${normalizedStatusExpr("c.status")} LIKE 'CONCLUIDO%' THEN 'concluidos'
@@ -105,6 +106,7 @@ export async function refreshCteViewIndexOne(cte: string, serie: string, toleran
         (SELECT note_count FROM note_counts) AS note_count,
         ${statusCalculadoSQL()} AS status_calculado,
         CASE
+          WHEN ${normalizedStatusExpr("c.status")} LIKE 'CANCELADO%' THEN 'concluidos'
           WHEN c.status IN ('RESOLVIDO', 'LOCALIZADA') THEN 'concluidos'
           WHEN COALESCE((SELECT process_status FROM latest_process), '') IN ('RESOLVIDO', 'LOCALIZADA') THEN 'concluidos'
           WHEN ${normalizedStatusExpr("c.status")} LIKE 'CONCLUIDO%' THEN 'concluidos'

@@ -32,6 +32,7 @@ export async function GET(req: Request) {
               OR ${NORMALIZED_STATUS_SQL} LIKE 'CONCLUIDO%'
               OR ${NORMALIZED_STATUS_SQL} LIKE 'ENTREGUE%'
               OR ${NORMALIZED_STATUS_SQL} LIKE 'RESOLVIDO%'
+              OR ${NORMALIZED_STATUS_SQL} LIKE 'CANCELADO%'
             )
           )
           OR (
@@ -43,6 +44,7 @@ export async function GET(req: Request) {
             AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'CONCLUIDO%'
             AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'ENTREGUE%'
             AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'RESOLVIDO%'
+            AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'CANCELADO%'
           )
           OR (
             $1 <> 'concluidos'
@@ -51,6 +53,7 @@ export async function GET(req: Request) {
             AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'CONCLUIDO%'
             AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'ENTREGUE%'
             AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'RESOLVIDO%'
+            AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'CANCELADO%'
           )
       `,
       [viewKey]
@@ -85,6 +88,7 @@ export async function GET(req: Request) {
               OR ${NORMALIZED_STATUS_SQL} LIKE 'CONCLUIDO%'
               OR ${NORMALIZED_STATUS_SQL} LIKE 'ENTREGUE%'
               OR ${NORMALIZED_STATUS_SQL} LIKE 'RESOLVIDO%'
+              OR ${NORMALIZED_STATUS_SQL} LIKE 'CANCELADO%'
             )
           )
           OR (
@@ -96,6 +100,7 @@ export async function GET(req: Request) {
             AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'CONCLUIDO%'
             AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'ENTREGUE%'
             AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'RESOLVIDO%'
+            AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'CANCELADO%'
           )
           OR (
             $1 <> 'concluidos'
@@ -104,6 +109,7 @@ export async function GET(req: Request) {
             AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'CONCLUIDO%'
             AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'ENTREGUE%'
             AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'RESOLVIDO%'
+            AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'CANCELADO%'
           )
         ORDER BY c.data_emissao DESC
         LIMIT $2 OFFSET $3
