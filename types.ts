@@ -62,6 +62,7 @@ export interface UserData {
   role: string;
   linkedOriginUnit: string;
   linkedDestUnit: string;
+  lastLoginAt?: string;
 }
 
 export interface ProfileData {

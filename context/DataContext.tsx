@@ -247,7 +247,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         password: row.password_hash || '',
         role: row.role || '',
         linkedOriginUnit: row.linked_origin_unit || '',
-        linkedDestUnit: row.linked_dest_unit || ''
+        linkedDestUnit: row.linked_dest_unit || '',
+        lastLoginAt: row.last_login_at || '',
       }));
 
       // Compatibilidade: baseData/fullData/processedData = pendências COMPLETAS (para dashboards)
@@ -416,6 +417,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         data: formattedDate
       };
       const created = await authClient.addNote(noteData);
+      try {
+        await authClient.logEvent({
+          event: 'CTE_NOTE_CREATED',
+          username: notePayload.USUARIO,
+          cte: notePayload.CTE,
+          serie: notePayload.SERIE || '0',
+          payload: { statusBusca: notePayload.STATUS_BUSCA || '', hasAttachments: links.length > 0 },
+        });
+      } catch {}
 
       // Se a nota estiver marcando EM BUSCA ou TAD, também gravamos no process_control
       // para que o CTE mude de aba (cte_view_index) imediatamente.

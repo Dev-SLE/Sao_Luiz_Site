@@ -18,6 +18,10 @@ export function evolutionNumberDigits(remoteJid: string | null | undefined): str
 export function extractEvolutionMessageText(message: any): string {
   if (!message || typeof message !== "object") return "";
   const m = message;
+  // Alguns payloads vêm embrulhados nesses nós
+  if (m.message && typeof m.message === "object") return extractEvolutionMessageText(m.message);
+  if (m.msg && typeof m.msg === "object") return extractEvolutionMessageText(m.msg);
+  if (m.data && typeof m.data === "object") return extractEvolutionMessageText(m.data);
   if (m.conversation) return String(m.conversation);
   if (m.extendedTextMessage?.text) return String(m.extendedTextMessage.text);
   if (m.imageMessage?.caption) return String(m.imageMessage.caption);
@@ -28,7 +32,12 @@ export function extractEvolutionMessageText(message: any): string {
   if (m.videoMessage) return "[Vídeo recebido]";
   if (m.documentMessage?.caption) return String(m.documentMessage.caption);
   if (m.documentMessage) return "[Documento recebido]";
+  if (m.documentWithCaptionMessage?.message?.documentMessage?.caption)
+    return String(m.documentWithCaptionMessage.message.documentMessage.caption);
+  if (m.documentWithCaptionMessage) return "[Documento recebido]";
   if (m.stickerMessage) return "[Figurinha recebida]";
+  if (m.protocolMessage) return "[Mensagem do sistema recebida]";
+  if (m.contactVcard) return "[Contato recebido]";
   if (m.locationMessage) return "[Localização recebida]";
   if (m.contactMessage) return "[Contato recebido]";
   if (m.contactsArrayMessage) return "[Contatos recebidos]";
@@ -40,9 +49,21 @@ export function extractEvolutionMessageText(message: any): string {
     return t || "[Resposta de lista recebida]";
   }
   if (m.reactionMessage) return "[Reação recebida]";
+  if (m.pollCreationMessage) return "[Enquete recebida]";
+  if (m.pollUpdateMessage) return "[Atualização de enquete recebida]";
+  if (m.buttonsMessage) return "[Botões recebidos]";
+  if (m.listMessage) return "[Lista recebida]";
   if (m.viewOnceMessage?.message) return extractEvolutionMessageText(m.viewOnceMessage.message);
   if (m.ephemeralMessage?.message) return extractEvolutionMessageText(m.ephemeralMessage.message);
   if (m.editedMessage?.message) return extractEvolutionMessageText(m.editedMessage.message);
+  const messageType = String(m.messageType || m.type || m.mimetype || "").toLowerCase();
+  if (messageType.includes("sticker")) return "[Figurinha recebida]";
+  if (messageType.includes("image")) return "[Imagem recebida]";
+  if (messageType.includes("video")) return "[Vídeo recebido]";
+  if (messageType.includes("audio") || messageType.includes("ptt")) return "[Áudio recebido]";
+  if (messageType.includes("contact")) return "[Contato recebido]";
+  if (messageType.includes("document") || messageType.includes("file")) return "[Documento recebido]";
+  if (messageType.includes("location")) return "[Localização recebida]";
   return "[Mensagem recebida]";
 }
 
@@ -170,6 +191,58 @@ export async function evolutionSendText(args: {
       return { ok: false, error: String(msg), response: json };
     }
     return { ok: true, error: null as string | null, response: json };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || String(e), response: null as any };
+  }
+}
+
+export async function evolutionDeleteMessageForEveryone(args: {
+  serverUrl: string;
+  apiKey: string;
+  instanceName: string;
+  messageId: string;
+  remoteJid: string;
+  fromMe?: boolean;
+  participant?: string | null;
+}) {
+  const base = normalizeEvolutionServerUrl(args.serverUrl).replace(/\/+$/, "");
+  if (!base || !args.apiKey || !args.instanceName) {
+    return { ok: false, error: "Credenciais/URL da Evolution inválidas", response: null as any };
+  }
+  const id = String(args.messageId || "").trim();
+  const remoteJid = String(args.remoteJid || "").trim();
+  if (!id || !remoteJid) {
+    return { ok: false, error: "messageId e remoteJid são obrigatórios", response: null as any };
+  }
+  const url = `${base}/chat/deleteMessageForEveryone/${encodeURIComponent(args.instanceName)}`;
+  const body = {
+    id,
+    remoteJid,
+    fromMe: args.fromMe !== false,
+    ...(args.participant ? { participant: String(args.participant).trim() } : {}),
+  };
+  try {
+    // Algumas versões aceitam DELETE com body; outras só POST.
+    for (const method of ["DELETE", "POST"] as const) {
+      const resp = await evolutionExternalFetch(url, {
+        method,
+        headers: {
+          "Content-Type": "application/json",
+          apikey: args.apiKey,
+          accept: "application/json",
+        },
+        body: JSON.stringify(body),
+      });
+      const text = await resp.text();
+      let json: any = {};
+      try {
+        json = JSON.parse(text);
+      } catch {
+        json = { raw: text };
+      }
+      if (resp.ok) return { ok: true, error: null as string | null, response: json };
+    }
+    return { ok: false, error: "Evolution não aceitou deleteMessageForEveryone", response: null as any };
   } catch (e: any) {
     return { ok: false, error: e?.message || String(e), response: null as any };
   }

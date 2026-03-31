@@ -530,8 +530,14 @@ export class NeonDataClient {
     return this.postJson("/crm/messages", payload);
   }
 
-  async deleteCrmMessage(payload: { conversationId: string; messageId: string }): Promise<any> {
-    const url = `${this.makeApiUrl('/crm/messages')}?conversationId=${encodeURIComponent(payload.conversationId)}&messageId=${encodeURIComponent(payload.messageId)}`;
+  async deleteCrmMessage(payload: {
+    conversationId: string;
+    messageId: string;
+    /** true (padrão): tenta revogar também no WhatsApp Evolution quando elegível */
+    deleteInWhatsapp?: boolean;
+  }): Promise<any> {
+    const deleteInWhatsapp = payload.deleteInWhatsapp !== false;
+    const url = `${this.makeApiUrl('/crm/messages')}?conversationId=${encodeURIComponent(payload.conversationId)}&messageId=${encodeURIComponent(payload.messageId)}&deleteInWhatsapp=${deleteInWhatsapp ? "true" : "false"}`;
     const response = await fetch(url, { method: "DELETE" });
     if (!response.ok) throw await this.buildHttpError('Erro na API', response);
     return response.json();

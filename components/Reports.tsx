@@ -7,7 +7,7 @@ import { authClient } from '../lib/auth';
 import { FileSpreadsheet, Download, Loader2, SlidersHorizontal, CalendarCheck2 } from 'lucide-react';
 import { CteData } from '../types';
 
-type ReportKind = 'dashboard' | 'pendencias' | 'criticos' | 'em_busca' | 'tad' | 'concluidos' | 'mix';
+type ReportKind = 'dashboard' | 'pendencias' | 'criticos' | 'em_busca' | 'tad' | 'concluidos' | 'mix' | 'logs';
 
 type ColumnKey =
   | 'CTE'
@@ -97,6 +97,7 @@ const Reports: React.FC = () => {
   // Dados carregados do backend (já normalizados).
   const [rows, setRows] = useState<CteData[]>([]);
   const [total, setTotal] = useState<number>(0);
+  const [logRows, setLogRows] = useState<any[]>([]);
 
   // Filtros simples (unidade)
   const [unit, setUnit] = useState<string>('');
@@ -192,11 +193,20 @@ const Reports: React.FC = () => {
           }
           setRows(deduped.map(normalizeRow));
           setTotal(deduped.length);
+        } else if (kind === 'logs') {
+          const resp = await fetch('/api/app_logs?limit=10000');
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          const logs = await resp.json();
+          if (cancelled) return;
+          setLogRows(Array.isArray(logs) ? logs : []);
+          setRows([]);
+          setTotal(Array.isArray(logs) ? logs.length : 0);
         } else {
           const view = kind as Exclude<ReportKind, 'dashboard' | 'mix'>;
           const resp = await authClient.getCtesView(view as any, 1, limit);
           if (cancelled) return;
           setRows((resp?.data || []).map(normalizeRow));
+          setLogRows([]);
           setTotal(resp?.total || (resp?.data?.length || 0));
         }
       } catch (e) {
@@ -231,10 +241,24 @@ const Reports: React.FC = () => {
         return 'Concluídos';
       case 'mix':
         return 'Mix (pendências + críticos + em busca + TAD)';
+      case 'logs':
+        return 'Logs do sistema';
       default:
         return 'Relatório';
     }
   }, [kind]);
+
+  const selectedLogRows = useMemo(() => {
+    return logRows.map((l) => ({
+      DATA: l.created_at || '',
+      NIVEL: l.level || '',
+      EVENTO: l.event || '',
+      USUARIO: l.username || '',
+      CTE: l.cte || '',
+      SERIE: l.serie || '',
+      DETALHES: l.payload ? JSON.stringify(l.payload) : '',
+    }));
+  }, [logRows]);
 
   const exportBaseRows = useMemo(() => {
     return filteredRows.map(r => {
@@ -260,6 +284,22 @@ const Reports: React.FC = () => {
 
   const exportCsv = () => {
     if (!canExport) return;
+    if (kind === 'logs') {
+      const headers = ['DATA', 'NIVEL', 'EVENTO', 'USUARIO', 'CTE', 'SERIE', 'DETALHES'];
+      const lines: string[] = [headers.join(';')];
+      for (const r of selectedLogRows) {
+        lines.push(headers.map((h) => escapeCsv((r as any)[h])).join(';'));
+      }
+      const csv = lines.join('\r\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `RELATORIO_logs_${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      return;
+    }
     const headers = selectedColumns.map(c => ALL_COLUMNS.find(x => x.key === c)?.label || c);
     const lines: string[] = [];
     lines.push(headers.join(';'));
@@ -279,6 +319,13 @@ const Reports: React.FC = () => {
 
   const exportXlsx = () => {
     if (!canExport) return;
+    if (kind === 'logs') {
+      const ws = XLSX.utils.json_to_sheet(selectedLogRows, { skipHeader: false });
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Logs');
+      XLSX.writeFile(wb, `RELATORIO_logs_${new Date().toISOString().slice(0, 10)}.xlsx`);
+      return;
+    }
     const headers = selectedColumns.map(c => ALL_COLUMNS.find(x => x.key === c)?.label || c);
     const data = exportBaseRows.map(obj => {
       const out: Record<string, any> = {};
@@ -346,6 +393,7 @@ const Reports: React.FC = () => {
             ['tad', 'TAD'],
             ['concluidos', 'Concluídos'],
             ['mix', 'Mix'],
+            ['logs', 'Logs do Sistema'],
           ] as Array<[ReportKind, string]>
         ).map(([k, label]) => (
           <button
@@ -428,14 +476,14 @@ const Reports: React.FC = () => {
             </span>
           ) : (
             <span>
-              Linhas: <span className="font-bold text-slate-800">{filteredRows.length}</span> (total: {total})
+              Linhas: <span className="font-bold text-slate-800">{kind === 'logs' ? selectedLogRows.length : filteredRows.length}</span> (total: {total})
             </span>
           )}
         </div>
       </div>
 
       {/* Colunas */}
-      <div className="bg-white border border-slate-200 rounded-xl p-3">
+      {kind !== 'logs' && <div className="bg-white border border-slate-200 rounded-xl p-3">
         <div className="flex items-center justify-between gap-3 mb-2">
           <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600">Colunas</span>
           <button
@@ -471,7 +519,7 @@ const Reports: React.FC = () => {
             );
           })}
         </div>
-      </div>
+      </div>}
 
       {/* Preview mínimo */}
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
@@ -480,22 +528,25 @@ const Reports: React.FC = () => {
             Preview (primeiras 50 linhas)
           </span>
           <span className="text-[11px] text-slate-500">
-            {filteredRows.slice(0, 50).length}/{filteredRows.length}
+            {kind === 'logs' ? selectedLogRows.slice(0, 50).length : filteredRows.slice(0, 50).length}/{kind === 'logs' ? selectedLogRows.length : filteredRows.length}
           </span>
         </div>
         <div className="max-h-[340px] overflow-auto">
           <table className="w-full text-sm text-left">
             <thead className="bg-slate-100 text-xs font-bold uppercase text-slate-700">
               <tr>
-                {selectedColumns.map(c => (
+                {kind !== 'logs' && selectedColumns.map(c => (
                   <th key={c} className="px-3 py-2">
                     {ALL_COLUMNS.find(x => x.key === c)?.label || c}
                   </th>
                 ))}
+                {kind === 'logs' && ['Data', 'Nível', 'Evento', 'Usuário', 'CTE', 'Série', 'Detalhes'].map((h) => (
+                  <th key={h} className="px-3 py-2">{h}</th>
+                ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
-              {filteredRows.slice(0, 50).map((r, idx) => (
+              {kind !== 'logs' && filteredRows.slice(0, 50).map((r, idx) => (
                 <tr key={idx} className="hover:bg-slate-50/80">
                   {selectedColumns.map(c => (
                     <td key={c} className="whitespace-nowrap px-3 py-2 text-slate-800">
@@ -513,6 +564,17 @@ const Reports: React.FC = () => {
                       })()}
                     </td>
                   ))}
+                </tr>
+              ))}
+              {kind === 'logs' && selectedLogRows.slice(0, 50).map((r, idx) => (
+                <tr key={idx} className="hover:bg-slate-50/80">
+                  <td className="whitespace-nowrap px-3 py-2 text-slate-800">{r.DATA}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-slate-800">{r.NIVEL}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-slate-800">{r.EVENTO}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-slate-800">{r.USUARIO}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-slate-800">{r.CTE}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-slate-800">{r.SERIE}</td>
+                  <td className="px-3 py-2 text-slate-800 max-w-[360px] truncate">{r.DETALHES}</td>
                 </tr>
               ))}
             </tbody>

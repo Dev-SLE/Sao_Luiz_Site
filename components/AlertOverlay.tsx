@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { AlertCircle, X, Tag } from 'lucide-react';
+import { AlertCircle, Tag, BellRing } from 'lucide-react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { CteData } from '../types';
@@ -9,11 +9,44 @@ interface Props {
 }
 
 const AlertOverlay: React.FC<Props> = ({ onOpenCte }) => {
-  const { baseData, notes, isCteEmBusca, isCteTad } = useData();
+  const { baseData, isCteEmBusca, isCteTad } = useData();
   const { user } = useAuth();
   const [active, setActive] = useState(false);
   const [targetCte, setTargetCte] = useState<CteData | null>(null);
   const [alertType, setAlertType] = useState<'BUSCA' | 'TAD'>('BUSCA');
+  const [ackedByUser, setAckedByUser] = useState<Set<string>>(new Set());
+
+  const normalizeSerie = (serie: string) => String(serie || '').replace(/^0+/, '') || '0';
+  const makeKey = (cte: string, serie: string) => `${String(cte)}|${normalizeSerie(serie)}`;
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!user?.username) {
+      setAckedByUser(new Set());
+      return;
+    }
+    const loadAcks = async () => {
+      try {
+        const resp = await fetch(`/api/alerts/user-note-acks?username=${encodeURIComponent(user.username)}`);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const rows = await resp.json();
+        const next = new Set<string>(
+          (Array.isArray(rows) ? rows : []).map((r: any) => makeKey(String(r?.cte || ''), String(r?.serie || '0')))
+        );
+        if (!cancelled) setAckedByUser(next);
+      } catch {
+        if (!cancelled) setAckedByUser(new Set());
+      }
+    };
+    void loadAcks();
+    const timer = window.setInterval(() => {
+      void loadAcks();
+    }, 15000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [user?.username]);
 
   useEffect(() => {
     // REGRA 1: Usuários sem unidade vinculada (ex: admin global sem unidade) não recebem alertas intrusivos
@@ -36,10 +69,7 @@ const AlertOverlay: React.FC<Props> = ({ onOpenCte }) => {
         if (itemDest !== userUnit) return false;
 
         // 3. Verifica se o usuário já interagiu (anotou) para dispensar o alerta
-        const userHasNote = notes.some(n => 
-            n.CTE === item.CTE && 
-            n.USUARIO.toLowerCase() === user.username.toLowerCase()
-        );
+        const userHasNote = ackedByUser.has(makeKey(item.CTE, item.SERIE));
         return !userHasNote;
     });
 
@@ -48,7 +78,6 @@ const AlertOverlay: React.FC<Props> = ({ onOpenCte }) => {
         setTargetCte(tadItem);
         setAlertType('TAD');
         setActive(true);
-        playAudio();
         return;
     }
 
@@ -62,10 +91,7 @@ const AlertOverlay: React.FC<Props> = ({ onOpenCte }) => {
         // 2. O alerta é GLOBAL para qualquer usuário que tenha unidade (verificado no início do useEffect)
         
         // 3. Verifica se o usuário já interagiu para dispensar o alerta
-        const userHasNote = notes.some(n => 
-          n.CTE === item.CTE && 
-          n.USUARIO.toLowerCase() === user.username.toLowerCase()
-        );
+        const userHasNote = ackedByUser.has(makeKey(item.CTE, item.SERIE));
         return !userHasNote;
     });
 
@@ -74,7 +100,6 @@ const AlertOverlay: React.FC<Props> = ({ onOpenCte }) => {
         setTargetCte(pendingItem);
         setAlertType('BUSCA');
         setActive(true);
-        playAudio();
         return;
     }
 
@@ -82,18 +107,7 @@ const AlertOverlay: React.FC<Props> = ({ onOpenCte }) => {
     setActive(false);
     setTargetCte(null);
 
-  }, [baseData, user, notes, isCteEmBusca, isCteTad]);
-
-  const playAudio = () => {
-    const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3'); 
-    audio.loop = true;
-    audio.volume = 0.5;
-    const playPromise = audio.play();
-    if (playPromise !== undefined) {
-      playPromise.catch(() => console.log("Auto-play de áudio bloqueado."));
-    }
-    return () => { audio.pause(); audio.currentTime = 0; };
-  };
+  }, [baseData, user, ackedByUser, isCteEmBusca, isCteTad]);
 
   if (!active || !targetCte) return null;
 
@@ -101,36 +115,56 @@ const AlertOverlay: React.FC<Props> = ({ onOpenCte }) => {
 
   return (
     <div
-      className={`fixed inset-0 z-[100] flex animate-pulse items-center justify-center bg-slate-900/60 backdrop-blur-sm`}
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-md"
     >
-      <div className={`bg-white p-8 rounded-lg shadow-2xl max-w-md text-center border-4 ${isTad ? 'border-violet-500' : 'border-red-500'}`}>
-        <div className="relative">
-             {isTad ? (
-                 <Tag size={64} className="text-violet-600 mx-auto mb-4" />
-             ) : (
-                 <AlertCircle size={64} className="text-red-600 mx-auto mb-4" />
-             )}
+      <div className={`w-full max-w-lg overflow-hidden rounded-3xl border shadow-2xl ${isTad ? 'border-violet-200 bg-white' : 'border-red-200 bg-white'}`}>
+        <div className={`px-6 py-4 ${isTad ? 'bg-gradient-to-r from-violet-700 to-violet-600' : 'bg-gradient-to-r from-[#e42424] to-[#c21820]'}`}>
+          <div className="flex items-center gap-3 text-white">
+            <span className="rounded-xl bg-white/20 p-2">
+              <BellRing size={20} />
+            </span>
+            <div>
+              <div className="text-xs font-bold uppercase tracking-wider">Notificação operacional</div>
+              <h2 className="text-xl font-black">{isTad ? 'Processo TAD' : 'Mercadoria em Busca'}</h2>
+            </div>
+          </div>
         </div>
-        <h2 className={`text-3xl font-bold mb-2 uppercase tracking-tighter italic ${isTad ? 'text-violet-900' : 'text-red-900'}`}>
-            {isTad ? 'Processo TAD' : 'Mercadoria em Busca'}
-        </h2>
-        <div className={`p-4 rounded-lg mb-6 border ${isTad ? 'bg-violet-50 border-violet-100' : 'bg-red-50 border-red-100'}`}>
-          <p className="text-gray-700 font-medium">
-              Atenção! O documento <span className={`font-black text-xl ${isTad ? 'text-violet-600' : 'text-red-600'}`}>{targetCte.CTE}</span> está marcado como <span className="font-bold">{isTad ? 'TAD' : 'EM BUSCA'}</span>.
+        <div className="space-y-4 p-6 text-slate-800">
+          <div className={`flex items-center gap-3 rounded-2xl border p-4 ${isTad ? 'border-violet-200 bg-violet-50' : 'border-red-200 bg-red-50'}`}>
+            {isTad ? (
+              <Tag size={28} className="text-violet-700" />
+            ) : (
+              <AlertCircle size={28} className="text-red-700" />
+            )}
+            <div className="text-sm">
+              Documento <span className={`font-black ${isTad ? 'text-violet-700' : 'text-red-700'}`}>{targetCte.CTE}</span>
+              {' '}série <span className="font-black">{targetCte.SERIE || '0'}</span> com status{' '}
+              <span className="font-black">{isTad ? 'TAD' : 'EM BUSCA'}</span>.
+            </div>
+          </div>
+          <p className="text-sm text-slate-600">
+            {isTad
+              ? `Sua unidade (${user?.linkedDestUnit || '-'}) é o destino desta pendência.`
+              : 'Atenção necessária para sua agência. Abra o CTE e registre uma anotação para encerrar esta notificação para você.'}
           </p>
-          <p className={`text-sm mt-2 font-bold uppercase underline ${isTad ? 'text-violet-800' : 'text-red-800'}`}>
-              {isTad ? 
-                  `Sua unidade (${user?.linkedDestUnit}) é o destino.` : 
-                  'Verifique em sua unidade imediatamente.'}
+          <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
+            Esta notificação é silenciosa (sem som).
           </p>
         </div>
-        <button 
-          onClick={() => { setActive(false); onOpenCte(targetCte); }}
-          className={`px-6 py-4 rounded-xl font-black text-lg text-white transition-all shadow-xl active:scale-95 w-full uppercase 
-          ${isTad ? 'bg-violet-600 hover:bg-violet-700 shadow-violet-500/40' : 'bg-red-600 hover:bg-red-700 shadow-red-500/40'}`}
-        >
-          Verificar e Anotar
-        </button>
+        <div className="flex gap-3 border-t border-slate-200 p-4">
+          <button
+            onClick={() => setActive(false)}
+            className="flex-1 rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-bold text-slate-700 transition-colors hover:bg-slate-50"
+          >
+            Fechar
+          </button>
+          <button
+            onClick={() => { setActive(false); onOpenCte(targetCte); }}
+            className={`flex-1 rounded-xl px-4 py-3 text-sm font-black text-white transition-all active:scale-[0.99] ${isTad ? 'bg-violet-600 hover:bg-violet-700' : 'bg-[#e42424] hover:bg-[#c21820]'}`}
+          >
+            Verificar e Anotar
+          </button>
+        </div>
       </div>
     </div>
   );

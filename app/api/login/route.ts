@@ -8,6 +8,11 @@ export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   try {
+    const ip =
+      req.headers.get("x-forwarded-for")?.split(",")?.[0]?.trim() ||
+      req.headers.get("x-real-ip") ||
+      null;
+    const userAgent = req.headers.get("user-agent") || null;
     const { username, password } = await req.json();
     if (!username || !password) {
       return NextResponse.json({ success: false, message: "Credenciais inválidas" }, { status: 400 });
@@ -37,11 +42,17 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, message: "Credenciais inválidas" }, { status: 401 });
     }
 
+    await pool.query(`ALTER TABLE pendencias.users ADD COLUMN IF NOT EXISTS last_login_at timestamptz`);
+    await pool.query(
+      `UPDATE pendencias.users SET last_login_at = NOW(), updated_at = NOW() WHERE username = $1`,
+      [String(user.username)]
+    );
+
     await serverLog({
       level: "INFO",
       event: "API_LOGIN_SUCCESS",
       username: String(username),
-      data: { role: user.role },
+      data: { role: user.role, ip, userAgent },
     });
     const response = NextResponse.json({
       success: true,

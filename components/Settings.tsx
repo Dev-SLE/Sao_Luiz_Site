@@ -94,6 +94,12 @@ const Settings: React.FC = () => {
   } | null>(null);
   const [confirmDeleteUser, setConfirmDeleteUser] = useState<string | null>(null);
   const [confirmDeleteProfile, setConfirmDeleteProfile] = useState<string | null>(null);
+  const formatLastLogin = (value?: string) => {
+    if (!value) return '-';
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return String(value);
+    return d.toLocaleString('pt-BR');
+  };
 
   // --- Profiles Tab State ---
   const [editingProfile, setEditingProfile] = useState<ProfileData | null>(null);
@@ -349,6 +355,7 @@ const Settings: React.FC = () => {
                               <th className="px-4 py-3">Perfil</th>
                               <th className="px-4 py-3">Origem</th>
                               <th className="px-4 py-3">Destino</th>
+                              <th className="px-4 py-3">Último login</th>
                               <th className="px-4 py-3 text-right">Ações</th>
                           </tr>
                       </thead>
@@ -363,6 +370,7 @@ const Settings: React.FC = () => {
                                   </td>
                                   <td className="px-4 py-3 text-slate-600">{u.linkedOriginUnit || '-'}</td>
                                   <td className="px-4 py-3 text-slate-600">{u.linkedDestUnit || '-'}</td>
+                                  <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{formatLastLogin(u.lastLoginAt)}</td>
                                   <td className="px-4 py-3 text-right">
                                       <div className="inline-flex items-center gap-1">
                                         <button

@@ -8,6 +8,7 @@ export const runtime = "nodejs";
 export async function GET() {
   try {
     const pool = getPool();
+    await pool.query(`ALTER TABLE pendencias.users ADD COLUMN IF NOT EXISTS last_login_at timestamptz`);
     const result = await pool.query("SELECT * FROM pendencias.users");
     return NextResponse.json(result.rows || []);
   } catch (error) {

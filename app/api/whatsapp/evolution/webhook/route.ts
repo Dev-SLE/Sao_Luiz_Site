@@ -831,7 +831,8 @@ export async function POST(req: Request) {
       if (!phoneDigits) continue;
 
       const msgObj = item.message || item.msg || {};
-      const text = extractEvolutionMessageText(msgObj) || "[Mensagem sem texto]";
+      // Alguns provedores enviam tipo/mídia fora de message; usa fallback com o item inteiro.
+      const text = extractEvolutionMessageText(msgObj) || extractEvolutionMessageText(item) || "[Mensagem sem texto]";
       const cteDetected = extractCteFromText(text);
       const last10 = lastN(phoneDigits, 10);
       const pushName = String(item.pushName || item.verifiedBizName || "").trim();

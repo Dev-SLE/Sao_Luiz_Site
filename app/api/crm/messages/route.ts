@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getPool } from "../../../../lib/server/db";
 import { ensureCrmSchemaTables } from "../../../../lib/server/ensureSchema";
-import { evolutionSendText } from "../../../../lib/server/evolutionClient";
+import { evolutionDeleteMessageForEveryone, evolutionSendText } from "../../../../lib/server/evolutionClient";
 
 export const runtime = "nodejs";
 
@@ -466,6 +466,7 @@ export async function POST(req: Request) {
               delivered: outboundWhatsApp.delivered,
               status: outboundWhatsApp.delivered ? "sent" : "failed",
               message_id: waMessageId,
+              remote_jid: toE164 ? `${toE164}@s.whatsapp.net` : null,
               error: outboundWhatsApp.error || null,
             },
           }),
@@ -545,12 +546,65 @@ export async function DELETE(req: Request) {
     const { searchParams } = new URL(req.url);
     const messageId = searchParams.get("messageId");
     const conversationId = searchParams.get("conversationId");
+    const deleteInWhatsapp = searchParams.get("deleteInWhatsapp") !== "false";
     if (!messageId || !conversationId) {
       return NextResponse.json({ error: "messageId e conversationId obrigatórios" }, { status: 400 });
+    }
+    let whatsappDelete: {
+      attempted: boolean;
+      ok: boolean;
+      error?: string | null;
+      response?: any;
+    } = { attempted: false, ok: false, error: null, response: null };
+
+    const messageRes = await pool.query(
+      `
+        SELECT
+          m.metadata,
+          c.whatsapp_inbox_id,
+          i.provider AS inbox_provider,
+          i.evolution_instance_name,
+          i.evolution_server_url,
+          i.evolution_api_key
+        FROM pendencias.crm_messages m
+        JOIN pendencias.crm_conversations c ON c.id = m.conversation_id
+        LEFT JOIN pendencias.crm_whatsapp_inboxes i ON i.id = c.whatsapp_inbox_id
+        WHERE m.id = $1::uuid
+          AND m.conversation_id = $2::uuid
+        LIMIT 1
+      `,
+      [messageId, conversationId]
+    );
+    const row = messageRes.rows?.[0];
+    const meta = safeJsonParse(row?.metadata);
+    const outbound = safeJsonParse(meta?.outbound_whatsapp);
+    const messageWaId = String(outbound?.message_id || meta?.message_id || "").trim();
+    const remoteJid = String(outbound?.remote_jid || meta?.remote_jid || "").trim();
+    const fromMe = meta?.from_me === true || outbound?.from_me === true || Boolean(outbound?.message_id);
+    const useEvolution =
+      String(row?.inbox_provider || "").toUpperCase() === "EVOLUTION" &&
+      row?.evolution_instance_name &&
+      row?.evolution_server_url &&
+      row?.evolution_api_key;
+
+    if (deleteInWhatsapp && useEvolution && messageWaId && remoteJid && fromMe) {
+      whatsappDelete.attempted = true;
+      const wa = await evolutionDeleteMessageForEveryone({
+        serverUrl: String(row.evolution_server_url),
+        apiKey: String(row.evolution_api_key),
+        instanceName: String(row.evolution_instance_name),
+        messageId: messageWaId,
+        remoteJid,
+        fromMe: true,
+      });
+      whatsappDelete.ok = wa.ok;
+      whatsappDelete.error = wa.error;
+      whatsappDelete.response = wa.response;
     }
     const patch = {
       deleted_at: new Date().toISOString(),
       deleted_by: "operator",
+      whatsapp_delete: whatsappDelete,
     };
     const res = await pool.query(
       `
@@ -566,7 +620,7 @@ export async function DELETE(req: Request) {
     if (!res.rows?.[0]?.id) {
       return NextResponse.json({ error: "mensagem não encontrada" }, { status: 404 });
     }
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, whatsappDelete });
   } catch (error) {
     console.error("CRM messages DELETE error:", error);
     return NextResponse.json({ error: "Erro interno" }, { status: 500 });
