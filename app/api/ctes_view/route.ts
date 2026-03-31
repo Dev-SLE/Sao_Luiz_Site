@@ -11,7 +11,11 @@ const NORMALIZED_STATUS_SQL = `
 
 export async function GET(req: Request) {
   try {
-    await ensureOperationalAssignmentsTable();
+    try {
+      await ensureOperationalAssignmentsTable();
+    } catch (e) {
+      console.warn("[ctes_view] ensureOperationalAssignmentsTable falhou, seguindo sem atribuições", e);
+    }
     const { searchParams } = new URL(req.url);
     const view = (searchParams.get("view") || "pendencias").toLowerCase();
     const page = parseInt(searchParams.get("page") || "1", 10) || 1;
@@ -21,6 +25,31 @@ export async function GET(req: Request) {
     const viewKey = ["pendencias", "criticos", "em_busca", "tad", "concluidos"].includes(view) ? view : "pendencias";
 
     const pool = getPool();
+    const assignmentReg = await pool.query(`SELECT to_regclass('pendencias.cte_assignments') AS reg`);
+    const assignmentAvailable = !!assignmentReg.rows?.[0]?.reg;
+    const assignmentSelect = assignmentAvailable
+      ? `
+          a.assignment_type,
+          a.agency_unit,
+          a.assigned_username,
+          a.updated_at AS assignment_updated_at,
+        `
+      : `
+          NULL::text AS assignment_type,
+          NULL::text AS agency_unit,
+          NULL::text AS assigned_username,
+          NULL::timestamptz AS assignment_updated_at,
+        `;
+    const assignmentJoin = assignmentAvailable
+      ? `
+        LEFT JOIN pendencias.cte_assignments a
+          ON a.cte = c.cte
+          AND (a.serie = c.serie OR ltrim(a.serie, '0') = ltrim(c.serie, '0'))
+          AND a.active = true
+          AND a.assignment_type = 'PENDENTE_AG_BAIXAR'
+      `
+      : ``;
+
     const totalResult = await pool.query(
       `
         SELECT COUNT(*)::int AS total
@@ -43,6 +72,7 @@ export async function GET(req: Request) {
               i.view = 'criticos'
               OR ${NORMALIZED_STATUS_SQL} LIKE 'CRITICO%'
             )
+            AND ${NORMALIZED_STATUS_SQL} LIKE 'CRITICO%'
             AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'CONCLUIDO%'
             AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'ENTREGUE%'
             AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'RESOLVIDO%'
@@ -52,6 +82,10 @@ export async function GET(req: Request) {
             $1 <> 'concluidos'
             AND $1 <> 'criticos'
             AND i.view = $1
+            AND (
+              $1 <> 'pendencias'
+              OR ${NORMALIZED_STATUS_SQL} IN ('FORA DO PRAZO', 'PRIORIDADE', 'VENCE AMANHA', 'NO PRAZO')
+            )
             AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'CONCLUIDO%'
             AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'ENTREGUE%'
             AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'RESOLVIDO%'
@@ -75,10 +109,7 @@ export async function GET(req: Request) {
             ELSE i.status_calculado
           END AS status_calculado,
           i.note_count,
-          a.assignment_type,
-          a.agency_unit,
-          a.assigned_username,
-          a.updated_at AS assignment_updated_at,
+          ${assignmentSelect}
           CASE
             WHEN i.view = 'tad' THEN 'TAD'
             WHEN i.view = 'em_busca' THEN 'EM BUSCA'
@@ -86,11 +117,7 @@ export async function GET(req: Request) {
           END AS status_exibicao
         FROM pendencias.cte_view_index i
         JOIN pendencias.ctes c ON c.cte = i.cte AND c.serie = i.serie
-        LEFT JOIN pendencias.cte_assignments a
-          ON a.cte = c.cte
-          AND (a.serie = c.serie OR ltrim(a.serie, '0') = ltrim(c.serie, '0'))
-          AND a.active = true
-          AND a.assignment_type = 'PENDENTE_AG_BAIXAR'
+        ${assignmentJoin}
         WHERE
           (
             $1 = 'concluidos'
@@ -108,6 +135,7 @@ export async function GET(req: Request) {
               i.view = 'criticos'
               OR ${NORMALIZED_STATUS_SQL} LIKE 'CRITICO%'
             )
+            AND ${NORMALIZED_STATUS_SQL} LIKE 'CRITICO%'
             AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'CONCLUIDO%'
             AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'ENTREGUE%'
             AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'RESOLVIDO%'
@@ -117,6 +145,10 @@ export async function GET(req: Request) {
             $1 <> 'concluidos'
             AND $1 <> 'criticos'
             AND i.view = $1
+            AND (
+              $1 <> 'pendencias'
+              OR ${NORMALIZED_STATUS_SQL} IN ('FORA DO PRAZO', 'PRIORIDADE', 'VENCE AMANHA', 'NO PRAZO')
+            )
             AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'CONCLUIDO%'
             AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'ENTREGUE%'
             AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'RESOLVIDO%'

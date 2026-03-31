@@ -3,7 +3,7 @@ import { google } from "googleapis";
 import { Readable } from "stream";
 import { getPool } from "../../../lib/server/db";
 import { getDriveFolderId, getGoogleOAuthClient } from "../../../lib/server/googleDrive";
-import { ensureUserTokensTable } from "../../../lib/server/ensureSchema";
+import { ensureAppLogsTable, ensureUserTokensTable } from "../../../lib/server/ensureSchema";
 
 export const runtime = "nodejs";
 
@@ -64,9 +64,31 @@ export async function POST(req: Request) {
     const previewUrl = `https://drive.google.com/file/d/${fileId}/preview`;
     const downloadUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
 
+    try {
+      await ensureAppLogsTable();
+      await pool.query(
+        `
+          INSERT INTO pendencias.app_logs (level, source, event, username, payload)
+          VALUES ('INFO', 'operacional', 'NOTE_FILE_UPLOAD_SUCCESS', $1, $2)
+        `,
+        [username, JSON.stringify({ fileName: f.name, mimeType: f.type || "", driveFileId: fileId })]
+      );
+    } catch {}
+
     return NextResponse.json({ success: true, url: previewUrl, downloadUrl, id: fileId });
   } catch (error) {
     console.error("Erro no upload:", error);
+    try {
+      const pool = getPool();
+      await ensureAppLogsTable();
+      await pool.query(
+        `
+          INSERT INTO pendencias.app_logs (level, source, event, payload)
+          VALUES ('ERROR', 'operacional', 'NOTE_FILE_UPLOAD_ERROR', $1)
+        `,
+        [JSON.stringify({ message: (error as any)?.message || String(error) })]
+      );
+    } catch {}
     return NextResponse.json({ error: "Erro interno" }, { status: 500 });
   }
 }

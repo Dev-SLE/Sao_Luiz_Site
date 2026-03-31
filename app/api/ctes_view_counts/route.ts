@@ -10,7 +10,11 @@ const NORMALIZED_STATUS_SQL = `
 
 export async function POST(req: Request) {
   try {
-    await ensureOperationalAssignmentsTable();
+    try {
+      await ensureOperationalAssignmentsTable();
+    } catch (e) {
+      console.warn("[ctes_view_counts] ensureOperationalAssignmentsTable falhou, seguindo sem atribuições", e);
+    }
     const body = await req.json().catch(() => ({}));
     const {
       view,
@@ -48,24 +52,47 @@ export async function POST(req: Request) {
     const txCond = (alias: string) =>
       tx ? `AND COALESCE(NULLIF(${alias}.tx_entrega::text, ''), '0')::numeric > 0` : "";
 
+    const pool = getPool();
+    const assignmentReg = await pool.query(`SELECT to_regclass('pendencias.cte_assignments') AS reg`);
+    const assignmentAvailable = !!assignmentReg.rows?.[0]?.reg;
+    const assignmentSelect = assignmentAvailable
+      ? `
+          a.assignment_type,
+          a.agency_unit,
+          a.assigned_username,
+          a.updated_at AS assignment_updated_at,
+          a.id AS assignment_id,
+      `
+      : `
+          NULL::text AS assignment_type,
+          NULL::text AS agency_unit,
+          NULL::text AS assigned_username,
+          NULL::timestamptz AS assignment_updated_at,
+          NULL::text AS assignment_id,
+      `;
+    const assignmentJoin = assignmentAvailable
+      ? `
+        LEFT JOIN pendencias.cte_assignments a
+          ON a.cte = c.cte
+          AND (a.serie = c.serie OR ltrim(a.serie, '0') = ltrim(c.serie, '0'))
+          AND a.active = true
+          AND a.assignment_type = 'PENDENTE_AG_BAIXAR'
+      `
+      : ``;
+    const assignmentIdExpr = assignmentAvailable ? "a.id" : "NULL";
+    const assignmentAgencyExpr = assignmentAvailable ? "a.agency_unit" : "NULL";
+    const assignmentUserExpr = assignmentAvailable ? "a.assigned_username" : "NULL";
     const sql = `
       WITH base AS (
         SELECT
           c.*,
           i.status_calculado,
           i.note_count,
-          a.assignment_type,
-          a.agency_unit,
-          a.assigned_username,
-          a.updated_at AS assignment_updated_at,
+          ${assignmentSelect}
           CASE WHEN $1 = 'concluidos' THEN c.status ELSE i.status_calculado END AS status_key
         FROM pendencias.cte_view_index i
         JOIN pendencias.ctes c ON c.cte = i.cte AND c.serie = i.serie
-        LEFT JOIN pendencias.cte_assignments a
-          ON a.cte = c.cte
-          AND (a.serie = c.serie OR ltrim(a.serie, '0') = ltrim(c.serie, '0'))
-          AND a.active = true
-          AND a.assignment_type = 'PENDENTE_AG_BAIXAR'
+        ${assignmentJoin}
         WHERE (
           (
             $1 = 'concluidos'
@@ -77,22 +104,40 @@ export async function POST(req: Request) {
             )
           )
           OR (
-            $1 <> 'concluidos'
-            AND i.view = $1
+            $1 = 'criticos'
+            AND (
+              i.view = 'criticos'
+              OR ${NORMALIZED_STATUS_SQL} LIKE 'CRITICO%'
+            )
+            AND ${NORMALIZED_STATUS_SQL} LIKE 'CRITICO%'
             AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'CONCLUIDO%'
             AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'ENTREGUE%'
             AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'RESOLVIDO%'
+            AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'CANCELADO%'
+          )
+          OR (
+            $1 <> 'concluidos'
+            AND $1 <> 'criticos'
+            AND i.view = $1
+            AND (
+              $1 <> 'pendencias'
+              OR ${NORMALIZED_STATUS_SQL} IN ('FORA DO PRAZO', 'PRIORIDADE', 'VENCE AMANHA', 'NO PRAZO')
+            )
+            AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'CONCLUIDO%'
+            AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'ENTREGUE%'
+            AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'RESOLVIDO%'
+            AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'CANCELADO%'
           )
         )
           AND ($2::text IS NULL OR c.entrega = $2::text)
           AND (
             $5::text = 'ALL'
-            OR ($5::text = 'WITH' AND a.id IS NOT NULL)
-            OR ($5::text = 'WITHOUT' AND a.id IS NULL)
+            OR ($5::text = 'WITH' AND ${assignmentIdExpr} IS NOT NULL)
+            OR ($5::text = 'WITHOUT' AND ${assignmentIdExpr} IS NULL)
           )
-          AND ($6::text IS NULL OR $6::text = '' OR a.agency_unit = $6::text)
-          AND ($7::text IS NULL OR $7::text = '' OR a.assigned_username = $7::text)
-          AND (NOT $8::boolean OR ($9::text <> '' AND a.assigned_username = $9::text))
+          AND ($6::text IS NULL OR $6::text = '' OR ${assignmentAgencyExpr} = $6::text)
+          AND ($7::text IS NULL OR $7::text = '' OR ${assignmentUserExpr} = $7::text)
+          AND (NOT $8::boolean OR ($9::text <> '' AND ${assignmentUserExpr} = $9::text))
       ),
       base_for_status AS (
         SELECT * FROM base b
@@ -145,7 +190,6 @@ export async function POST(req: Request) {
         ) w) AS assignment_user_counts
     `;
 
-    const pool = getPool();
     const result = await pool.query(sql, [
       viewKey,
       effectiveUnit || null,

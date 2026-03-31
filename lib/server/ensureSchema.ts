@@ -589,6 +589,9 @@ export async function ensureOperationalAssignmentsTable() {
         updated_at timestamptz NOT NULL DEFAULT NOW()
       )
     `);
+    await pool.query(`ALTER TABLE pendencias.cte_assignments ADD COLUMN IF NOT EXISTS return_reason text`);
+    await pool.query(`ALTER TABLE pendencias.cte_assignments ADD COLUMN IF NOT EXISTS returned_by text`);
+    await pool.query(`ALTER TABLE pendencias.cte_assignments ADD COLUMN IF NOT EXISTS returned_at timestamptz`);
     await pool.query(`
       CREATE UNIQUE INDEX IF NOT EXISTS idx_cte_assignments_active_unique
       ON pendencias.cte_assignments (cte, serie, assignment_type)

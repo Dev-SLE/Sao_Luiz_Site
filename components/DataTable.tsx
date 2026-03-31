@@ -8,7 +8,7 @@ import { useData } from '../context/DataContext';
 import clsx from 'clsx';
 import { COLORS } from '../constants';
 import { authClient } from '../lib/auth';
-import { AppConfirmModal, AppMessageModal, type AppMessageVariant } from './AppOverlays';
+import { AppMessageModal, type AppMessageVariant } from './AppOverlays';
 
 interface Props {
   data: CteData[];
@@ -107,6 +107,7 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
   const [assigningDraft, setAssigningDraft] = useState<AssignmentDraft | null>(null);
   const [assignmentBusy, setAssignmentBusy] = useState(false);
   const [clearTarget, setClearTarget] = useState<{ cte: string; serie: string } | null>(null);
+  const [clearReason, setClearReason] = useState('');
   const [assignmentNotice, setAssignmentNotice] = useState<{
     title: string;
     message: string;
@@ -123,6 +124,8 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
 
   const { user } = useAuth();
   const { notes, fullData, processControlData, isCteEmBusca, hasPermission, users } = useData();
+  const canAssignOperational = hasPermission('ASSIGN_OPERATIONAL_PENDING') || hasPermission('MANAGE_SETTINGS');
+  const canReturnOperational = hasPermission('RETURN_OPERATIONAL_PENDING') || hasPermission('MANAGE_SETTINGS');
 
   // --- Paginação (local ou server-side) ---
   const [pageLocal, setPageLocal] = useState(1);
@@ -368,7 +371,6 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
       result = [...activeMatches, ...historicalMatches];
     } else {
       result = sourceRows;
-      if (isPendencyView) result = result.filter(d => d.STATUS_CALCULADO !== 'CRÍTICO');
     }
     const userRestrictedUnit = (ignoreUnitFilter || isGlobalSearch) ? null : user?.linkedDestUnit;
     const effectiveUnit = selectedUnit || userRestrictedUnit;
@@ -634,6 +636,14 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
 
   const applyAssignment = async () => {
     if (!assigningDraft) return;
+    if (!canAssignOperational) {
+      setAssignmentNotice({
+        title: 'Permissão',
+        message: 'Seu perfil não possui permissão para atribuir pendências operacionais.',
+        variant: 'warning',
+      });
+      return;
+    }
     if (!assigningDraft.agencyUnit || !assigningDraft.assignedUsername) {
       setAssignmentNotice({
         title: 'Atribuição',
@@ -680,12 +690,29 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
 
   const clearAssignment = async () => {
     if (!clearTarget) return;
+    if (!canReturnOperational) {
+      setAssignmentNotice({
+        title: 'Permissão',
+        message: 'Seu perfil não possui permissão para devolver atribuições.',
+        variant: 'warning',
+      });
+      return;
+    }
+    if (!clearReason.trim()) {
+      setAssignmentNotice({
+        title: 'Motivo obrigatório',
+        message: 'Informe o motivo da devolução antes de continuar.',
+        variant: 'warning',
+      });
+      return;
+    }
     setAssignmentBusy(true);
     try {
       await authClient.clearCteAssignment({
         cte: clearTarget.cte,
         serie: clearTarget.serie,
         actor: user?.username || undefined,
+        reason: clearReason.trim(),
       });
       setAssignmentOverrides(prev => ({
         ...prev,
@@ -697,9 +724,10 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
         },
       }));
       setClearTarget(null);
+      setClearReason('');
       setAssignmentNotice({
         title: 'Atribuição removida',
-        message: 'CTE voltou para a fila geral sem responsável dedicado.',
+        message: 'Devolução registrada com motivo e CTE voltou para a fila geral.',
         variant: 'success',
       });
     } catch {
@@ -790,8 +818,6 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
       let base = isGlobalSearch ? (shouldUseLocalPagination ? (allViewData ?? []) : fullData) : baseAll;
       if (isGlobalSearch) base = base.map(withAssignmentOverride);
       
-      if (!isGlobalSearch && isPendencyView) base = base.filter(d => d.STATUS_CALCULADO !== 'CRÍTICO');
-      
       const userRestrictedUnit = (ignoreUnitFilter || isGlobalSearch) ? null : user?.linkedDestUnit;
       const effectiveUnit = selectedUnit || userRestrictedUnit;
       if (effectiveUnit) base = base.filter(d => d.ENTREGA === effectiveUnit);
@@ -849,6 +875,12 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
   // }, [sortedData, currentPage, itemsPerPage]);
 
   const showFilters = isPendencyView || enableFilters || isCriticalView;
+  const subtleControlClass =
+    "rounded-xl border border-slate-300/85 bg-gradient-to-b from-white to-slate-50 px-3 py-2.5 text-xs font-bold text-slate-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] outline-none transition-all focus:border-[#2c348c]/45 focus:ring-2 focus:ring-[#2c348c]/20";
+  const subtleGhostButtonClass =
+    "rounded-xl border border-slate-300/85 bg-gradient-to-b from-white to-slate-50 px-3 py-2 text-xs font-bold text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] transition-all hover:border-slate-400/80 hover:text-slate-900";
+  const subtlePrimaryButtonClass =
+    "inline-flex items-center justify-center gap-1 rounded-xl border border-[#2c348c]/35 bg-gradient-to-r from-[#2c348c] to-[#06183e] px-3 py-2 text-xs font-black text-white shadow-[0_2px_8px_rgba(44,52,140,0.2)] transition-all hover:brightness-105";
 
   const SortHeader = ({ label, sortKey }: { label: string, sortKey: SortConfig['key'] }) => (
     <th
@@ -895,22 +927,22 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
       </div>
 
       {/* Controles de Paginação */}
-      <div className="surface-card mt-4 flex items-center justify-between gap-2 border border-[#2c348c]/15 bg-gradient-to-b from-white to-[#f6f9ff] px-3 py-2 text-slate-800">
+      <div className="surface-card mt-4 flex items-center justify-between gap-2 border border-[#2c348c]/20 bg-gradient-to-b from-white to-[#f6f9ff] px-3 py-2 text-slate-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]">
         <button
           type="button"
-          className="rounded border border-slate-200 bg-white px-3 py-1 text-slate-700 disabled:opacity-40"
+          className={clsx(subtleGhostButtonClass, "px-3 py-1 disabled:opacity-40")}
           disabled={page <= 1}
           onClick={() => setPage(page - 1)}
         >Anterior</button>
         <span className="text-sm font-bold">Página {page} de {totalPages}</span>
         <button
           type="button"
-          className="rounded border border-slate-200 bg-white px-3 py-1 text-slate-700 disabled:opacity-40"
+          className={clsx(subtleGhostButtonClass, "px-3 py-1 disabled:opacity-40")}
           disabled={page >= totalPages}
           onClick={() => setPage(page + 1)}
         >Próxima</button>
         <select
-          className="ml-2 rounded border border-slate-200 bg-white px-2 py-1 text-sm text-slate-800"
+          className={clsx(subtleControlClass, "ml-2 py-1 text-sm")}
           value={limit}
           onChange={e => { setLimit(Number(e.target.value)); setPage(1); }}
         >
@@ -923,7 +955,7 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
 
       {/* Filter Section */}
       {showFilters && !globalSearch && (
-        <div className="surface-card-strong p-5 text-slate-700 transition-opacity">
+        <div className="surface-card-strong p-5 text-slate-700 transition-opacity border border-slate-200/90 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]">
             
             {/* Header com Unidade */}
             <div className="mb-5 flex flex-col items-start justify-between gap-4 border-b border-slate-200 pb-4 md:flex-row md:items-center">
@@ -939,7 +971,7 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
                         <select
                             value={selectedUnit}
                             onChange={(e) => setSelectedUnit(e.target.value)}
-                            className="w-full cursor-pointer appearance-none rounded-xl border border-slate-200 bg-white py-2.5 pl-3 pr-3 text-xs font-bold text-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#2c348c]/25 md:w-64"
+                            className={clsx(subtleControlClass, "w-full cursor-pointer appearance-none pl-3 pr-3 md:w-64")}
                         >
                             <option value="">Todas as Unidades</option>
                             {availableUnits.map(u => <option key={u} value={u}>{u}</option>)}
@@ -952,7 +984,7 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
                 <select
                     value={dateField}
                     onChange={(e) => setDateField(e.target.value as 'EMISSAO' | 'LIMITE' | 'BAIXA')}
-                    className="appearance-none rounded-xl border border-slate-200 bg-white py-2.5 px-3 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#2c348c]/25"
+                    className={clsx(subtleControlClass, "appearance-none")}
                 >
                     <option value="EMISSAO">Filtrar por emissão</option>
                     <option value="LIMITE">Filtrar por limite</option>
@@ -962,18 +994,18 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
                     type="date"
                     value={draftDateFrom}
                     onChange={(e) => setDraftDateFrom(e.target.value)}
-                    className="rounded-xl border border-slate-200 bg-white py-2.5 px-3 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#2c348c]/25"
+                    className={subtleControlClass}
                 />
                 <input
                     type="date"
                     value={draftDateTo}
                     onChange={(e) => setDraftDateTo(e.target.value)}
-                    className="rounded-xl border border-slate-200 bg-white py-2.5 px-3 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#2c348c]/25"
+                    className={subtleControlClass}
                 />
                 <button
                     type="button"
                     onClick={() => { setAppliedDateFrom(draftDateFrom); setAppliedDateTo(draftDateTo); }}
-                    className="inline-flex items-center justify-center gap-1 rounded-xl border border-[#2c348c]/30 bg-gradient-to-r from-[#2c348c] to-[#06183e] px-3 py-2 text-xs font-black text-white transition-colors hover:opacity-95"
+                    className={subtlePrimaryButtonClass}
                 >
                     <CalendarCheck2 size={14} />
                     Aplicar
@@ -981,7 +1013,7 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
                 <button
                     type="button"
                     onClick={() => { setDraftDateFrom(''); setDraftDateTo(''); setAppliedDateFrom(''); setAppliedDateTo(''); }}
-                    className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-600 transition-colors hover:bg-slate-100"
+                    className={subtleGhostButtonClass}
                 >
                     Limpar datas
                 </button>
@@ -991,7 +1023,7 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
                 <select
                     value={assignmentFilter}
                     onChange={(e) => setAssignmentFilter(e.target.value as AssignmentFilterMode)}
-                    className="appearance-none rounded-xl border border-slate-200 bg-white py-2.5 px-3 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#2c348c]/25"
+                    className={clsx(subtleControlClass, "appearance-none")}
                 >
                     <option value="ALL">Atribuição: Todas</option>
                     <option value="WITH">Somente atribuídas</option>
@@ -1000,7 +1032,7 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
                 <select
                     value={assignmentAgencyFilter}
                     onChange={(e) => setAssignmentAgencyFilter(e.target.value)}
-                    className="appearance-none rounded-xl border border-slate-200 bg-white py-2.5 px-3 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#2c348c]/25"
+                    className={clsx(subtleControlClass, "appearance-none")}
                 >
                     <option value="">Unidade/agência (todas)</option>
                     {availableAssignmentUnits.map((u) => <option key={u} value={u}>{u}</option>)}
@@ -1008,7 +1040,7 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
                 <select
                     value={assignmentUserFilter}
                     onChange={(e) => setAssignmentUserFilter(e.target.value)}
-                    className="appearance-none rounded-xl border border-slate-200 bg-white py-2.5 px-3 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#2c348c]/25"
+                    className={clsx(subtleControlClass, "appearance-none")}
                 >
                     <option value="">Responsável (todos)</option>
                     {availableAssignmentUsers.map((u) => <option key={u} value={u}>{u}</option>)}
@@ -1017,10 +1049,10 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
                     type="button"
                     onClick={() => setAssignmentMineOnly(!assignmentMineOnly)}
                     className={clsx(
-                      "rounded-xl border px-3 py-2 text-xs font-bold transition-colors",
+                      "rounded-xl border px-3 py-2 text-xs font-bold transition-colors shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]",
                       assignmentMineOnly
                         ? "border-[#2c348c] bg-[#2c348c] text-white"
-                        : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
+                        : "border-slate-300/85 bg-gradient-to-b from-white to-slate-50 text-slate-700 hover:border-slate-400/80 hover:text-slate-900"
                     )}
                 >
                     Somente minhas atribuições
@@ -1259,7 +1291,7 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
                         <MessageSquare size={18} fill={noteCount > 0 ? "currentColor" : "none"} />
                         {noteCount > 0 && <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[9px] w-4 h-4 rounded-full flex items-center justify-center font-bold border border-white">{noteCount}</span>}
                       </button>
-                      {!rowView.IS_HISTORICAL && (
+                      {!rowView.IS_HISTORICAL && canAssignOperational && (
                         <>
                           <button
                             type="button"
@@ -1275,10 +1307,13 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
                           >
                             <UserPlus size={16} />
                           </button>
-                          {!!rowView.ASSIGNMENT_TYPE && (
+                          {!!rowView.ASSIGNMENT_TYPE && canReturnOperational && (
                             <button
                               type="button"
-                              onClick={() => setClearTarget({ cte: rowView.CTE, serie: rowView.SERIE || '0' })}
+                              onClick={() => {
+                                setClearTarget({ cte: rowView.CTE, serie: rowView.SERIE || '0' });
+                                setClearReason('');
+                              }}
                               className="rounded-full p-2 text-slate-500 hover:bg-red-50 hover:text-red-700"
                               title="Limpar atribuição"
                             >
@@ -1377,20 +1412,34 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
                     <MessageSquare size={16} className="mr-1" fill={noteCount > 0 ? "currentColor" : "none"} />
                     {needsAttention ? "Resolver / Ciente" : noteCount > 0 ? `Notas (${noteCount})` : 'Anotar'}
                   </button>
-                  {!rowView.IS_HISTORICAL && (
-                    <button
-                      type="button"
-                      onClick={() => setAssigningDraft({
-                        cte: rowView.CTE,
-                        serie: rowView.SERIE || '0',
-                        agencyUnit: rowView.ASSIGNMENT_AGENCY_UNIT || rowView.ENTREGA || '',
-                        assignedUsername: rowView.ASSIGNED_USERNAME || user?.username || '',
-                        notes: '',
-                      })}
-                      className="rounded-lg border border-amber-200 bg-amber-50 px-2 py-1.5 text-amber-700"
-                    >
-                      <UserPlus size={16} />
-                    </button>
+                  {!rowView.IS_HISTORICAL && canAssignOperational && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setAssigningDraft({
+                          cte: rowView.CTE,
+                          serie: rowView.SERIE || '0',
+                          agencyUnit: rowView.ASSIGNMENT_AGENCY_UNIT || rowView.ENTREGA || '',
+                          assignedUsername: rowView.ASSIGNED_USERNAME || user?.username || '',
+                          notes: '',
+                        })}
+                        className="rounded-lg border border-amber-200 bg-amber-50 px-2 py-1.5 text-amber-700"
+                      >
+                        <UserPlus size={16} />
+                      </button>
+                      {!!rowView.ASSIGNMENT_TYPE && canReturnOperational && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setClearTarget({ cte: rowView.CTE, serie: rowView.SERIE || '0' });
+                            setClearReason('');
+                          }}
+                          className="rounded-lg border border-red-200 bg-red-50 px-2 py-1.5 text-red-700"
+                        >
+                          <UserX size={16} />
+                        </button>
+                      )}
+                    </>
                   )}
               </div>
             </div>
@@ -1453,16 +1502,38 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
         </div>
       )}
 
-      <AppConfirmModal
-        open={!!clearTarget}
-        title="Remover atribuição?"
-        message="Esse CTE sairá da fila pendente da agência para o responsável."
-        confirmLabel={assignmentBusy ? 'Removendo...' : 'Remover'}
-        busy={assignmentBusy}
-        danger
-        onCancel={() => !assignmentBusy && setClearTarget(null)}
-        onConfirm={clearAssignment}
-      />
+      {!!clearTarget && (
+        <div className="fixed inset-0 z-[210] flex items-center justify-center p-4 bg-black/40">
+          <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-4 shadow-xl">
+            <h3 className="mb-2 text-sm font-black text-[#06183e]">Devolver atribuição</h3>
+            <p className="mb-2 text-xs text-slate-600">Informe o motivo da devolução para auditoria.</p>
+            <textarea
+              value={clearReason}
+              onChange={(e) => setClearReason(e.target.value)}
+              placeholder="Motivo da devolução (obrigatório)"
+              className="min-h-[90px] w-full rounded border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800"
+            />
+            <div className="mt-3 flex justify-end gap-2">
+              <button
+                type="button"
+                disabled={assignmentBusy}
+                onClick={() => { setClearTarget(null); setClearReason(''); }}
+                className="rounded border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={assignmentBusy}
+                onClick={clearAssignment}
+                className="rounded bg-red-600 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50"
+              >
+                {assignmentBusy ? 'Devolvendo...' : 'Devolver'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <AppMessageModal
         open={!!assignmentNotice}

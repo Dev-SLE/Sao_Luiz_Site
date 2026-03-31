@@ -247,8 +247,9 @@ export class NeonDataClient {
     cte: string;
     serie: string;
     actor?: string;
+    reason: string;
   }): Promise<any> {
-    const endpoint = `/cte_assignments?cte=${encodeURIComponent(payload.cte)}&serie=${encodeURIComponent(payload.serie || '0')}&actor=${encodeURIComponent(payload.actor || '')}`;
+    const endpoint = `/cte_assignments?cte=${encodeURIComponent(payload.cte)}&serie=${encodeURIComponent(payload.serie || '0')}&actor=${encodeURIComponent(payload.actor || '')}&reason=${encodeURIComponent(payload.reason || '')}`;
     const response = await fetch(this.makeApiUrl(endpoint), { method: 'DELETE' });
     if (!response.ok) throw await this.buildHttpError('Erro na API', response);
     return response.json();

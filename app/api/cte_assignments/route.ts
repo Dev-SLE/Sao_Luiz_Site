@@ -122,26 +122,34 @@ export async function DELETE(req: Request) {
     const cte = norm(searchParams.get("cte"));
     const serie = normSerie(searchParams.get("serie"));
     const actor = norm(searchParams.get("actor")) || null;
+    const reason = norm(searchParams.get("reason"));
     if (!cte) return NextResponse.json({ error: "cte é obrigatório" }, { status: 400 });
+    if (!reason) return NextResponse.json({ error: "Motivo da devolução é obrigatório" }, { status: 400 });
     const pool = getPool();
     const result = await pool.query(
       `
         UPDATE pendencias.cte_assignments
-        SET active = false, updated_by = $3, updated_at = NOW()
+        SET
+          active = false,
+          updated_by = $3,
+          updated_at = NOW(),
+          return_reason = $5,
+          returned_by = $3,
+          returned_at = NOW()
         WHERE cte = $1
           AND (serie = $2 OR ltrim(serie, '0') = ltrim($2, '0'))
           AND assignment_type = $4
           AND active = true
         RETURNING *
       `,
-      [cte, serie, actor, ASSIGNMENT_TYPE]
+      [cte, serie, actor, ASSIGNMENT_TYPE, reason]
     );
     await logAssignmentEvent({
       event: "CTE_ASSIGNMENT_CLEAR",
       username: actor,
       cte,
       serie,
-      data: { assignmentType: ASSIGNMENT_TYPE, affected: result.rowCount || 0 },
+      data: { assignmentType: ASSIGNMENT_TYPE, affected: result.rowCount || 0, reason },
     });
     return NextResponse.json({ success: true, cleared: result.rowCount || 0 });
   } catch (error) {

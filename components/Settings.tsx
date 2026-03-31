@@ -1,11 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useData } from '../context/DataContext';
+import { useAuth } from '../context/AuthContext';
 import { Page, UserData, ProfileData } from '../types';
 import { Trash2, UserPlus, Save, Copy, Shield, Users, CheckSquare, Square, X, Activity, Search, Pencil } from 'lucide-react';
 import clsx from 'clsx';
 import { authClient } from '../lib/auth';
 import CrmOpsAdmin from './CrmOpsAdmin';
 import { AppConfirmModal, AppMessageModal, type AppMessageVariant } from './AppOverlays';
+import * as XLSX from 'xlsx';
 
 const excludedViewPages = new Set<Page>([
   Page.CONFIGURACOES,
@@ -52,7 +54,10 @@ const PERMISSIONS: Array<{ key: string; label: string; description: string }> = 
   ...autoViewPermissions,
   // Ações (funções)
   { key: 'EDIT_NOTES', label: 'Ação: Criar/editar anotações', description: 'Permite registrar notas e marcar status (Em Busca/TAD/Resolvido).' },
+  { key: 'ASSIGN_OPERATIONAL_PENDING', label: 'Ação: Atribuir pendência operacional', description: 'Permite atribuir/remover pendência da agência por CTE (unidade + responsável).' },
+  { key: 'RETURN_OPERATIONAL_PENDING', label: 'Ação: Devolver pendência operacional', description: 'Permite devolver atribuição com motivo obrigatório.' },
   { key: 'EXPORT_DATA', label: 'Ação: Exportar dados', description: 'Permite exportar Excel nas tabelas.' },
+  { key: 'EXPORT_SYSTEM_LOGS', label: 'Ação: Exportar logs', description: 'Permite exportar logs do sistema (CSV/Excel).' },
   { key: 'MANAGE_RASTREIO_OPERACIONAL', label: 'Ação: Atualizar rastreio operacional', description: 'Permite registrar atualizações manuais do rastreio (paradas, ônibus, fotos e status de descarga).' },
   // Administração
   { key: 'MANAGE_SETTINGS', label: 'Admin: Configurações', description: 'Acessar a área de configurações.' },
@@ -65,6 +70,7 @@ const PERMISSIONS: Array<{ key: string; label: string; description: string }> = 
 ];
 
 const Settings: React.FC = () => {
+  const { user } = useAuth();
   const { users, profiles, baseData, addUser, deleteUser, saveProfile, deleteProfile, hasPermission } = useData();
   const [activeTab, setActiveTab] = useState<'USERS' | 'PROFILES' | 'LOGS' | 'CRM_OPS'>('USERS');
 
@@ -76,6 +82,51 @@ const Settings: React.FC = () => {
   const [logFilterSerie, setLogFilterSerie] = useState('');
   const [logFilterEvent, setLogFilterEvent] = useState('');
   const [logLimit, setLogLimit] = useState(200);
+  const canExportLogs = hasPermission('EXPORT_SYSTEM_LOGS') || hasPermission('MANAGE_SETTINGS');
+
+  const exportLogsCsv = () => {
+    if (!canExportLogs || logs.length === 0) return;
+    void authClient.logEvent({ event: 'LOGS_EXPORT_CSV', username: user?.username || 'system', payload: { count: logs.length } });
+    const headers = ['DATA', 'NIVEL', 'EVENTO', 'USUARIO', 'CTE', 'SERIE', 'DETALHES'];
+    const lines: string[] = [headers.join(';')];
+    for (const l of logs) {
+      const row = [
+        String(l.created_at || ''),
+        String(l.level || ''),
+        String(l.event || ''),
+        String(l.username || ''),
+        String(l.cte || ''),
+        String(l.serie || ''),
+        JSON.stringify(l.payload || {}),
+      ].map((v) => (/[;"\n,]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v));
+      lines.push(row.join(';'));
+    }
+    const blob = new Blob([lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `LOGS_SLE_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const exportLogsXlsx = () => {
+    if (!canExportLogs || logs.length === 0) return;
+    void authClient.logEvent({ event: 'LOGS_EXPORT_XLSX', username: user?.username || 'system', payload: { count: logs.length } });
+    const data = logs.map((l) => ({
+      DATA: l.created_at || '',
+      NIVEL: l.level || '',
+      EVENTO: l.event || '',
+      USUARIO: l.username || '',
+      CTE: l.cte || '',
+      SERIE: l.serie || '',
+      DETALHES: l.payload ? JSON.stringify(l.payload) : '',
+    }));
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Logs');
+    XLSX.writeFile(wb, `LOGS_SLE_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  };
 
   // --- Users Tab State ---
   const [newUser, setNewUser] = useState<UserData>({
@@ -577,6 +628,22 @@ const Settings: React.FC = () => {
                       type="button"
                     >
                       Recarregar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={exportLogsCsv}
+                      disabled={!canExportLogs || logsLoading || logs.length === 0}
+                      className="pressable-3d px-3 py-1 rounded bg-gradient-to-b from-white to-slate-50 border border-slate-300/80 text-xs font-bold text-slate-700 disabled:opacity-50 hover:border-[#2c348c]/30"
+                    >
+                      Exportar CSV
+                    </button>
+                    <button
+                      type="button"
+                      onClick={exportLogsXlsx}
+                      disabled={!canExportLogs || logsLoading || logs.length === 0}
+                      className="pressable-3d px-3 py-1 rounded bg-gradient-to-b from-white to-slate-50 border border-slate-300/80 text-xs font-bold text-slate-700 disabled:opacity-50 hover:border-[#2c348c]/30"
+                    >
+                      Exportar Excel
                     </button>
                   </div>
                 </div>

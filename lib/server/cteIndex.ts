@@ -34,13 +34,13 @@ export async function rebuildCteViewIndexAll(toleranceDays = DEFAULT_TOLERANCE_D
 
   const sql = `
     WITH latest_process AS (
-      SELECT DISTINCT ON (cte, serie)
+      SELECT DISTINCT ON (cte, ltrim(serie, '0'))
         cte,
-        serie,
+        ltrim(serie, '0') AS serie_norm,
         status AS process_status,
         description AS process_description
       FROM pendencias.process_control
-      ORDER BY cte, serie, data DESC
+      ORDER BY cte, ltrim(serie, '0'), data DESC
     ),
     note_counts AS (
       SELECT cte, COUNT(*)::int AS note_count
@@ -66,7 +66,9 @@ export async function rebuildCteViewIndexAll(toleranceDays = DEFAULT_TOLERANCE_D
           ELSE 'pendencias'
         END AS view
       FROM pendencias.ctes c
-      LEFT JOIN latest_process lp ON lp.cte = c.cte AND lp.serie = c.serie
+      LEFT JOIN latest_process lp
+        ON lp.cte = c.cte
+        AND lp.serie_norm = ltrim(c.serie, '0')
       LEFT JOIN note_counts nc ON nc.cte = c.cte
     )
     INSERT INTO pendencias.cte_view_index (cte, serie, view, status_calculado, note_count, updated_at)
@@ -90,7 +92,8 @@ export async function refreshCteViewIndexOne(cte: string, serie: string, toleran
     WITH latest_process AS (
       SELECT status AS process_status, description AS process_description
       FROM pendencias.process_control
-      WHERE cte = $1 AND serie = $2
+      WHERE cte = $1
+        AND (serie = $2 OR ltrim(serie, '0') = ltrim($2, '0'))
       ORDER BY data DESC
       LIMIT 1
     ),
