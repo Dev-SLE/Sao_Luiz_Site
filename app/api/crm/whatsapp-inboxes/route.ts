@@ -7,6 +7,68 @@ import { syncEvolutionInstanceWebhook } from "../../../../lib/server/evolutionWe
 
 export const runtime = "nodejs";
 
+function parsePermissions(value: any): string[] {
+  if (Array.isArray(value)) return value.map((x) => String(x));
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) return parsed.map((x) => String(x));
+    } catch {
+      return value.split(",").map((x) => x.trim()).filter(Boolean);
+    }
+  }
+  return [];
+}
+
+function canAttendCrm(role: string, permissions: any): boolean {
+  const roleLower = String(role || "").toLowerCase();
+  const perms = parsePermissions(permissions);
+  return (
+    roleLower === "admin" ||
+    perms.includes("VIEW_CRM_CHAT") ||
+    perms.includes("CRM_SCOPE_SELF") ||
+    perms.includes("CRM_SCOPE_TEAM") ||
+    perms.includes("CRM_SCOPE_ALL")
+  );
+}
+
+async function validateOwnerUsername(pool: any, ownerUsername: string, teamId: string | null) {
+  const userRes = await pool.query(
+    `
+      SELECT u.username, u.role, p.permissions
+      FROM pendencias.users u
+      LEFT JOIN pendencias.profiles p ON LOWER(p.name) = LOWER(u.role)
+      WHERE LOWER(u.username) = LOWER($1)
+      LIMIT 1
+    `,
+    [ownerUsername]
+  );
+  const row = userRes.rows?.[0];
+  if (!row?.username) {
+    return { ok: false, error: "ownerUsername não encontrado em usuários" };
+  }
+  if (!canAttendCrm(String(row.role || ""), row.permissions)) {
+    return { ok: false, error: "ownerUsername sem permissão de atendimento CRM" };
+  }
+  if (teamId) {
+    const memberRes = await pool.query(
+      `
+        SELECT 1
+        FROM pendencias.crm_team_members
+        WHERE team_id = $1::uuid
+          AND LOWER(username) = LOWER($2)
+          AND is_active = true
+        LIMIT 1
+      `,
+      [teamId, ownerUsername]
+    );
+    if (!memberRes.rows?.length) {
+      return { ok: false, error: "ownerUsername deve ser membro ativo do time selecionado" };
+    }
+  }
+  return { ok: true };
+}
+
 async function generateUniqueEvolutionInstanceName(pool: any, displayName: string): Promise<string> {
   const part = slugifyInstancePart(displayName);
   for (let i = 0; i < 12; i++) {
@@ -80,6 +142,7 @@ export async function GET(req: Request) {
         evolution_instance_name,
         evolution_server_url,
         evolution_api_key,
+        owner_username,
         team_id,
         is_active,
         created_at
@@ -104,6 +167,7 @@ export async function GET(req: Request) {
       evolutionServerUrl: r.evolution_server_url ? String(r.evolution_server_url) : null,
       hasEvolutionApiKey: Boolean(r.evolution_api_key && String(r.evolution_api_key).length > 0),
       evolutionApiKeyLast4: maskKey(r.evolution_api_key),
+      ownerUsername: r.owner_username ? String(r.owner_username) : null,
       teamId: r.team_id ? String(r.team_id) : null,
       isActive: !!r.is_active,
       createdAt: r.created_at,
@@ -148,6 +212,8 @@ export async function POST(req: Request) {
     let evolutionApiKey = body?.evolutionApiKey != null ? String(body.evolutionApiKey).trim() : "";
     const teamId =
       body?.teamId != null && String(body.teamId).trim() ? String(body.teamId).trim() : null;
+    const ownerInBody = Object.prototype.hasOwnProperty.call(body || {}, "ownerUsername");
+    let ownerUsername = ownerInBody ? String(body?.ownerUsername || "").trim() : "";
     const defaults = getEvolutionServerDefaults();
 
     /** Modo simples: cria instância na Evolution por padrão, salvo se vier explicitamente false. */
@@ -163,7 +229,7 @@ export async function POST(req: Request) {
     if (id) {
       const cur = await pool.query(
         `
-          SELECT evolution_server_url, evolution_api_key
+          SELECT evolution_server_url, evolution_api_key, owner_username
           FROM pendencias.crm_whatsapp_inboxes
           WHERE id = $1::uuid AND provider = 'EVOLUTION'
           LIMIT 1
@@ -176,6 +242,9 @@ export async function POST(req: Request) {
       }
       if (!evolutionApiKey && row?.evolution_api_key) {
         evolutionApiKey = String(row.evolution_api_key).trim();
+      }
+      if (!ownerInBody && row?.owner_username) {
+        ownerUsername = String(row.owner_username).trim();
       }
       if (!evolutionServerUrl && defaults?.serverUrl) evolutionServerUrl = defaults.serverUrl;
       if (!evolutionApiKey && defaults?.apiKey) evolutionApiKey = defaults.apiKey;
@@ -192,6 +261,13 @@ export async function POST(req: Request) {
           { status: 400 }
         );
       }
+      if (ownerUsername && !teamId) {
+        return NextResponse.json({ error: "Defina um time ao informar dono da caixa" }, { status: 400 });
+      }
+      if (ownerUsername) {
+        const ownerCheck = await validateOwnerUsername(pool, ownerUsername, teamId);
+        if (!ownerCheck.ok) return NextResponse.json({ error: ownerCheck.error }, { status: 400 });
+      }
 
       await pool.query(
         `
@@ -202,11 +278,12 @@ export async function POST(req: Request) {
             evolution_server_url = $4,
             evolution_api_key = $5,
             team_id = $6::uuid,
+            owner_username = $7,
             is_active = true,
             updated_at = NOW()
           WHERE id = $1::uuid AND provider = 'EVOLUTION'
         `,
-        [id, name, evolutionInstanceName, evolutionServerUrl, evolutionApiKey, teamId]
+        [id, name, evolutionInstanceName, evolutionServerUrl, evolutionApiKey, teamId, ownerUsername || null]
       );
       const webhookSync = await syncEvolutionInstanceWebhook({
         serverUrl: evolutionServerUrl,
@@ -236,6 +313,13 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
+    if (ownerUsername && !teamId) {
+      return NextResponse.json({ error: "Defina um time ao informar dono da caixa" }, { status: 400 });
+    }
+    if (ownerUsername) {
+      const ownerCheck = await validateOwnerUsername(pool, ownerUsername, teamId);
+      if (!ownerCheck.ok) return NextResponse.json({ error: ownerCheck.error }, { status: 400 });
+    }
 
     if (provisionEvolutionInstance) {
       const prov = await evolutionTryCreateInstance({
@@ -260,15 +344,16 @@ export async function POST(req: Request) {
         evolution_instance_name,
         evolution_server_url,
         evolution_api_key,
+        owner_username,
         team_id,
         is_active,
         created_at,
         updated_at
       )
-      VALUES ($1, 'EVOLUTION', NULL, $2, $3, $4, $5::uuid, true, NOW(), NOW())
+      VALUES ($1, 'EVOLUTION', NULL, $2, $3, $4, $5, $6::uuid, true, NOW(), NOW())
       RETURNING id
     `,
-      [name, evolutionInstanceName, evolutionServerUrl, evolutionApiKey, teamId]
+      [name, evolutionInstanceName, evolutionServerUrl, evolutionApiKey, ownerUsername || null, teamId]
     );
     const webhookSync = await syncEvolutionInstanceWebhook({
       serverUrl: evolutionServerUrl,

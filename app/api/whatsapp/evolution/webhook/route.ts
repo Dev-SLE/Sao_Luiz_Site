@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getPool } from "../../../../../lib/server/db";
 import { ensureCrmSchemaTables } from "../../../../../lib/server/ensureSchema";
-import { applyInboundRouting } from "../../../../../lib/server/crmRouting";
+import { applyInboundRouting, resolveInboxDefaultAssignment } from "../../../../../lib/server/crmRouting";
 import { ensureDefaultPipelineAndFirstStage } from "../../../../../lib/server/crmDefaultPipeline";
 import {
   evolutionNumberDigits,
@@ -1012,18 +1012,49 @@ export async function POST(req: Request) {
       );
 
       let conversationId: string;
+      let isNewConversation = false;
       if (convRes.rows?.[0]?.id) {
         conversationId = convRes.rows[0].id as string;
       } else {
+        isNewConversation = true;
+        const inboxDefault = await resolveInboxDefaultAssignment({
+          inboxId,
+          conversationId: `${leadId}:${inboxId}`,
+        });
         const insertConv = await pool.query(
           `
-            INSERT INTO pendencias.crm_conversations (lead_id, channel, is_active, created_at, last_message_at, whatsapp_inbox_id)
-            VALUES ($1, 'WHATSAPP', true, NOW(), NULL, $2::uuid)
+            INSERT INTO pendencias.crm_conversations (
+              lead_id, channel, is_active, created_at, last_message_at, whatsapp_inbox_id,
+              assigned_username, assigned_team_id, assignment_mode
+            )
+            VALUES ($1, 'WHATSAPP', true, NOW(), NULL, $2::uuid, $3, $4::uuid, 'AUTO')
             RETURNING id
           `,
-          [leadId, inboxId]
+          [leadId, inboxId, inboxDefault.assignedUsername, inboxDefault.assignedTeamId]
         );
         conversationId = insertConv.rows?.[0]?.id as string;
+        if (inboxDefault.assignedUsername) {
+          await pool.query(
+            `
+              UPDATE pendencias.crm_leads
+              SET assigned_username = COALESCE(assigned_username, $1),
+                  assigned_team_id = COALESCE(assigned_team_id, $2::uuid),
+                  owner_username = COALESCE(owner_username, $1),
+                  updated_at = NOW()
+              WHERE id = $3::uuid
+            `,
+            [inboxDefault.assignedUsername, inboxDefault.assignedTeamId, leadId]
+          );
+        } else if (inboxDefault.assignedTeamId) {
+          await pool.query(
+            `
+              UPDATE pendencias.crm_leads
+              SET assigned_team_id = COALESCE(assigned_team_id, $1::uuid), updated_at = NOW()
+              WHERE id = $2::uuid
+            `,
+            [inboxDefault.assignedTeamId, leadId]
+          );
+        }
       }
 
       const hasMedia =
@@ -1098,7 +1129,7 @@ export async function POST(req: Request) {
         );
       }
 
-      if (!isFromMe) {
+      if (!isFromMe && isNewConversation) {
         try {
           await applyInboundRouting({
             leadId,

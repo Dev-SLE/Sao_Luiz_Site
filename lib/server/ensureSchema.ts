@@ -355,6 +355,8 @@ export async function ensureCrmSchemaTables() {
   await pool.query(`ALTER TABLE pendencias.crm_whatsapp_inboxes ADD COLUMN IF NOT EXISTS evolution_instance_name text`);
   await pool.query(`ALTER TABLE pendencias.crm_whatsapp_inboxes ADD COLUMN IF NOT EXISTS evolution_server_url text`);
   await pool.query(`ALTER TABLE pendencias.crm_whatsapp_inboxes ADD COLUMN IF NOT EXISTS evolution_api_key text`);
+  await pool.query(`ALTER TABLE pendencias.crm_whatsapp_inboxes ADD COLUMN IF NOT EXISTS owner_username text`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_crm_wa_inbox_owner_username ON pendencias.crm_whatsapp_inboxes (owner_username)`);
   await pool.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS idx_crm_wa_inbox_meta_phone
     ON pendencias.crm_whatsapp_inboxes (phone_number_id)

@@ -275,14 +275,9 @@ export async function GET(req: Request) {
             AND (
               lower(COALESCE(l.assigned_username, l.owner_username, '')) = lower($4::text)
               OR l.assigned_team_id::text = ANY($6::text[])
-              OR (
-                l.assigned_team_id IS NULL
-                AND l.assigned_username IS NULL
-                AND l.owner_username IS NULL
-              )
             )
           )
-          OR l.assigned_username IS NULL
+          OR ($5::text = 'ALL' AND l.assigned_username IS NULL)
           OR lower(l.assigned_username) = lower(COALESCE($4::text, ''))
           OR lower(l.owner_username) = lower(COALESCE($4::text, ''))
         )

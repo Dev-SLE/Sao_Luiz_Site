@@ -41,6 +41,7 @@ const CrmOpsAdmin: React.FC = () => {
     evolutionServerUrl: "",
     evolutionApiKey: "",
     teamId: "",
+    ownerUsername: "",
   });
   const [webhookHint, setWebhookHint] = useState("");
   const [provisionEvolutionInstance, setProvisionEvolutionInstance] = useState(true);
@@ -441,6 +442,14 @@ const CrmOpsAdmin: React.FC = () => {
               </option>
             ))}
           </select>
+          <select
+            className="rounded bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800 md:col-span-2"
+            value={evoForm.ownerUsername}
+            onChange={(e) => setEvoForm((f) => ({ ...f, ownerUsername: e.target.value }))}
+          >
+            <option value="">Dono da caixa (fallback para time quando offline)</option>
+            {agents.map((a) => <option key={a.username} value={a.username}>{a.username}</option>)}
+          </select>
           {!evoForm.id && (
             <label className="flex items-center gap-2 md:col-span-2 text-[11px] text-slate-700 cursor-pointer">
               <input
@@ -468,6 +477,7 @@ const CrmOpsAdmin: React.FC = () => {
                     action: "UPSERT_EVOLUTION",
                     name: evoForm.name.trim(),
                     teamId: evoForm.teamId || null,
+                    ownerUsername: evoForm.ownerUsername || null,
                   };
                   if (evoForm.id) payload.id = evoForm.id;
 
@@ -529,6 +539,7 @@ const CrmOpsAdmin: React.FC = () => {
                     evolutionServerUrl: "",
                     evolutionApiKey: "",
                     teamId: "",
+                    ownerUsername: "",
                   });
                   setProvisionEvolutionInstance(true);
                   setEvoAdvancedOpen(false);
@@ -555,6 +566,7 @@ const CrmOpsAdmin: React.FC = () => {
                     evolutionServerUrl: "",
                     evolutionApiKey: "",
                     teamId: "",
+                    ownerUsername: "",
                   });
                   setProvisionEvolutionInstance(true);
                   setEvoAdvancedOpen(false);
@@ -579,6 +591,8 @@ const CrmOpsAdmin: React.FC = () => {
                   <code className="text-[10px] bg-slate-100 px-1 rounded">{ib.evolutionInstanceName}</code>
                   <span className="text-slate-500"> · API </span>
                   <span className="text-[10px]">{ib.evolutionApiKeyLast4 || "—"}</span>
+                  <span className="text-slate-500"> · dono </span>
+                  <span className="text-[10px] font-semibold">{ib.ownerUsername || "sem dono"}</span>
                 </div>
                 <div className="flex gap-2">
                   <button
@@ -614,6 +628,7 @@ const CrmOpsAdmin: React.FC = () => {
                         evolutionServerUrl: ib.evolutionServerUrl || "",
                         evolutionApiKey: "",
                         teamId: ib.teamId || "",
+                        ownerUsername: ib.ownerUsername || "",
                       });
                     }}
                   >

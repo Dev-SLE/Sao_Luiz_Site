@@ -67,6 +67,14 @@ function canAttendCrm(role: string, permissions: any): boolean {
   );
 }
 
+function hasRecentLogin(lastLoginAt: string | Date | null | undefined, maxOfflineMinutes: number): boolean {
+  if (!lastLoginAt) return false;
+  const dt = new Date(lastLoginAt);
+  if (Number.isNaN(dt.getTime())) return false;
+  const diffMs = Date.now() - dt.getTime();
+  return diffMs >= 0 && diffMs <= maxOfflineMinutes * 60 * 1000;
+}
+
 export async function resolveRoutingByRules(input: {
   text?: string | null;
   title?: string | null;
@@ -242,6 +250,82 @@ export async function pickAgentFromTeam(teamId: string, conversationId: string) 
   return group[nextIndex]?.username || group[0].username;
 }
 
+export async function resolveInboxDefaultAssignment(args: {
+  inboxId: string;
+  conversationId: string;
+}) {
+  const pool = getPool();
+  const inboxRes = await pool.query(
+    `
+      SELECT id, team_id, owner_username
+      FROM pendencias.crm_whatsapp_inboxes
+      WHERE id = $1::uuid
+      LIMIT 1
+    `,
+    [args.inboxId]
+  );
+  const inbox = inboxRes.rows?.[0];
+  if (!inbox?.id) return { assignedUsername: null as string | null, assignedTeamId: null as string | null, source: "NONE" as const };
+  const teamId = inbox.team_id ? String(inbox.team_id) : null;
+  const ownerUsername = inbox.owner_username ? String(inbox.owner_username).trim() : "";
+  const maxOfflineMinutes = Math.max(1, Number(process.env.CRM_OWNER_OFFLINE_MINUTES || 45));
+
+  if (ownerUsername) {
+    const ownerRes = await pool.query(
+      `
+        SELECT u.username, u.role, p.permissions, u.last_login_at
+        FROM pendencias.users u
+        LEFT JOIN pendencias.profiles p ON LOWER(p.name) = LOWER(u.role)
+        WHERE LOWER(u.username) = LOWER($1)
+        LIMIT 1
+      `,
+      [ownerUsername]
+    );
+    const owner = ownerRes.rows?.[0];
+    const ownerCanAttend = !!owner && canAttendCrm(String(owner.role || ""), owner.permissions);
+    let ownerInTeam = true;
+    if (teamId && ownerCanAttend) {
+      const memberRes = await pool.query(
+        `
+          SELECT 1
+          FROM pendencias.crm_team_members
+          WHERE team_id = $1::uuid
+            AND LOWER(username) = LOWER($2)
+            AND is_active = true
+          LIMIT 1
+        `,
+        [teamId, ownerUsername]
+      );
+      ownerInTeam = !!memberRes.rows?.length;
+    }
+    if (ownerCanAttend && ownerInTeam && hasRecentLogin(owner?.last_login_at, maxOfflineMinutes)) {
+      return {
+        assignedUsername: String(owner.username),
+        assignedTeamId: teamId,
+        source: "OWNER" as const,
+      };
+    }
+  }
+
+  if (teamId) {
+    const teamAgent = await pickAgentFromTeam(teamId, args.conversationId);
+    if (teamAgent) {
+      return {
+        assignedUsername: teamAgent,
+        assignedTeamId: teamId,
+        source: "TEAM_RATEIO" as const,
+      };
+    }
+    return {
+      assignedUsername: null,
+      assignedTeamId: teamId,
+      source: "TEAM_QUEUE" as const,
+    };
+  }
+
+  return { assignedUsername: null, assignedTeamId: null, source: "NONE" as const };
+}
+
 /**
  * Resolve estágio do funil pelo tópico (nome exato + fallback por padrão no nome).
  * Regras de roteamento genéricas não devem impedir RASTREIO/SUPORTE de irem para a coluna operacional correta.
@@ -303,6 +387,18 @@ export async function applyInboundRouting(input: {
   cte?: string | null;
 }) {
   const pool = getPool();
+  const convRes = await pool.query(
+    `
+      SELECT assigned_username, assigned_team_id
+      FROM pendencias.crm_conversations
+      WHERE id = $1::uuid
+      LIMIT 1
+    `,
+    [input.conversationId]
+  );
+  const convCurrent = convRes.rows?.[0] || {};
+  const hasPreAssignment =
+    !!String(convCurrent.assigned_username || "").trim() || !!String(convCurrent.assigned_team_id || "").trim();
   const topic = classifyLeadTopic(input);
   const routing = await resolveRoutingByRules({
     text: input.text,
@@ -381,7 +477,7 @@ export async function applyInboundRouting(input: {
     }
   }
 
-  if (!assigned) {
+  if (!assigned && !hasPreAssignment) {
     const fallback = await pickFallbackAgent(input.conversationId);
     if (fallback) {
       await pool.query(

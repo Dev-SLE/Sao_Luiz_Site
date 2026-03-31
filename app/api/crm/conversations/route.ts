@@ -202,10 +202,9 @@ export async function GET(req: Request) {
               AND (
                 c.assigned_username = $4::text
                 OR c.assigned_team_id::text = ANY($6::text[])
-                OR (c.assigned_team_id IS NULL AND c.assigned_username IS NULL)
               )
             )
-            OR c.assigned_username IS NULL
+            OR ($5::text = 'ALL' AND c.assigned_username IS NULL)
             OR c.assigned_username = $4::text
           )
         ORDER BY
