@@ -53,13 +53,15 @@ export async function GET(req: Request) {
     const totalResult = await pool.query(
       `
         SELECT COUNT(*)::int AS total
-        FROM pendencias.cte_view_index i
-        JOIN pendencias.ctes c ON c.cte = i.cte AND c.serie = i.serie
+        FROM pendencias.ctes c
+        LEFT JOIN pendencias.cte_view_index i
+          ON i.cte = c.cte
+          AND (i.serie = c.serie OR ltrim(i.serie, '0') = ltrim(c.serie, '0'))
         WHERE
           (
             $1 = 'concluidos'
             AND (
-              i.view = 'concluidos'
+              COALESCE(i.view, '') = 'concluidos'
               OR ${NORMALIZED_STATUS_SQL} LIKE 'CONCLUIDO%'
               OR ${NORMALIZED_STATUS_SQL} LIKE 'ENTREGUE%'
               OR ${NORMALIZED_STATUS_SQL} LIKE 'RESOLVIDO%'
@@ -69,7 +71,7 @@ export async function GET(req: Request) {
           OR (
             $1 = 'criticos'
             AND (
-              i.view = 'criticos'
+              COALESCE(i.view, '') = 'criticos'
               OR ${NORMALIZED_STATUS_SQL} LIKE 'CRITICO%'
             )
             AND ${NORMALIZED_STATUS_SQL} LIKE 'CRITICO%'
@@ -81,10 +83,9 @@ export async function GET(req: Request) {
           OR (
             $1 <> 'concluidos'
             AND $1 <> 'criticos'
-            AND i.view = $1
             AND (
-              $1 <> 'pendencias'
-              OR ${NORMALIZED_STATUS_SQL} IN ('FORA DO PRAZO', 'PRIORIDADE', 'VENCE AMANHA', 'NO PRAZO')
+              ($1 = 'pendencias' AND ${NORMALIZED_STATUS_SQL} IN ('FORA DO PRAZO', 'PRIORIDADE', 'VENCE AMANHA', 'NO PRAZO'))
+              OR ($1 <> 'pendencias' AND COALESCE(i.view, '') = $1)
             )
             AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'CONCLUIDO%'
             AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'ENTREGUE%'
@@ -106,23 +107,25 @@ export async function GET(req: Request) {
             WHEN ${NORMALIZED_STATUS_SQL} LIKE 'PRIORIDADE%' THEN 'PRIORIDADE'
             WHEN ${NORMALIZED_STATUS_SQL} LIKE 'VENCE AMANHA%' THEN 'VENCE AMANHÃ'
             WHEN ${NORMALIZED_STATUS_SQL} LIKE 'NO PRAZO%' THEN 'NO PRAZO'
-            ELSE i.status_calculado
+            ELSE COALESCE(i.status_calculado, c.status)
           END AS status_calculado,
-          i.note_count,
+          COALESCE(i.note_count, 0) AS note_count,
           ${assignmentSelect}
           CASE
-            WHEN i.view = 'tad' THEN 'TAD'
-            WHEN i.view = 'em_busca' THEN 'EM BUSCA'
+            WHEN COALESCE(i.view, '') = 'tad' THEN 'TAD'
+            WHEN COALESCE(i.view, '') = 'em_busca' THEN 'EM BUSCA'
             ELSE c.status
           END AS status_exibicao
-        FROM pendencias.cte_view_index i
-        JOIN pendencias.ctes c ON c.cte = i.cte AND c.serie = i.serie
+        FROM pendencias.ctes c
+        LEFT JOIN pendencias.cte_view_index i
+          ON i.cte = c.cte
+          AND (i.serie = c.serie OR ltrim(i.serie, '0') = ltrim(c.serie, '0'))
         ${assignmentJoin}
         WHERE
           (
             $1 = 'concluidos'
             AND (
-              i.view = 'concluidos'
+              COALESCE(i.view, '') = 'concluidos'
               OR ${NORMALIZED_STATUS_SQL} LIKE 'CONCLUIDO%'
               OR ${NORMALIZED_STATUS_SQL} LIKE 'ENTREGUE%'
               OR ${NORMALIZED_STATUS_SQL} LIKE 'RESOLVIDO%'
@@ -132,7 +135,7 @@ export async function GET(req: Request) {
           OR (
             $1 = 'criticos'
             AND (
-              i.view = 'criticos'
+              COALESCE(i.view, '') = 'criticos'
               OR ${NORMALIZED_STATUS_SQL} LIKE 'CRITICO%'
             )
             AND ${NORMALIZED_STATUS_SQL} LIKE 'CRITICO%'
@@ -144,10 +147,9 @@ export async function GET(req: Request) {
           OR (
             $1 <> 'concluidos'
             AND $1 <> 'criticos'
-            AND i.view = $1
             AND (
-              $1 <> 'pendencias'
-              OR ${NORMALIZED_STATUS_SQL} IN ('FORA DO PRAZO', 'PRIORIDADE', 'VENCE AMANHA', 'NO PRAZO')
+              ($1 = 'pendencias' AND ${NORMALIZED_STATUS_SQL} IN ('FORA DO PRAZO', 'PRIORIDADE', 'VENCE AMANHA', 'NO PRAZO'))
+              OR ($1 <> 'pendencias' AND COALESCE(i.view, '') = $1)
             )
             AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'CONCLUIDO%'
             AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'ENTREGUE%'

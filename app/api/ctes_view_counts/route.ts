@@ -86,18 +86,20 @@ export async function POST(req: Request) {
       WITH base AS (
         SELECT
           c.*,
-          i.status_calculado,
-          i.note_count,
+          COALESCE(i.status_calculado, c.status) AS status_calculado,
+          COALESCE(i.note_count, 0) AS note_count,
           ${assignmentSelect}
-          CASE WHEN $1 = 'concluidos' THEN c.status ELSE i.status_calculado END AS status_key
-        FROM pendencias.cte_view_index i
-        JOIN pendencias.ctes c ON c.cte = i.cte AND c.serie = i.serie
+          CASE WHEN $1 = 'concluidos' THEN c.status ELSE COALESCE(i.status_calculado, c.status) END AS status_key
+        FROM pendencias.ctes c
+        LEFT JOIN pendencias.cte_view_index i
+          ON i.cte = c.cte
+          AND (i.serie = c.serie OR ltrim(i.serie, '0') = ltrim(c.serie, '0'))
         ${assignmentJoin}
         WHERE (
           (
             $1 = 'concluidos'
             AND (
-              i.view = 'concluidos'
+              COALESCE(i.view, '') = 'concluidos'
               OR ${NORMALIZED_STATUS_SQL} LIKE 'CONCLUIDO%'
               OR ${NORMALIZED_STATUS_SQL} LIKE 'ENTREGUE%'
               OR ${NORMALIZED_STATUS_SQL} LIKE 'RESOLVIDO%'
@@ -106,7 +108,7 @@ export async function POST(req: Request) {
           OR (
             $1 = 'criticos'
             AND (
-              i.view = 'criticos'
+              COALESCE(i.view, '') = 'criticos'
               OR ${NORMALIZED_STATUS_SQL} LIKE 'CRITICO%'
             )
             AND ${NORMALIZED_STATUS_SQL} LIKE 'CRITICO%'
@@ -118,10 +120,9 @@ export async function POST(req: Request) {
           OR (
             $1 <> 'concluidos'
             AND $1 <> 'criticos'
-            AND i.view = $1
             AND (
-              $1 <> 'pendencias'
-              OR ${NORMALIZED_STATUS_SQL} IN ('FORA DO PRAZO', 'PRIORIDADE', 'VENCE AMANHA', 'NO PRAZO')
+              ($1 = 'pendencias' AND ${NORMALIZED_STATUS_SQL} IN ('FORA DO PRAZO', 'PRIORIDADE', 'VENCE AMANHA', 'NO PRAZO'))
+              OR ($1 <> 'pendencias' AND COALESCE(i.view, '') = $1)
             )
             AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'CONCLUIDO%'
             AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'ENTREGUE%'
