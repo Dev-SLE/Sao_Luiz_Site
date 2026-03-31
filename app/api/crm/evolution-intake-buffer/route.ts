@@ -159,6 +159,61 @@ export async function POST(req: Request) {
       `,
       [bufferId, leadId]
     );
+
+    const inboxUuid = String(row.inbox_id);
+    let convQ = await pool.query(
+      `
+        SELECT id
+        FROM pendencias.crm_conversations
+        WHERE lead_id = $1::uuid AND channel = 'WHATSAPP' AND is_active = true
+        ORDER BY created_at ASC
+        LIMIT 1
+      `,
+      [leadId]
+    );
+    let conversationId = convQ.rows?.[0]?.id ? String(convQ.rows[0].id) : "";
+    if (!conversationId) {
+      const insC = await pool.query(
+        `
+          INSERT INTO pendencias.crm_conversations (
+            lead_id, channel, is_active, created_at, last_message_at, whatsapp_inbox_id, assignment_mode
+          )
+          VALUES ($1::uuid, 'WHATSAPP', true, NOW(), NOW(), $2::uuid, 'AUTO')
+          RETURNING id
+        `,
+        [leadId, inboxUuid]
+      );
+      conversationId = String(insC.rows?.[0]?.id || "");
+    }
+    if (conversationId) {
+      const { rows: mc } = await pool.query(
+        `SELECT COUNT(*)::int AS c FROM pendencias.crm_messages WHERE conversation_id = $1::uuid`,
+        [conversationId]
+      );
+      const sample = String(row.sample_text || "").trim();
+      if (sample && Number(mc[0]?.c || 0) === 0) {
+        const body =
+          `📋 Mensagens recebidas antes da liberação no CRM:\n\n` + sample.slice(0, 7500);
+        await pool.query(
+          `
+            INSERT INTO pendencias.crm_messages (
+              conversation_id, sender_type, body, has_attachments, metadata, created_at
+            )
+            VALUES ($1::uuid, 'CLIENT', $2, false, $3::jsonb, NOW())
+          `,
+          [
+            conversationId,
+            body,
+            JSON.stringify({ intake_manual_replay: true, bufferId, leadId }),
+          ]
+        );
+        await pool.query(
+          `UPDATE pendencias.crm_conversations SET last_message_at = NOW() WHERE id = $1::uuid`,
+          [conversationId]
+        );
+      }
+    }
+
     await pool.query(
       `
         INSERT INTO pendencias.app_logs (level, source, event, username, payload)

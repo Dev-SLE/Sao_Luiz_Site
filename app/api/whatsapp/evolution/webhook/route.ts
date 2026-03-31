@@ -31,6 +31,27 @@ function lastN(input: string, n: number) {
   return d.slice(-n);
 }
 
+/** Mensagens em WAIT iam para sample_text do buffer mas não para crm_messages — gerava “furo” no histórico. */
+function buildPriorIntakeReplayBody(sampleText: string, currentMessageText: string): string | null {
+  const full = String(sampleText || "").trim();
+  if (!full) return null;
+  const lines = full
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const cur = String(currentMessageText || "").trim();
+  let parts = lines;
+  if (cur && parts.length && parts[parts.length - 1] === cur) {
+    parts = parts.slice(0, -1);
+  }
+  if (!parts.length) return null;
+  return `📋 Mensagens recebidas antes da liberação no CRM:\n\n${parts.join("\n\n—\n\n")}`;
+}
+
+function logUpsertSkip(reason: string, ctx: Record<string, unknown>) {
+  console.warn("[evolution-webhook] message_not_persisted", { reason, ...ctx });
+}
+
 async function getOrMergeWhatsappConversationByLead(pool: any, leadId: string, preferredInboxId?: string | null) {
   const convsRes = await pool.query(
     `
@@ -538,8 +559,15 @@ function collectUpsertItems(data: any): any[] {
 
 /** Algumas versões colocam mensagens só em body.data; outras ecoam na raiz. */
 function collectUpsertItemsFromWebhookBody(body: Record<string, unknown>): any[] {
-  const fromData = collectUpsertItems(body?.data);
+  const data = body?.data as Record<string, unknown> | undefined;
+  const fromData = collectUpsertItems(data);
   if (fromData.length) return fromData;
+  if (data && typeof data === "object") {
+    const nested = collectUpsertItems((data as any).data);
+    if (nested.length) return nested;
+    const fromPayload = collectUpsertItems((data as any).payload);
+    if (fromPayload.length) return fromPayload;
+  }
   return collectUpsertItems(body);
 }
 
@@ -940,16 +968,32 @@ export async function POST(req: Request) {
     const intakeSettings = await loadIntakeSettings(pool);
 
     for (const item of items) {
+      let intakeReplayPayload: { sampleText: string; currentText: string } | null = null;
       const key = item?.key || item;
-      if (!key) continue;
+      if (!key) {
+        logUpsertSkip("missing_key", {
+          instance,
+          itemKeys: item && typeof item === "object" ? Object.keys(item as object) : [],
+        });
+        continue;
+      }
       const isFromMe = key.fromMe === true;
 
       const remoteJid = String(key.remoteJid || key.remoteJidAlt || "").trim();
-      if (!remoteJid || remoteJid.includes("@g.us")) continue;
-      if (remoteJid.includes("status@broadcast") || remoteJid.includes("@broadcast")) continue;
+      if (!remoteJid || remoteJid.includes("@g.us")) {
+        logUpsertSkip("skip_jid", { instance, remoteJid: remoteJid ? remoteJid.slice(0, 48) : "" });
+        continue;
+      }
+      if (remoteJid.includes("status@broadcast") || remoteJid.includes("@broadcast")) {
+        logUpsertSkip("skip_broadcast", { instance, remoteJid: remoteJid.slice(0, 48) });
+        continue;
+      }
 
       const phoneDigits = evolutionNumberDigits(remoteJid);
-      if (!phoneDigits) continue;
+      if (!phoneDigits) {
+        logUpsertSkip("no_phone_digits", { instance, remoteJid: remoteJid.slice(0, 48) });
+        continue;
+      }
 
       const msgObj = item.message || item.msg || {};
       // Alguns provedores enviam tipo/mídia fora de message; usa fallback com o item inteiro.
@@ -977,7 +1021,9 @@ export async function POST(req: Request) {
             number: phoneDigits,
           }));
       }
-      const profileName = pushName || null;
+      // Em mensagens de saída (fromMe), alguns payloads trazem o nome do próprio atendente
+      // no pushName. Nesses casos, não usamos esse valor para nome do lead.
+      const profileName = isFromMe ? null : pushName || null;
       const quotedMessageId = extractEvolutionQuotedMessageId(item);
       const agencyContact = await findAgencyByLast10(pool, last10);
 
@@ -1019,7 +1065,18 @@ export async function POST(req: Request) {
       if (existingLead?.id) {
         leadId = String(existingLead.id);
         leadTitle = String(existingLead.title || leadId);
-        if (profileName && /^whatsapp\s+\d+/i.test(leadTitle)) {
+        const titleEndsWithLast10 = leadTitle.endsWith(`(${last10})`);
+        const titleNamePart = titleEndsWithLast10
+          ? leadTitle.slice(0, Math.max(0, leadTitle.length - (`(${last10})`.length))).trim()
+          : leadTitle.trim();
+        const normalizedTitleName = titleNamePart.toLowerCase();
+        const normalizedProfileName = String(profileName || "").trim().toLowerCase();
+        const shouldRefreshLeadTitle =
+          !!profileName &&
+          !isFromMe &&
+          (/^whatsapp\s+\d+/i.test(leadTitle) ||
+            (titleEndsWithLast10 && normalizedTitleName !== normalizedProfileName));
+        if (shouldRefreshLeadTitle) {
           const upgradedTitle = `${profileName} (${last10})`;
           await pool.query(`UPDATE pendencias.crm_leads SET title = $1, updated_at = NOW() WHERE id = $2`, [
             upgradedTitle,
@@ -1072,16 +1129,21 @@ export async function POST(req: Request) {
             `,
             [inboxId, last10]
           );
-          if (process.env.NODE_ENV === "development") {
-            console.log("[evolution-webhook] lead ignorado por filtro", {
-              instance,
-              phone: phoneDigits,
-              profileName,
-              mode: intakeSettings.mode,
-            });
-          }
+          logUpsertSkip("intake_wait", {
+            instance,
+            last10,
+            phone: phoneDigits,
+            mode: intakeSettings.mode,
+            messageCount: Number(bufferRow?.message_count || 0),
+            hasCte: !!cteDetected,
+          });
           continue;
         }
+
+        intakeReplayPayload = {
+          sampleText: String(bufferRow?.sample_text || ""),
+          currentText: text,
+        };
 
         leadTitle = profileName
           ? `${profileName} (${last10})`
@@ -1188,6 +1250,37 @@ export async function POST(req: Request) {
         }
       }
 
+      if (intakeReplayPayload) {
+        const replayBody = buildPriorIntakeReplayBody(
+          intakeReplayPayload.sampleText,
+          intakeReplayPayload.currentText
+        );
+        if (replayBody) {
+          const trimmed = replayBody.slice(0, 8000);
+          await pool.query(
+            `
+              INSERT INTO pendencias.crm_messages (
+                conversation_id, sender_type, body, has_attachments, metadata, created_at
+              )
+              VALUES ($1, 'CLIENT', $2, false, $3::jsonb, NOW())
+            `,
+            [
+              conversationId,
+              trimmed,
+              JSON.stringify({
+                provider: "EVOLUTION",
+                evolution_instance: instance,
+                intake_buffer_replay: true,
+                remote_jid: remoteJid,
+              }),
+            ]
+          );
+          await pool.query(`UPDATE pendencias.crm_conversations SET last_message_at = NOW() WHERE id = $1`, [
+            conversationId,
+          ]);
+        }
+      }
+
       const hasMedia =
         msgObj &&
         Object.keys(msgObj).some(
@@ -1208,7 +1301,14 @@ export async function POST(req: Request) {
           `,
           [conversationId, msgId]
         );
-        if (dup.rows?.[0]?.id) continue;
+        if (dup.rows?.[0]?.id) {
+          logUpsertSkip("duplicate_evolution_message_id", {
+            instance,
+            msgId: msgId.slice(0, 32),
+            conversationId,
+          });
+          continue;
+        }
       }
 
       await pool.query(
