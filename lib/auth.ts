@@ -218,8 +218,40 @@ export class NeonDataClient {
     filterTxEntrega?: boolean;
     ignoreUnitFilter?: boolean;
     userLinkedDestUnit?: string;
+    assignmentFilter?: 'ALL' | 'WITH' | 'WITHOUT';
+    assignmentAgency?: string;
+    assignmentUser?: string;
+    assignmentMineOnly?: boolean;
+    currentUsername?: string;
   }): Promise<any> {
     return this.postJson('/ctes_view_counts', payload);
+  }
+
+  async getCteAssignment(cte: string, serie: string): Promise<any> {
+    const endpoint = `/cte_assignments?cte=${encodeURIComponent(cte)}&serie=${encodeURIComponent(serie || '0')}`;
+    return this.fetchData(endpoint);
+  }
+
+  async upsertCteAssignment(payload: {
+    cte: string;
+    serie: string;
+    agencyUnit: string;
+    assignedUsername: string;
+    notes?: string;
+    actor?: string;
+  }): Promise<any> {
+    return this.postJson('/cte_assignments', payload);
+  }
+
+  async clearCteAssignment(payload: {
+    cte: string;
+    serie: string;
+    actor?: string;
+  }): Promise<any> {
+    const endpoint = `/cte_assignments?cte=${encodeURIComponent(payload.cte)}&serie=${encodeURIComponent(payload.serie || '0')}&actor=${encodeURIComponent(payload.actor || '')}`;
+    const response = await fetch(this.makeApiUrl(endpoint), { method: 'DELETE' });
+    if (!response.ok) throw await this.buildHttpError('Erro na API', response);
+    return response.json();
   }
 
   async getNotesForCte(cte: string): Promise<any[]> {

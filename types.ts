@@ -30,6 +30,10 @@ export interface CteData {
     | 'CONCLUIDO NO PRAZO';
   IS_HISTORICAL?: boolean; // Flag to indicate if data comes from history/logs
   NOTE_COUNT?: number; // opcional (server-side), para badge na tabela sem carregar todas as notas
+  ASSIGNMENT_TYPE?: string;
+  ASSIGNMENT_AGENCY_UNIT?: string;
+  ASSIGNED_USERNAME?: string;
+  ASSIGNMENT_UPDATED_AT?: string;
 }
 
 export interface NoteData {

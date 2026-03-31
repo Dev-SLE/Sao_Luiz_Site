@@ -4,6 +4,8 @@ let crmSchemaReady = false;
 let crmSchemaPromise: Promise<void> | null = null;
 let operationalSchemaReady = false;
 let operationalSchemaPromise: Promise<void> | null = null;
+let operationalAssignmentsReady = false;
+let operationalAssignmentsPromise: Promise<void> | null = null;
 let commercialSchemaReady = false;
 let commercialSchemaPromise: Promise<void> | null = null;
 
@@ -562,6 +564,54 @@ export async function ensureOperationalTrackingTables() {
     operationalSchemaReady = true;
   } finally {
     operationalSchemaPromise = null;
+  }
+}
+
+export async function ensureOperationalAssignmentsTable() {
+  if (operationalAssignmentsReady) return;
+  if (operationalAssignmentsPromise) return operationalAssignmentsPromise;
+  operationalAssignmentsPromise = (async () => {
+    const pool = getPool();
+    await pool.query(`CREATE EXTENSION IF NOT EXISTS pgcrypto`);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS pendencias.cte_assignments (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        cte text NOT NULL,
+        serie text NOT NULL,
+        assignment_type text NOT NULL DEFAULT 'PENDENTE_AG_BAIXAR',
+        agency_unit text NOT NULL,
+        assigned_username text NOT NULL,
+        notes text,
+        active boolean NOT NULL DEFAULT true,
+        created_by text,
+        updated_by text,
+        created_at timestamptz NOT NULL DEFAULT NOW(),
+        updated_at timestamptz NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_cte_assignments_active_unique
+      ON pendencias.cte_assignments (cte, serie, assignment_type)
+      WHERE active = true
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_cte_assignments_cte_serie
+      ON pendencias.cte_assignments (cte, serie)
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_cte_assignments_agency_user
+      ON pendencias.cte_assignments (agency_unit, assigned_username)
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_cte_assignments_updated_at
+      ON pendencias.cte_assignments (updated_at DESC)
+    `);
+  })();
+  try {
+    await operationalAssignmentsPromise;
+    operationalAssignmentsReady = true;
+  } finally {
+    operationalAssignmentsPromise = null;
   }
 }
 

@@ -1,13 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { CteData } from '../types';
 import StatusBadge from './StatusBadge';
-import { MessageSquare, Filter, X, CheckCircle, Package, ArrowUpDown, ArrowUp, ArrowDown, FileSpreadsheet, Search, AlertTriangle, CalendarCheck2, Archive } from 'lucide-react';
+import { MessageSquare, Filter, X, CheckCircle, Package, ArrowUpDown, ArrowUp, ArrowDown, FileSpreadsheet, Search, AlertTriangle, CalendarCheck2, Archive, UserPlus, UserX } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import clsx from 'clsx';
 import { COLORS } from '../constants';
 import { authClient } from '../lib/auth';
+import { AppConfirmModal, AppMessageModal, type AppMessageVariant } from './AppOverlays';
 
 interface Props {
   data: CteData[];
@@ -40,6 +41,22 @@ interface FilterCardProps {
   dimmed?: boolean; // New prop for visual feedback
   onClick: () => void;
 }
+
+type AssignmentFilterMode = 'ALL' | 'WITH' | 'WITHOUT';
+type AssignmentDraft = {
+  cte: string;
+  serie: string;
+  agencyUnit: string;
+  assignedUsername: string;
+  notes: string;
+};
+
+type AssignmentOverride = {
+  ASSIGNMENT_TYPE?: string;
+  ASSIGNMENT_AGENCY_UNIT?: string;
+  ASSIGNED_USERNAME?: string;
+  ASSIGNMENT_UPDATED_AT?: string;
+};
 
 const FilterCard: React.FC<FilterCardProps> = ({ label, count, color, selected, dimmed, onClick }) => (
   <button
@@ -83,6 +100,19 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
   const [noteFilter, setNoteFilter] = useState<'ALL' | 'WITH' | 'WITHOUT'>('ALL');
   const [filterTxEntrega, setFilterTxEntrega] = useState(false);
   const [globalSearch, setGlobalSearch] = useState('');
+  const [assignmentFilter, setAssignmentFilter] = useState<AssignmentFilterMode>('ALL');
+  const [assignmentAgencyFilter, setAssignmentAgencyFilter] = useState('');
+  const [assignmentUserFilter, setAssignmentUserFilter] = useState('');
+  const [assignmentMineOnly, setAssignmentMineOnly] = useState(false);
+  const [assigningDraft, setAssigningDraft] = useState<AssignmentDraft | null>(null);
+  const [assignmentBusy, setAssignmentBusy] = useState(false);
+  const [clearTarget, setClearTarget] = useState<{ cte: string; serie: string } | null>(null);
+  const [assignmentNotice, setAssignmentNotice] = useState<{
+    title: string;
+    message: string;
+    variant: AppMessageVariant;
+  } | null>(null);
+  const [assignmentOverrides, setAssignmentOverrides] = useState<Record<string, AssignmentOverride>>({});
   const [dateField, setDateField] = useState<'EMISSAO' | 'LIMITE' | 'BAIXA'>('LIMITE');
   const [draftDateFrom, setDraftDateFrom] = useState('');
   const [draftDateTo, setDraftDateTo] = useState('');
@@ -92,7 +122,7 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
   const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'DATA_LIMITE_DATE', direction: 'asc' });
 
   const { user } = useAuth();
-  const { notes, fullData, processControlData, isCteEmBusca, hasPermission } = useData();
+  const { notes, fullData, processControlData, isCteEmBusca, hasPermission, users } = useData();
 
   // --- Paginação (local ou server-side) ---
   const [pageLocal, setPageLocal] = useState(1);
@@ -103,6 +133,10 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
     paymentFilters.length > 0 ||
     noteFilter !== 'ALL' ||
     filterTxEntrega ||
+    assignmentFilter !== 'ALL' ||
+    assignmentAgencyFilter.trim().length > 0 ||
+    assignmentUserFilter.trim().length > 0 ||
+    assignmentMineOnly ||
     appliedDateFrom.trim().length > 0 ||
     appliedDateTo.trim().length > 0 ||
     globalSearch.trim().length > 0;
@@ -159,6 +193,10 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
         typeof row.note_count === 'number'
           ? row.note_count
           : parseInt(row.note_count || '0') || 0,
+      ASSIGNMENT_TYPE: row.assignment_type || '',
+      ASSIGNMENT_AGENCY_UNIT: row.agency_unit || '',
+      ASSIGNED_USERNAME: row.assigned_username || '',
+      ASSIGNMENT_UPDATED_AT: row.assignment_updated_at || '',
     }));
 
   const [serverCounts, setServerCounts] = useState<null | {
@@ -169,6 +207,19 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
     noteWithout: number;
     txEntrega: number;
   }>(null);
+
+  const rowKey = (cte: string, serie: string) => `${cte}::${(serie || '0').replace(/^0+/, '') || '0'}`;
+  const withAssignmentOverride = (row: CteData): CteData => {
+    const ov = assignmentOverrides[rowKey(row.CTE, row.SERIE)];
+    if (!ov) return row;
+    return {
+      ...row,
+      ASSIGNMENT_TYPE: ov.ASSIGNMENT_TYPE || '',
+      ASSIGNMENT_AGENCY_UNIT: ov.ASSIGNMENT_AGENCY_UNIT || '',
+      ASSIGNED_USERNAME: ov.ASSIGNED_USERNAME || '',
+      ASSIGNMENT_UPDATED_AT: ov.ASSIGNMENT_UPDATED_AT || '',
+    };
+  };
 
   useEffect(() => {
     if (!serverPagination) {
@@ -196,6 +247,11 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
           filterTxEntrega,
           ignoreUnitFilter,
           userLinkedDestUnit: user?.linkedDestUnit || undefined,
+          assignmentFilter,
+          assignmentAgency: assignmentAgencyFilter || undefined,
+          assignmentUser: assignmentUserFilter || undefined,
+          assignmentMineOnly,
+          currentUsername: user?.username || undefined,
         };
         const resp = await authClient.getCtesViewCounts(payload as any);
         if (!cancelled) {
@@ -216,7 +272,7 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
     return () => {
       cancelled = true;
     };
-  }, [serverView, selectedUnit, statusFilters.join('|'), paymentFilters.join('|'), noteFilter, filterTxEntrega, ignoreUnitFilter, user?.linkedDestUnit, globalSearch, appliedDateFrom, appliedDateTo]);
+  }, [serverView, selectedUnit, statusFilters.join('|'), paymentFilters.join('|'), noteFilter, filterTxEntrega, ignoreUnitFilter, user?.linkedDestUnit, user?.username, assignmentFilter, assignmentAgencyFilter, assignmentUserFilter, assignmentMineOnly, globalSearch, appliedDateFrom, appliedDateTo]);
 
   // Quando houver filtros, buscamos o "view" completo uma vez e aplicamos os filtros localmente,
   // para que o número de páginas e os resultados batam com os cards (ctes_view_counts).
@@ -266,11 +322,11 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
   // Main Data Filtering Logic
   const filteredData = useMemo(() => {
     const isGlobalSearch = globalSearch.trim().length > 0;
-    const sourceRows = shouldUseLocalPagination ? (allViewData ?? []) : data;
+    const sourceRows = (shouldUseLocalPagination ? (allViewData ?? []) : data).map(withAssignmentOverride);
     let result: CteData[] = [];
     if (isGlobalSearch) {
       const term = globalSearch.toLowerCase();
-      const baseForSearch = shouldUseLocalPagination ? (allViewData ?? []) : (fullData.length > 0 ? fullData : data);
+      const baseForSearch = (shouldUseLocalPagination ? (allViewData ?? []) : (fullData.length > 0 ? fullData : data)).map(withAssignmentOverride);
       const activeMatches = baseForSearch.filter(d =>
         d.CTE.toLowerCase().includes(term) ||
         (d.DESTINATARIO || '').toLowerCase().includes(term) ||
@@ -336,6 +392,20 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
     if (filterTxEntrega) {
       result = result.filter(d => parseCurrency(d.TX_ENTREGA) > 0);
     }
+    if (assignmentFilter === 'WITH') {
+      result = result.filter(d => !!d.ASSIGNMENT_TYPE);
+    } else if (assignmentFilter === 'WITHOUT') {
+      result = result.filter(d => !d.ASSIGNMENT_TYPE);
+    }
+    if (assignmentAgencyFilter) {
+      result = result.filter(d => (d.ASSIGNMENT_AGENCY_UNIT || '') === assignmentAgencyFilter);
+    }
+    if (assignmentUserFilter) {
+      result = result.filter(d => (d.ASSIGNED_USERNAME || '') === assignmentUserFilter);
+    }
+    if (assignmentMineOnly && user?.username) {
+      result = result.filter(d => (d.ASSIGNED_USERNAME || '') === user.username);
+    }
     const fromKey = dateInputToKey(appliedDateFrom);
     const toKey = dateInputToKey(appliedDateTo);
     if (fromKey || toKey) {
@@ -363,6 +433,10 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
     paymentFilters,
     noteFilter,
     filterTxEntrega,
+    assignmentFilter,
+    assignmentAgencyFilter,
+    assignmentUserFilter,
+    assignmentMineOnly,
     dateField,
     appliedDateFrom,
     appliedDateTo,
@@ -537,6 +611,108 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
     return Array.from(units).sort();
   }, [data, fullData, allViewData, shouldUseLocalPagination, globalSearch]);
 
+  const availableAssignmentUnits = useMemo(() => {
+    const source = (shouldUseLocalPagination ? (allViewData ?? []) : data).map(withAssignmentOverride);
+    const set = new Set<string>();
+    source.forEach((d) => {
+      if (d.ASSIGNMENT_AGENCY_UNIT) set.add(d.ASSIGNMENT_AGENCY_UNIT);
+      if (d.ENTREGA) set.add(d.ENTREGA);
+    });
+    return Array.from(set).sort();
+  }, [data, allViewData, shouldUseLocalPagination, assignmentOverrides]);
+
+  const availableAssignmentUsers = useMemo(() => {
+    const set = new Set<string>();
+    users.forEach((u) => {
+      if (u.username) set.add(u.username);
+    });
+    (shouldUseLocalPagination ? (allViewData ?? []) : data).map(withAssignmentOverride).forEach((d) => {
+      if (d.ASSIGNED_USERNAME) set.add(d.ASSIGNED_USERNAME);
+    });
+    return Array.from(set).sort();
+  }, [users, data, allViewData, shouldUseLocalPagination, assignmentOverrides]);
+
+  const applyAssignment = async () => {
+    if (!assigningDraft) return;
+    if (!assigningDraft.agencyUnit || !assigningDraft.assignedUsername) {
+      setAssignmentNotice({
+        title: 'Atribuição',
+        message: 'Selecione unidade/agência e responsável interno.',
+        variant: 'warning',
+      });
+      return;
+    }
+    setAssignmentBusy(true);
+    try {
+      await authClient.upsertCteAssignment({
+        cte: assigningDraft.cte,
+        serie: assigningDraft.serie,
+        agencyUnit: assigningDraft.agencyUnit,
+        assignedUsername: assigningDraft.assignedUsername,
+        notes: assigningDraft.notes,
+        actor: user?.username || undefined,
+      });
+      setAssignmentOverrides(prev => ({
+        ...prev,
+        [rowKey(assigningDraft.cte, assigningDraft.serie)]: {
+          ASSIGNMENT_TYPE: 'PENDENTE_AG_BAIXAR',
+          ASSIGNMENT_AGENCY_UNIT: assigningDraft.agencyUnit,
+          ASSIGNED_USERNAME: assigningDraft.assignedUsername,
+          ASSIGNMENT_UPDATED_AT: new Date().toISOString(),
+        },
+      }));
+      setAssigningDraft(null);
+      setAssignmentNotice({
+        title: 'Atribuição salva',
+        message: 'CTE marcado como pendente da agência com responsável definido.',
+        variant: 'success',
+      });
+    } catch {
+      setAssignmentNotice({
+        title: 'Erro ao atribuir',
+        message: 'Não foi possível salvar agora. Tente novamente.',
+        variant: 'error',
+      });
+    } finally {
+      setAssignmentBusy(false);
+    }
+  };
+
+  const clearAssignment = async () => {
+    if (!clearTarget) return;
+    setAssignmentBusy(true);
+    try {
+      await authClient.clearCteAssignment({
+        cte: clearTarget.cte,
+        serie: clearTarget.serie,
+        actor: user?.username || undefined,
+      });
+      setAssignmentOverrides(prev => ({
+        ...prev,
+        [rowKey(clearTarget.cte, clearTarget.serie)]: {
+          ASSIGNMENT_TYPE: '',
+          ASSIGNMENT_AGENCY_UNIT: '',
+          ASSIGNED_USERNAME: '',
+          ASSIGNMENT_UPDATED_AT: '',
+        },
+      }));
+      setClearTarget(null);
+      setAssignmentNotice({
+        title: 'Atribuição removida',
+        message: 'CTE voltou para a fila geral sem responsável dedicado.',
+        variant: 'success',
+      });
+    } catch {
+      setAssignmentNotice({
+        title: 'Erro ao remover',
+        message: 'Não foi possível limpar a atribuição agora.',
+        variant: 'error',
+      });
+    } finally {
+      setAssignmentBusy(false);
+    }
+  };
+
   // Quando troca de aba (normalmente muda o `title`), evita “filtros vazando” para outras telas
   useEffect(() => {
     setSelectedUnit('');
@@ -548,6 +724,10 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
     setDraftDateTo('');
     setAppliedDateFrom('');
     setAppliedDateTo('');
+    setAssignmentFilter('ALL');
+    setAssignmentAgencyFilter('');
+    setAssignmentUserFilter('');
+    setAssignmentMineOnly(false);
     setGlobalSearch('');
     setSortConfig({ key: 'DATA_LIMITE_DATE', direction: 'asc' });
     setPage(1);
@@ -567,6 +747,10 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
     appliedDateTo,
     noteFilter,
     filterTxEntrega,
+    assignmentFilter,
+    assignmentAgencyFilter,
+    assignmentUserFilter,
+    assignmentMineOnly,
     statusFilters.join('|'),
     paymentFilters.join('|'),
     data,
@@ -585,6 +769,10 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
     appliedDateTo,
     noteFilter,
     filterTxEntrega,
+    assignmentFilter,
+    assignmentAgencyFilter,
+    assignmentUserFilter,
+    assignmentMineOnly,
     statusFilters.join('|'),
     paymentFilters.join('|'),
   ]);
@@ -598,8 +786,9 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
       }
       // Logic mirrors filteredData but targets specific counts
       const isGlobalSearch = globalSearch.trim().length > 0;
-      const baseAll = shouldUseLocalPagination ? (allViewData ?? []) : data;
+      const baseAll = (shouldUseLocalPagination ? (allViewData ?? []) : data).map(withAssignmentOverride);
       let base = isGlobalSearch ? (shouldUseLocalPagination ? (allViewData ?? []) : fullData) : baseAll;
+      if (isGlobalSearch) base = base.map(withAssignmentOverride);
       
       if (!isGlobalSearch && isPendencyView) base = base.filter(d => d.STATUS_CALCULADO !== 'CRÍTICO');
       
@@ -619,6 +808,11 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
           });
       }
       if (filterType !== 'txEntrega' && filterTxEntrega) base = base.filter(d => parseCurrency(d.TX_ENTREGA) > 0);
+      if (assignmentFilter === 'WITH') base = base.filter(d => !!d.ASSIGNMENT_TYPE);
+      else if (assignmentFilter === 'WITHOUT') base = base.filter(d => !d.ASSIGNMENT_TYPE);
+      if (assignmentAgencyFilter) base = base.filter(d => (d.ASSIGNMENT_AGENCY_UNIT || '') === assignmentAgencyFilter);
+      if (assignmentUserFilter) base = base.filter(d => (d.ASSIGNED_USERNAME || '') === assignmentUserFilter);
+      if (assignmentMineOnly && user?.username) base = base.filter(d => (d.ASSIGNED_USERNAME || '') === user.username);
       const fromKey = dateInputToKey(appliedDateFrom);
       const toKey = dateInputToKey(appliedDateTo);
       if (fromKey || toKey) {
@@ -793,6 +987,46 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
                 </button>
             </div>
 
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-5">
+                <select
+                    value={assignmentFilter}
+                    onChange={(e) => setAssignmentFilter(e.target.value as AssignmentFilterMode)}
+                    className="appearance-none rounded-xl border border-slate-200 bg-white py-2.5 px-3 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#2c348c]/25"
+                >
+                    <option value="ALL">Atribuição: Todas</option>
+                    <option value="WITH">Somente atribuídas</option>
+                    <option value="WITHOUT">Somente sem atribuição</option>
+                </select>
+                <select
+                    value={assignmentAgencyFilter}
+                    onChange={(e) => setAssignmentAgencyFilter(e.target.value)}
+                    className="appearance-none rounded-xl border border-slate-200 bg-white py-2.5 px-3 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#2c348c]/25"
+                >
+                    <option value="">Unidade/agência (todas)</option>
+                    {availableAssignmentUnits.map((u) => <option key={u} value={u}>{u}</option>)}
+                </select>
+                <select
+                    value={assignmentUserFilter}
+                    onChange={(e) => setAssignmentUserFilter(e.target.value)}
+                    className="appearance-none rounded-xl border border-slate-200 bg-white py-2.5 px-3 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#2c348c]/25"
+                >
+                    <option value="">Responsável (todos)</option>
+                    {availableAssignmentUsers.map((u) => <option key={u} value={u}>{u}</option>)}
+                </select>
+                <button
+                    type="button"
+                    onClick={() => setAssignmentMineOnly(!assignmentMineOnly)}
+                    className={clsx(
+                      "rounded-xl border px-3 py-2 text-xs font-bold transition-colors",
+                      assignmentMineOnly
+                        ? "border-[#2c348c] bg-[#2c348c] text-white"
+                        : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
+                    )}
+                >
+                    Somente minhas atribuições
+                </button>
+            </div>
+
             <div className="flex flex-col gap-6">
                 
                 {/* BLOCO 1: STATUS (Apenas se não for visualização crítica) */}
@@ -870,11 +1104,11 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
             </div>
              
              {/* FOOTER: CLEAR FILTERS */}
-             {(statusFilters.length > 0 || paymentFilters.length > 0 || noteFilter !== 'ALL' || filterTxEntrega || appliedDateFrom || appliedDateTo) && (
+             {(statusFilters.length > 0 || paymentFilters.length > 0 || noteFilter !== 'ALL' || filterTxEntrega || appliedDateFrom || appliedDateTo || assignmentFilter !== 'ALL' || !!assignmentAgencyFilter || !!assignmentUserFilter || assignmentMineOnly) && (
                  <div className="mt-6 flex justify-end border-t border-slate-200 pt-3">
                     <button
                       type="button"
-                      onClick={() => { setStatusFilters([]); setPaymentFilters([]); setNoteFilter('ALL'); setFilterTxEntrega(false); setDraftDateFrom(''); setDraftDateTo(''); setAppliedDateFrom(''); setAppliedDateTo(''); }}
+                      onClick={() => { setStatusFilters([]); setPaymentFilters([]); setNoteFilter('ALL'); setFilterTxEntrega(false); setDraftDateFrom(''); setDraftDateTo(''); setAppliedDateFrom(''); setAppliedDateTo(''); setAssignmentFilter('ALL'); setAssignmentAgencyFilter(''); setAssignmentUserFilter(''); setAssignmentMineOnly(false); }}
                       className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-xs font-bold text-red-700 transition-colors hover:bg-red-100"
                     >
                         <X size={14} /> Limpar Todos os Filtros
@@ -936,17 +1170,18 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
           </thead>
           <tbody className="divide-y divide-slate-200/70">
             {paginatedData.map((row, idx) => {
-              const noteCount = getNoteCount(row.CTE, row);
-              const isEmBusca = isCteEmBusca(row.CTE, row.SERIE, row.STATUS);
-              const userHasInteracted = notes.some(n => n.CTE === row.CTE && n.USUARIO.toLowerCase() === user?.username.toLowerCase());
-              const needsAttention = isEmBusca && !userHasInteracted && !!user?.linkedDestUnit && !row.IS_HISTORICAL;
+              const rowView = withAssignmentOverride(row);
+              const noteCount = getNoteCount(rowView.CTE, rowView);
+              const isEmBusca = isCteEmBusca(rowView.CTE, rowView.SERIE, rowView.STATUS);
+              const userHasInteracted = notes.some(n => n.CTE === rowView.CTE && n.USUARIO.toLowerCase() === user?.username.toLowerCase());
+              const needsAttention = isEmBusca && !userHasInteracted && !!user?.linkedDestUnit && !rowView.IS_HISTORICAL;
 
               return (
                 <tr
-                  key={`${row.CTE}-${idx}`}
+                  key={`${rowView.CTE}-${idx}`}
                   className={clsx(
                     "transition-all duration-150",
-                    row.IS_HISTORICAL
+                    rowView.IS_HISTORICAL
                       ? "bg-slate-50 opacity-70 grayscale"
                       : needsAttention
                         ? "animate-[pulse_3s_ease-in-out_infinite] border-l-4 border-red-500 bg-red-50 hover:bg-red-100"
@@ -964,59 +1199,95 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
                       ) : (
                           <>
                             {needsAttention && <span className="flex items-center gap-1 text-[10px] font-black text-red-600 bg-red-100 px-1.5 py-0.5 rounded animate-bounce"><AlertTriangle size={10} /> ATENÇÃO</span>}
-                            <StatusBadge status={row.STATUS_CALCULADO || row.STATUS} />
-                            <StatusBadge status={row.FRETE_PAGO} />
+                            <StatusBadge status={rowView.STATUS_CALCULADO || rowView.STATUS} />
+                            <StatusBadge status={rowView.FRETE_PAGO} />
+                            {rowView.ASSIGNMENT_TYPE === 'PENDENTE_AG_BAIXAR' && (
+                              <span className="rounded bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">
+                                AG: {rowView.ASSIGNMENT_AGENCY_UNIT || '-'} | Resp: {rowView.ASSIGNED_USERNAME || '-'}
+                              </span>
+                            )}
                           </>
                       )}
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    <div className="font-medium text-slate-900">{row.CTE}</div>
-                    <div className="text-xs text-slate-600">Série: {row.SERIE}</div>
+                    <div className="font-medium text-slate-900">{rowView.CTE}</div>
+                    <div className="text-xs text-slate-600">Série: {rowView.SERIE}</div>
                   </td>
                   <td className="px-4 py-3">
                     <span className="text-slate-700">
-                      {formatDateOnly(row.DATA_EMISSAO)}
+                      {formatDateOnly(rowView.DATA_EMISSAO)}
                     </span>
                   </td>
                   <td className="px-4 py-3">
                     <span
                       className={clsx(
                         'font-bold',
-                        row.STATUS_CALCULADO === 'FORA DO PRAZO' && !row.IS_HISTORICAL
+                        rowView.STATUS_CALCULADO === 'FORA DO PRAZO' && !rowView.IS_HISTORICAL
                           ? 'text-red-600'
                           : 'text-slate-800',
                       )}
                     >
-                      {formatDateOnly(row.DATA_LIMITE_BAIXA)}
+                      {formatDateOnly(rowView.DATA_LIMITE_BAIXA)}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-slate-700">
-                    {formatDateOnly(row.DATA_BAIXA)}
+                    {formatDateOnly(rowView.DATA_BAIXA)}
                   </td>
                   <td className="max-w-xs truncate px-4 py-3">
                     <div className="mb-0.5 truncate text-xs font-bold uppercase text-[#2c348c]">
-                      {row.ENTREGA}
+                      {rowView.ENTREGA}
                     </div>
-                    <div className="truncate font-medium text-slate-900">{row.DESTINATARIO}</div>
+                    <div className="truncate font-medium text-slate-900">{rowView.DESTINATARIO}</div>
                   </td>
-                  <td className="px-4 py-3 font-mono font-bold text-emerald-700">{row.VALOR_CTE}</td>
+                  <td className="px-4 py-3 font-mono font-bold text-emerald-700">{rowView.VALOR_CTE}</td>
                   <td className="px-4 py-3">
-                    <button
-                      type="button"
-                      onClick={() => onNoteClick(row)}
-                      className={clsx(
-                        'group relative rounded-full p-2 transition-all',
-                        needsAttention
-                          ? 'bg-red-600 text-white shadow-lg'
-                          : noteCount > 0
-                            ? 'bg-orange-50 text-orange-600'
-                            : 'text-slate-400 hover:bg-[#e8f0ff] hover:text-[#2c348c] hover:shadow-sm',
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => onNoteClick(rowView)}
+                        className={clsx(
+                          'group relative rounded-full p-2 transition-all',
+                          needsAttention
+                            ? 'bg-red-600 text-white shadow-lg'
+                            : noteCount > 0
+                              ? 'bg-orange-50 text-orange-600'
+                              : 'text-slate-400 hover:bg-[#e8f0ff] hover:text-[#2c348c] hover:shadow-sm',
+                        )}
+                        title="Abrir notas"
+                      >
+                        <MessageSquare size={18} fill={noteCount > 0 ? "currentColor" : "none"} />
+                        {noteCount > 0 && <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[9px] w-4 h-4 rounded-full flex items-center justify-center font-bold border border-white">{noteCount}</span>}
+                      </button>
+                      {!rowView.IS_HISTORICAL && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => setAssigningDraft({
+                              cte: rowView.CTE,
+                              serie: rowView.SERIE || '0',
+                              agencyUnit: rowView.ASSIGNMENT_AGENCY_UNIT || rowView.ENTREGA || '',
+                              assignedUsername: rowView.ASSIGNED_USERNAME || user?.username || '',
+                              notes: '',
+                            })}
+                            className="rounded-full p-2 text-slate-500 hover:bg-amber-50 hover:text-amber-700"
+                            title="Atribuir pendência da agência"
+                          >
+                            <UserPlus size={16} />
+                          </button>
+                          {!!rowView.ASSIGNMENT_TYPE && (
+                            <button
+                              type="button"
+                              onClick={() => setClearTarget({ cte: rowView.CTE, serie: rowView.SERIE || '0' })}
+                              className="rounded-full p-2 text-slate-500 hover:bg-red-50 hover:text-red-700"
+                              title="Limpar atribuição"
+                            >
+                              <UserX size={16} />
+                            </button>
+                          )}
+                        </>
                       )}
-                    >
-                      <MessageSquare size={18} fill={noteCount > 0 ? "currentColor" : "none"} />
-                      {noteCount > 0 && <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[9px] w-4 h-4 rounded-full flex items-center justify-center font-bold border border-white">{noteCount}</span>}
-                    </button>
+                    </div>
                   </td>
                 </tr>
               );
@@ -1033,14 +1304,15 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
       {/* Mobile Cards */}
       <div className="md:hidden space-y-4">
         {paginatedData.map((row, idx) => {
-           const noteCount = getNoteCount(row.CTE, row);
-           const needsAttention = isCteEmBusca(row.CTE, row.SERIE, row.STATUS) && !notes.some(n => n.CTE === row.CTE && n.USUARIO.toLowerCase() === user?.username.toLowerCase()) && !!user?.linkedDestUnit && !row.IS_HISTORICAL;
+           const rowView = withAssignmentOverride(row);
+           const noteCount = getNoteCount(rowView.CTE, rowView);
+           const needsAttention = isCteEmBusca(rowView.CTE, rowView.SERIE, rowView.STATUS) && !notes.some(n => n.CTE === rowView.CTE && n.USUARIO.toLowerCase() === user?.username.toLowerCase()) && !!user?.linkedDestUnit && !rowView.IS_HISTORICAL;
            return (
             <div
-              key={`${row.CTE}-${idx}`}
+              key={`${rowView.CTE}-${idx}`}
               className={clsx(
                 'rounded-xl border border-slate-300/75 bg-gradient-to-b from-white to-slate-50/40 p-4 shadow-sm transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_10px_22px_rgba(15,23,42,0.12)]',
-                row.IS_HISTORICAL
+                rowView.IS_HISTORICAL
                   ? 'border-l-4 border-slate-300 opacity-80'
                   : needsAttention
                     ? 'border-l-4 border-red-500 bg-red-50'
@@ -1050,44 +1322,49 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
               <div className="mb-2 flex items-start justify-between">
                 <div>
                     <div className="flex items-center gap-2 text-lg font-bold text-slate-900">
-                        CTE {row.CTE} 
-                        {row.IS_HISTORICAL && <Archive size={14} className="text-slate-400"/>}
+                        CTE {rowView.CTE} 
+                        {rowView.IS_HISTORICAL && <Archive size={14} className="text-slate-400"/>}
                     </div>
-                    <div className="text-xs text-slate-500">Série {row.SERIE}</div>
+                    <div className="text-xs text-slate-500">Série {rowView.SERIE}</div>
                 </div>
                     <div className="flex flex-col items-end gap-1">
-                      {row.IS_HISTORICAL ? (
+                      {rowView.IS_HISTORICAL ? (
                         <span className="text-xs font-bold text-slate-400">HISTÓRICO</span>
                       ) : (
                         <>
-                          <StatusBadge status={row.STATUS_CALCULADO || row.STATUS} />
-                          <StatusBadge status={row.FRETE_PAGO} />
+                          <StatusBadge status={rowView.STATUS_CALCULADO || rowView.STATUS} />
+                          <StatusBadge status={rowView.FRETE_PAGO} />
                         </>
                       )}
                     </div>
               </div>
+              {rowView.ASSIGNMENT_TYPE === 'PENDENTE_AG_BAIXAR' && (
+                <div className="mb-2 rounded border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-700">
+                  AG: {rowView.ASSIGNMENT_AGENCY_UNIT || '-'} | Resp: {rowView.ASSIGNED_USERNAME || '-'}
+                </div>
+              )}
               <div className="mb-3 grid grid-cols-2 gap-2 border-t border-slate-200 pt-2 text-sm text-slate-800">
                 <div>
                   <span className="block text-xs text-slate-500">Emissão</span>
-                  <span className="font-bold">{formatDateOnly(row.DATA_EMISSAO)}</span>
+                  <span className="font-bold">{formatDateOnly(rowView.DATA_EMISSAO)}</span>
                 </div>
                 <div>
                   <span className="block text-xs text-slate-500">Limite</span>
-                  <span className="font-bold">{formatDateOnly(row.DATA_LIMITE_BAIXA)}</span>
+                  <span className="font-bold">{formatDateOnly(rowView.DATA_LIMITE_BAIXA)}</span>
                 </div>
                 <div>
                   <span className="block text-xs text-slate-500">Data baixa</span>
-                  <span className="font-bold">{formatDateOnly(row.DATA_BAIXA)}</span>
+                  <span className="font-bold">{formatDateOnly(rowView.DATA_BAIXA)}</span>
                 </div>
                 <div>
                   <span className="block text-xs text-slate-500">Valor</span>
-                  <span className="font-mono font-bold text-emerald-700">{row.VALOR_CTE}</span>
+                  <span className="font-mono font-bold text-emerald-700">{rowView.VALOR_CTE}</span>
                 </div>
               </div>
-              <div className="flex justify-end border-t border-slate-200 pt-2">
+              <div className="flex justify-end gap-2 border-t border-slate-200 pt-2">
                   <button
                     type="button"
-                    onClick={() => onNoteClick(row)}
+                    onClick={() => onNoteClick(rowView)}
                     className={clsx(
                       'flex items-center rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
                       needsAttention
@@ -1100,11 +1377,100 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
                     <MessageSquare size={16} className="mr-1" fill={noteCount > 0 ? "currentColor" : "none"} />
                     {needsAttention ? "Resolver / Ciente" : noteCount > 0 ? `Notas (${noteCount})` : 'Anotar'}
                   </button>
+                  {!rowView.IS_HISTORICAL && (
+                    <button
+                      type="button"
+                      onClick={() => setAssigningDraft({
+                        cte: rowView.CTE,
+                        serie: rowView.SERIE || '0',
+                        agencyUnit: rowView.ASSIGNMENT_AGENCY_UNIT || rowView.ENTREGA || '',
+                        assignedUsername: rowView.ASSIGNED_USERNAME || user?.username || '',
+                        notes: '',
+                      })}
+                      className="rounded-lg border border-amber-200 bg-amber-50 px-2 py-1.5 text-amber-700"
+                    >
+                      <UserPlus size={16} />
+                    </button>
+                  )}
               </div>
             </div>
            );
         })}
       </div>
+
+      {!!assigningDraft && (
+        <div className="fixed inset-0 z-[210] flex items-center justify-center p-4 bg-black/40">
+          <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-4 shadow-xl">
+            <h3 className="mb-2 text-sm font-black text-[#06183e]">Atribuir pendência da agência</h3>
+            <div className="grid grid-cols-1 gap-2">
+              <input
+                value={assigningDraft.cte}
+                disabled
+                className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600"
+              />
+              <select
+                value={assigningDraft.agencyUnit}
+                onChange={(e) => setAssigningDraft((prev) => prev ? ({ ...prev, agencyUnit: e.target.value }) : prev)}
+                className="rounded border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800"
+              >
+                <option value="">Selecione unidade/agência</option>
+                {availableAssignmentUnits.map((u) => <option key={u} value={u}>{u}</option>)}
+              </select>
+              <select
+                value={assigningDraft.assignedUsername}
+                onChange={(e) => setAssigningDraft((prev) => prev ? ({ ...prev, assignedUsername: e.target.value }) : prev)}
+                className="rounded border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800"
+              >
+                <option value="">Selecione responsável interno</option>
+                {availableAssignmentUsers.map((u) => <option key={u} value={u}>{u}</option>)}
+              </select>
+              <input
+                value={assigningDraft.notes}
+                onChange={(e) => setAssigningDraft((prev) => prev ? ({ ...prev, notes: e.target.value }) : prev)}
+                placeholder="Observação (opcional)"
+                className="rounded border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800"
+              />
+            </div>
+            <div className="mt-3 flex justify-end gap-2">
+              <button
+                type="button"
+                disabled={assignmentBusy}
+                onClick={() => setAssigningDraft(null)}
+                className="rounded border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={assignmentBusy}
+                onClick={applyAssignment}
+                className="rounded bg-gradient-to-r from-[#2c348c] to-[#1f2f86] px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50"
+              >
+                {assignmentBusy ? 'Salvando...' : 'Salvar atribuição'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <AppConfirmModal
+        open={!!clearTarget}
+        title="Remover atribuição?"
+        message="Esse CTE sairá da fila pendente da agência para o responsável."
+        confirmLabel={assignmentBusy ? 'Removendo...' : 'Remover'}
+        busy={assignmentBusy}
+        danger
+        onCancel={() => !assignmentBusy && setClearTarget(null)}
+        onConfirm={clearAssignment}
+      />
+
+      <AppMessageModal
+        open={!!assignmentNotice}
+        title={assignmentNotice?.title || ''}
+        message={assignmentNotice?.message || ''}
+        variant={assignmentNotice?.variant || 'info'}
+        onClose={() => setAssignmentNotice(null)}
+      />
     </div>
   );
 };

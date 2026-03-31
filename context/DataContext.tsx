@@ -208,6 +208,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       DESTINATARIO: row.destinatario || '',
       JUSTIFICATIVA: row.justificativa || '',
       NOTE_COUNT: typeof row.note_count === 'number' ? row.note_count : parseInt(row.note_count || '0') || 0,
+      ASSIGNMENT_TYPE: row.assignment_type || '',
+      ASSIGNMENT_AGENCY_UNIT: row.agency_unit || '',
+      ASSIGNED_USERNAME: row.assigned_username || '',
+      ASSIGNMENT_UPDATED_AT: row.assignment_updated_at || '',
     }));
 
 

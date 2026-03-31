@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getPool } from "../../../lib/server/db";
 import { formatDateTime } from "../../../lib/server/datetime";
+import { ensureOperationalAssignmentsTable } from "../../../lib/server/ensureSchema";
 
 export const runtime = "nodejs";
 
@@ -10,6 +11,7 @@ const NORMALIZED_STATUS_SQL = `
 
 export async function GET(req: Request) {
   try {
+    await ensureOperationalAssignmentsTable();
     const { searchParams } = new URL(req.url);
     const view = (searchParams.get("view") || "pendencias").toLowerCase();
     const page = parseInt(searchParams.get("page") || "1", 10) || 1;
@@ -73,6 +75,10 @@ export async function GET(req: Request) {
             ELSE i.status_calculado
           END AS status_calculado,
           i.note_count,
+          a.assignment_type,
+          a.agency_unit,
+          a.assigned_username,
+          a.updated_at AS assignment_updated_at,
           CASE
             WHEN i.view = 'tad' THEN 'TAD'
             WHEN i.view = 'em_busca' THEN 'EM BUSCA'
@@ -80,6 +86,11 @@ export async function GET(req: Request) {
           END AS status_exibicao
         FROM pendencias.cte_view_index i
         JOIN pendencias.ctes c ON c.cte = i.cte AND c.serie = i.serie
+        LEFT JOIN pendencias.cte_assignments a
+          ON a.cte = c.cte
+          AND (a.serie = c.serie OR ltrim(a.serie, '0') = ltrim(c.serie, '0'))
+          AND a.active = true
+          AND a.assignment_type = 'PENDENTE_AG_BAIXAR'
         WHERE
           (
             $1 = 'concluidos'
