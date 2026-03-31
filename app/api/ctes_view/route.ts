@@ -35,7 +35,18 @@ export async function GET(req: Request) {
             )
           )
           OR (
+            $1 = 'criticos'
+            AND (
+              i.view = 'criticos'
+              OR ${NORMALIZED_STATUS_SQL} LIKE 'CRITICO%'
+            )
+            AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'CONCLUIDO%'
+            AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'ENTREGUE%'
+            AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'RESOLVIDO%'
+          )
+          OR (
             $1 <> 'concluidos'
+            AND $1 <> 'criticos'
             AND i.view = $1
             AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'CONCLUIDO%'
             AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'ENTREGUE%'
@@ -50,7 +61,14 @@ export async function GET(req: Request) {
       `
         SELECT
           c.*,
-          i.status_calculado,
+          CASE
+            WHEN ${NORMALIZED_STATUS_SQL} LIKE 'CRITICO%' THEN 'CRÍTICO'
+            WHEN ${NORMALIZED_STATUS_SQL} LIKE 'FORA DO PRAZO%' THEN 'FORA DO PRAZO'
+            WHEN ${NORMALIZED_STATUS_SQL} LIKE 'PRIORIDADE%' THEN 'PRIORIDADE'
+            WHEN ${NORMALIZED_STATUS_SQL} LIKE 'VENCE AMANHA%' THEN 'VENCE AMANHÃ'
+            WHEN ${NORMALIZED_STATUS_SQL} LIKE 'NO PRAZO%' THEN 'NO PRAZO'
+            ELSE i.status_calculado
+          END AS status_calculado,
           i.note_count,
           CASE
             WHEN i.view = 'tad' THEN 'TAD'
@@ -70,7 +88,18 @@ export async function GET(req: Request) {
             )
           )
           OR (
+            $1 = 'criticos'
+            AND (
+              i.view = 'criticos'
+              OR ${NORMALIZED_STATUS_SQL} LIKE 'CRITICO%'
+            )
+            AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'CONCLUIDO%'
+            AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'ENTREGUE%'
+            AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'RESOLVIDO%'
+          )
+          OR (
             $1 <> 'concluidos'
+            AND $1 <> 'criticos'
             AND i.view = $1
             AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'CONCLUIDO%'
             AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'ENTREGUE%'

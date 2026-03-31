@@ -6,21 +6,19 @@ const DEFAULT_TOLERANCE_DAYS = parseInt(process.env.DEADLINE_TOLERANCE_DAYS || "
 function statusCalculadoSQL() {
   return `
     CASE
-      -- 1) Histórico (já baixado): avalia performance passada
-      WHEN c.data_baixa IS NOT NULL THEN
-        CASE
-          WHEN c.data_limite_baixa IS NULL THEN 'CONCLUIDO (SEM LIMITE)'
-          WHEN (c.data_limite_baixa::date - c.data_baixa::date) <= -3 THEN 'CONCLUIDO CRÍTICO'
-          WHEN (c.data_limite_baixa::date - c.data_baixa::date) < 0 THEN 'CONCLUIDO FORA DO PRAZO'
-          ELSE 'CONCLUIDO NO PRAZO'
-        END
-      -- 2) Operação em aberto (sem baixa): avalia risco atual
-      WHEN c.data_limite_baixa IS NULL THEN 'CALCULANDO...'
-      WHEN (c.data_limite_baixa::date - CURRENT_DATE) <= -10 THEN 'CRÍTICO'
-      WHEN (c.data_limite_baixa::date - CURRENT_DATE) < 0 THEN 'FORA DO PRAZO'
-      WHEN (c.data_limite_baixa::date - CURRENT_DATE) = 0 THEN 'PRIORIDADE'
-      WHEN (c.data_limite_baixa::date - CURRENT_DATE) = 1 THEN 'VENCE AMANHÃ'
-      ELSE 'NO PRAZO'
+      -- Status do site agora é 100% derivado do banco (Python/ETL).
+      WHEN ${normalizedStatusExpr("c.status")} LIKE 'CANCELADO%' THEN 'CANCELADO'
+      WHEN ${normalizedStatusExpr("c.status")} = 'CRITICO' THEN 'CRÍTICO'
+      WHEN ${normalizedStatusExpr("c.status")} = 'FORA DO PRAZO' THEN 'FORA DO PRAZO'
+      WHEN ${normalizedStatusExpr("c.status")} = 'PRIORIDADE' THEN 'PRIORIDADE'
+      WHEN ${normalizedStatusExpr("c.status")} = 'VENCE AMANHA' THEN 'VENCE AMANHÃ'
+      WHEN ${normalizedStatusExpr("c.status")} = 'NO PRAZO' THEN 'NO PRAZO'
+      WHEN ${normalizedStatusExpr("c.status")} = 'CONCLUIDO CRITICO' THEN 'CONCLUIDO CRÍTICO'
+      WHEN ${normalizedStatusExpr("c.status")} = 'CONCLUIDO FORA DO PRAZO' THEN 'CONCLUIDO FORA DO PRAZO'
+      WHEN ${normalizedStatusExpr("c.status")} = 'CONCLUIDO NO PRAZO' THEN 'CONCLUIDO NO PRAZO'
+      WHEN ${normalizedStatusExpr("c.status")} = 'CONCLUIDO (SEM LIMITE)' THEN 'CONCLUIDO (SEM LIMITE)'
+      WHEN COALESCE(BTRIM(c.status), '') = '' THEN 'SEM STATUS'
+      ELSE c.status
     END
   `;
 }
