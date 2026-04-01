@@ -561,7 +561,7 @@ const NoteModal: React.FC<Props> = ({ cte, onClose }) => {
                       )}>
                           {isSearch && <Check size={14} className="text-white" strokeWidth={3} />}
                       </div>
-                      <input type="checkbox" className="hidden" checked={isSearch} onChange={e => { setIsSearch(e.target.checked); if(e.target.checked) setIsTad(false); }} disabled={isSending || !hasPermission('EDIT_NOTES')} />
+                      <input type="checkbox" className="hidden" checked={isSearch} onChange={e => { setIsSearch(e.target.checked); if(e.target.checked) setIsOcorrencia(false); }} disabled={isSending || !hasPermission('EDIT_NOTES')} />
                       <span>Marcar <span className="text-red-600">EM BUSCA</span></span>
                     </label>
                     <label className="flex items-center gap-2 text-xs font-bold cursor-pointer text-slate-700 group">

@@ -1896,7 +1896,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                   await authClient.createDossier({
                     cte: selectedLead.cte,
                     serie: "0",
-                    generatedBy: user?.username || null,
+                    generatedBy: user?.username || undefined,
                   });
                   const url = `/api/dossie/pdf?cte=${encodeURIComponent(selectedLead.cte)}&serie=0`;
                   window.open(url, "_blank");
