@@ -1,7 +1,8 @@
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import DataTable from "./DataTable";
 import { CteData } from "../types";
 import { authClient } from "../lib/auth";
+import { FolderOpen, FileText, RefreshCw, Scale, HandCoins, ChevronRight, Loader2, ExternalLink, Mail } from "lucide-react";
 
 type Props = {
   data: CteData[];
@@ -15,216 +16,625 @@ type Props = {
   };
 };
 
+type HubTab = "OCORRENCIAS" | "INDENIZACOES" | "DOSSIE";
+
+type DossierFolderKey = "resumo" | "ocorrencias" | "notas" | "processo" | "pdf";
+
+const occurrenceStatusTone = (status: string) => {
+  const s = String(status || "").toUpperCase();
+  if (s === "ABERTA") return "bg-amber-50 border-amber-200 text-amber-800";
+  if (s === "EM_INDENIZACAO") return "bg-orange-50 border-orange-200 text-orange-800";
+  if (s === "EM_DOSSIE") return "bg-indigo-50 border-indigo-200 text-indigo-800";
+  if (s.includes("ENCERR") || s === "RESOLVIDA") return "bg-emerald-50 border-emerald-200 text-emerald-800";
+  return "bg-slate-50 border-slate-200 text-slate-700";
+};
+
+const indemStatusTone = (status: string) => {
+  const s = String(status || "").toUpperCase();
+  if (s === "ATIVA" || s === "EM_ANALISE") return "bg-amber-50 border-amber-200 text-amber-800";
+  if (s === "PAGA" || s === "ENCERRADA") return "bg-emerald-50 border-emerald-200 text-emerald-800";
+  if (s === "NEGADA") return "bg-red-50 border-red-200 text-red-800";
+  return "bg-slate-50 border-slate-200 text-slate-700";
+};
+
 const OcorrenciasHub: React.FC<Props> = ({ data, onNoteClick, serverPagination }) => {
-  const [tab, setTab] = useState<"OCORRENCIAS" | "INDEN_DOSSIE">("OCORRENCIAS");
-  const [cte, setCte] = useState("");
-  const [serie, setSerie] = useState("0");
-  const [items, setItems] = useState<any[]>([]);
-  const [dossier, setDossier] = useState<any | null>(null);
-  const [statusMsg, setStatusMsg] = useState("");
-  const [loading, setLoading] = useState(false);
-  const latest = items[0] || null;
+  const [tab, setTab] = useState<HubTab>("OCORRENCIAS");
+  const [formalOccs, setFormalOccs] = useState<any[]>([]);
+  const [occFilter, setOccFilter] = useState<string>("TODAS");
+  const [loadingOccs, setLoadingOccs] = useState(false);
+  const [occMsg, setOccMsg] = useState("");
 
-  const statusTone = (status: string) => {
-    const s = String(status || "").toUpperCase();
-    if (s.includes("ENCERR")) return "bg-emerald-50 border-emerald-200 text-emerald-700";
-    if (s.includes("ATIVA") || s.includes("ABERTA")) return "bg-amber-50 border-amber-200 text-amber-700";
-    return "bg-slate-50 border-slate-200 text-slate-700";
-  };
+  const [indemItems, setIndemItems] = useState<any[]>([]);
+  const [indemFilter, setIndemFilter] = useState<string>("TODAS");
+  const [loadingIndem, setLoadingIndem] = useState(false);
+  const [indemMsg, setIndemMsg] = useState("");
+  const [expandedIndem, setExpandedIndem] = useState<string | null>(null);
 
-  const load = async () => {
-    if (!cte.trim()) {
-      setStatusMsg("Informe o CTE para consultar.");
-      return;
-    }
-    setLoading(true);
-    setStatusMsg("");
+  const [dossierList, setDossierList] = useState<any[]>([]);
+  const [dossierSearch, setDossierSearch] = useState("");
+  const [loadingDossiers, setLoadingDossiers] = useState(false);
+  const [dossMsg, setDossMsg] = useState("");
+  const [openDossierKey, setOpenDossierKey] = useState<string | null>(null);
+  const [dossierDetail, setDossierDetail] = useState<any | null>(null);
+  const [loadingDossierDetail, setLoadingDossierDetail] = useState(false);
+  const [activeFolder, setActiveFolder] = useState<DossierFolderKey>("resumo");
+
+  const loadFormalOccurrences = useCallback(async () => {
+    setLoadingOccs(true);
+    setOccMsg("");
     try {
-      const occ = await authClient.getOccurrences({ cte: cte.trim(), serie: serie.trim() || "0" });
-      const d = await authClient.getDossier(cte.trim(), serie.trim() || "0");
-      setItems(Array.isArray(occ?.items) ? occ.items : []);
-      setDossier(d?.dossier || null);
-      if (!Array.isArray(occ?.items) || occ.items.length === 0) {
-        setStatusMsg("Nenhuma ocorrência encontrada para este CTE/Série.");
-      }
+      const r = await authClient.getOccurrences();
+      setFormalOccs(Array.isArray(r.items) ? r.items : []);
     } catch (e: any) {
-      setStatusMsg(e?.message || "Falha ao carregar dados.");
+      setOccMsg(e?.message || "Falha ao carregar ocorrências formais.");
+      setFormalOccs([]);
     } finally {
-      setLoading(false);
+      setLoadingOccs(false);
     }
-  };
+  }, []);
 
-  const abrirIndenizacao = async () => {
-    if (!items.length) {
-      setStatusMsg("Carregue um CTE com ocorrência para abrir indenização.");
-      return;
-    }
+  const loadIndemnifications = useCallback(async () => {
+    setLoadingIndem(true);
+    setIndemMsg("");
     try {
-      await authClient.createIndemnification({
-        occurrenceId: items[0].id,
-        status: "ATIVA",
-        notes: "Indenização aberta pela central de ocorrências.",
-      });
-      setStatusMsg("Indenização criada com sucesso.");
+      const r = await authClient.getIndemnifications();
+      setIndemItems(Array.isArray(r.items) ? r.items : []);
     } catch (e: any) {
-      setStatusMsg(e?.message || "Não foi possível criar a indenização.");
+      setIndemMsg(e?.message || "Falha ao carregar indenizações.");
+      setIndemItems([]);
+    } finally {
+      setLoadingIndem(false);
     }
-  };
+  }, []);
 
-  const gerarDossie = async () => {
-    if (!cte.trim()) {
-      setStatusMsg("Informe o CTE para gerar dossiê.");
-      return;
-    }
+  const loadDossierIndex = useCallback(async () => {
+    setLoadingDossiers(true);
+    setDossMsg("");
     try {
-      const res = await authClient.createDossier({ cte: cte.trim(), serie: serie.trim() || "0" });
-      setDossier(res?.dossier || null);
-      setStatusMsg("Dossiê atualizado/gerado com sucesso.");
+      const r = await authClient.listDossiers();
+      setDossierList(Array.isArray(r.items) ? r.items : []);
     } catch (e: any) {
-      setStatusMsg(e?.message || "Não foi possível gerar o dossiê.");
+      setDossMsg(e?.message || "Falha ao listar dossiês.");
+      setDossierList([]);
+    } finally {
+      setLoadingDossiers(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (tab === "OCORRENCIAS") loadFormalOccurrences();
+  }, [tab, loadFormalOccurrences]);
+
+  useEffect(() => {
+    if (tab === "INDENIZACOES") loadIndemnifications();
+  }, [tab, loadIndemnifications]);
+
+  useEffect(() => {
+    if (tab === "DOSSIE") loadDossierIndex();
+  }, [tab, loadDossierIndex]);
+
+  const filteredOccs = useMemo(() => {
+    if (occFilter === "TODAS") return formalOccs;
+    return formalOccs.filter((o) => String(o.status || "").toUpperCase() === occFilter);
+  }, [formalOccs, occFilter]);
+
+  const filteredIndem = useMemo(() => {
+    if (indemFilter === "TODAS") return indemItems;
+    return indemItems.filter((i) => String(i.status || "").toUpperCase() === indemFilter);
+  }, [indemItems, indemFilter]);
+
+  const filteredDossierList = useMemo(() => {
+    const q = dossierSearch.trim().toLowerCase();
+    if (!q) return dossierList;
+    return dossierList.filter(
+      (d) =>
+        String(d.cte || "")
+          .toLowerCase()
+          .includes(q) ||
+        String(d.serie || "")
+          .toLowerCase()
+          .includes(q) ||
+        String(d.title || "")
+          .toLowerCase()
+          .includes(q)
+    );
+  }, [dossierList, dossierSearch]);
+
+  const encaminharOcorrencia = async (id: string, track: "INDENIZACAO" | "DOSSIE_DIRETO") => {
+    setOccMsg("");
+    try {
+      await authClient.patchOccurrenceTrack({ id, track });
+      setOccMsg(track === "INDENIZACAO" ? "Encaminhado para Indenizações." : "Dossiê direto registrado. Veja na aba Dossiê.");
+      await loadFormalOccurrences();
+      if (track === "INDENIZACAO") loadIndemnifications();
+      if (track === "DOSSIE_DIRETO") loadDossierIndex();
+    } catch (e: any) {
+      setOccMsg(e?.message || "Não foi possível encaminhar.");
     }
   };
 
-  const baixarPdf = () => {
-    if (!cte.trim()) {
-      setStatusMsg("Informe o CTE para baixar o PDF.");
-      return;
+  const patchIndemStatus = async (id: string, status: string) => {
+    setIndemMsg("");
+    try {
+      await authClient.patchIndemnification({ id, status });
+      await loadIndemnifications();
+    } catch (e: any) {
+      setIndemMsg(e?.message || "Falha ao atualizar status.");
     }
-    window.open(`/api/dossie/pdf?cte=${encodeURIComponent(cte.trim())}&serie=${encodeURIComponent(serie.trim() || "0")}`, "_blank");
   };
 
-  const enviarOutlook = () => {
-    if (!cte.trim()) {
-      setStatusMsg("Informe o CTE para enviar por e-mail.");
+  const gerarDossieCte = async (cte: string, serie: string) => {
+    setIndemMsg("");
+    try {
+      await authClient.createDossier({ cte, serie: serie || "0" });
+      setIndemMsg("Dossiê gerado/atualizado. Abra a aba Dossiê para ver as pastas.");
+      loadDossierIndex();
+    } catch (e: any) {
+      setIndemMsg(e?.message || "Falha ao gerar dossiê.");
+    }
+  };
+
+  const openDossierCard = async (row: any) => {
+    const k = `${row.cte}::${row.serie || "0"}`;
+    if (openDossierKey === k) {
+      setOpenDossierKey(null);
+      setDossierDetail(null);
       return;
     }
-    const serieSafe = serie.trim() || "0";
+    setOpenDossierKey(k);
+    setActiveFolder("resumo");
+    setLoadingDossierDetail(true);
+    setDossierDetail(null);
+    try {
+      const d = await authClient.getDossier(String(row.cte), String(row.serie || "0"));
+      setDossierDetail(d);
+    } catch (e: any) {
+      setDossMsg(e?.message || "Falha ao abrir dossiê.");
+    } finally {
+      setLoadingDossierDetail(false);
+    }
+  };
+
+  const pdfUrl = (cte: string, serie: string) =>
+    `/api/dossie/pdf?cte=${encodeURIComponent(cte)}&serie=${encodeURIComponent(serie || "0")}`;
+
+  const enviarOutlook = (cte: string, serie: string) => {
+    const serieSafe = serie || "0";
     const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
-    const pdfUrl = `${baseUrl}/api/dossie/pdf?cte=${encodeURIComponent(cte.trim())}&serie=${encodeURIComponent(serieSafe)}`;
-    const subject = `Dossie operacional CTE ${cte.trim()} / Serie ${serieSafe}`;
-    const body =
-      `Prezados,\n\nSegue o dossie operacional referente ao CTE ${cte.trim()} / Serie ${serieSafe}.\n\n` +
-      `Link para download do PDF:\n${pdfUrl}\n\n` +
-      `Resumo: ocorrencia${items.length === 1 ? "" : "s"} encontrada${items.length === 1 ? "" : "s"}: ${items.length}.\n` +
-      `Atenciosamente.`;
-    const outlookUrl =
-      `https://outlook.office.com/mail/deeplink/compose?subject=${encodeURIComponent(subject)}` +
-      `&body=${encodeURIComponent(body)}`;
-    window.open(outlookUrl, "_blank");
+    const pdf = `${baseUrl}${pdfUrl(cte, serieSafe)}`;
+    const subject = `Dossiê operacional CTE ${cte} / Série ${serieSafe}`;
+    const body = `Prezados,\n\nSegue o link do dossiê (PDF) do CTE ${cte} / Série ${serieSafe}:\n${pdf}\n\nAtenciosamente.`;
+    window.open(
+      `https://outlook.office.com/mail/deeplink/compose?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`,
+      "_blank"
+    );
   };
+
+  const folderBlocks: { key: DossierFolderKey; label: string; icon: React.ReactNode; hint: string }[] = [
+    { key: "resumo", label: "Resumo", icon: <FileText size={18} />, hint: "Título, status e identificação do CTE" },
+    { key: "ocorrencias", label: "Ocorrências", icon: <Scale size={18} />, hint: "Registros formais vinculados" },
+    { key: "notas", label: "Notas / anexos", icon: <FileText size={18} />, hint: "Histórico de anotações" },
+    { key: "processo", label: "Processo operacional", icon: <ChevronRight size={18} />, hint: "Linha do tempo em process_control" },
+    { key: "pdf", label: "PDF e e-mail", icon: <Mail size={18} />, hint: "Download e Outlook" },
+  ];
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={() => setTab("OCORRENCIAS")}
-          className={`rounded-lg px-3 py-1.5 text-xs font-bold border ${tab === "OCORRENCIAS" ? "bg-[#2c348c] text-white border-[#2c348c]" : "bg-white text-slate-700 border-slate-200"}`}
-        >
-          Ocorrências
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("INDEN_DOSSIE")}
-          className={`rounded-lg px-3 py-1.5 text-xs font-bold border ${tab === "INDEN_DOSSIE" ? "bg-[#2c348c] text-white border-[#2c348c]" : "bg-white text-slate-700 border-slate-200"}`}
-        >
-          Indenizações e Dossiê
-        </button>
+        {(
+          [
+            ["OCORRENCIAS", "Ocorrências"],
+            ["INDENIZACOES", "Indenizações"],
+            ["DOSSIE", "Dossiê"],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setTab(id)}
+            className={`rounded-lg px-3 py-1.5 text-xs font-bold border ${
+              tab === id ? "bg-[#2c348c] text-white border-[#2c348c]" : "bg-white text-slate-700 border-slate-200"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
-      {tab === "OCORRENCIAS" ? (
-        <DataTable
-          title="Ocorrências Operacionais"
-          data={data}
-          onNoteClick={onNoteClick}
-          enableFilters
-          ignoreUnitFilter
-          serverPagination={serverPagination}
-        />
-      ) : (
-        <div className="surface-card p-4 space-y-4">
-          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-600">Central processual</p>
-            <p className="text-xs text-slate-600 mt-1">
-              Fluxo: CTE vira ocorrência, pode evoluir para indenização, e sempre mantém dossiê com histórico e PDF.
-            </p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-            <input value={cte} onChange={(e) => setCte(e.target.value)} placeholder="CTE" className="rounded border border-slate-200 px-3 py-2 text-sm" />
-            <input value={serie} onChange={(e) => setSerie(e.target.value)} placeholder="Série" className="rounded border border-slate-200 px-3 py-2 text-sm" />
-            <button type="button" onClick={load} className="rounded bg-[#2c348c] text-white text-sm font-semibold px-3 py-2">
-              {loading ? "Carregando..." : "Consultar"}
-            </button>
-          </div>
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-            <div className={`rounded-xl border p-3 ${latest ? statusTone(latest.status) : "bg-slate-50 border-slate-200 text-slate-700"}`}>
-              <p className="text-[11px] font-bold uppercase tracking-wider">Status da ocorrência</p>
-              <p className="mt-1 text-sm font-semibold">{latest ? latest.status : "Sem ocorrência carregada"}</p>
-              <p className="mt-1 text-xs">{latest ? `Tipo: ${latest.occurrence_type}` : "Consulte CTE/Série para visualizar."}</p>
-            </div>
-            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-800">
-              <p className="text-[11px] font-bold uppercase tracking-wider">Indenização</p>
-              <p className="mt-1 text-xs">Abra quando a ocorrência não for resolvida operacionalmente.</p>
-              <button type="button" onClick={abrirIndenizacao} className="mt-2 rounded border border-amber-300 bg-white px-3 py-1.5 text-xs font-bold">
-                Abrir indenização
+      {tab === "OCORRENCIAS" && (
+        <>
+          <DataTable
+            title="Ocorrências Operacionais (CTEs)"
+            data={data}
+            onNoteClick={onNoteClick}
+            enableFilters
+            ignoreUnitFilter
+            serverPagination={serverPagination}
+          />
+
+          <div className="surface-card p-4 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-600">Registro formal de ocorrências</p>
+                <p className="text-xs text-slate-600 mt-1 max-w-3xl">
+                  Após marcar <strong>OCORRÊNCIA</strong> no modal de anotações (ou pelo CRM), o caso aparece aqui com status{" "}
+                  <strong>ABERTA</strong>. O próximo passo é escolher <em>uma</em> trilha: <strong>Indenização</strong> ou{" "}
+                  <strong>Dossiê direto</strong> — não são etapas paralelas.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={loadFormalOccurrences}
+                disabled={loadingOccs}
+                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700"
+              >
+                <RefreshCw size={14} className={loadingOccs ? "animate-spin" : ""} /> Atualizar
               </button>
             </div>
-            <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-indigo-800">
-              <p className="text-[11px] font-bold uppercase tracking-wider">Dossiê</p>
-              <p className="mt-1 text-xs">Consolida histórico, eventos e anexos para resguardo.</p>
-              <div className="mt-2 flex gap-2">
-                <button type="button" onClick={gerarDossie} className="rounded border border-indigo-300 bg-white px-3 py-1.5 text-xs font-bold">
-                  Gerar
-                </button>
-                <button type="button" onClick={baixarPdf} className="rounded border border-indigo-300 bg-white px-3 py-1.5 text-xs font-bold">
-                  Baixar PDF
-                </button>
-                <button type="button" onClick={enviarOutlook} className="rounded border border-indigo-300 bg-white px-3 py-1.5 text-xs font-bold">
-                  Enviar Outlook
-                </button>
-              </div>
-            </div>
-          </div>
 
-          <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={abrirIndenizacao} className="rounded border border-amber-200 bg-amber-50 text-amber-700 text-xs font-bold px-3 py-1.5">
-              Abrir indenização da ocorrência
-            </button>
-            <button type="button" onClick={gerarDossie} className="rounded border border-indigo-200 bg-indigo-50 text-indigo-700 text-xs font-bold px-3 py-1.5">
-              Gerar/atualizar dossiê
-            </button>
-            <button type="button" onClick={baixarPdf} className="rounded border border-slate-200 bg-white text-slate-700 text-xs font-bold px-3 py-1.5">
-              Baixar dossiê PDF
-            </button>
-            <button type="button" onClick={enviarOutlook} className="rounded border border-blue-200 bg-blue-50 text-blue-700 text-xs font-bold px-3 py-1.5">
-              Enviar por e-mail (Outlook)
-            </button>
-          </div>
-          {statusMsg && <p className="text-xs text-slate-600">{statusMsg}</p>}
-          {dossier && (
-            <div className="rounded border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
-              Dossiê ativo: <strong>{dossier.title}</strong> ({dossier.cte}/{dossier.serie})
+            <div className="flex flex-wrap gap-2">
+              {["TODAS", "ABERTA", "EM_INDENIZACAO", "EM_DOSSIE"].map((f) => (
+                <button
+                  key={f}
+                  type="button"
+                  onClick={() => setOccFilter(f)}
+                  className={`rounded-full px-3 py-1 text-[10px] font-bold border ${
+                    occFilter === f ? "bg-slate-800 text-white border-slate-800" : "bg-slate-50 text-slate-600 border-slate-200"
+                  }`}
+                >
+                  {f === "TODAS" ? "Todas" : f.replace(/_/g, " ")}
+                </button>
+              ))}
             </div>
-          )}
-          <div className="rounded border border-slate-200 p-3">
-            <p className="text-xs font-bold text-slate-700 mb-2">Timeline de ocorrências (mais recente primeiro)</p>
-            {items.length === 0 ? (
-              <p className="text-xs text-slate-500">Nenhuma ocorrência carregada.</p>
+
+            {occMsg && <p className="text-xs text-slate-700 bg-slate-50 border border-slate-200 rounded px-2 py-1.5">{occMsg}</p>}
+
+            {loadingOccs ? (
+              <p className="text-xs text-slate-500 flex items-center gap-2">
+                <Loader2 className="animate-spin" size={14} /> Carregando…
+              </p>
+            ) : filteredOccs.length === 0 ? (
+              <p className="text-xs text-slate-500">Nenhum registro neste filtro.</p>
             ) : (
-              <div className="space-y-2">
-                {items.map((it) => (
-                  <div key={it.id} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-bold text-violet-700">[{it.occurrence_type}]</span>
-                      <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${statusTone(it.status)}`}>{it.status}</span>
-                      <span className="text-[10px] text-slate-500">{it.created_at ? new Date(it.created_at).toLocaleString("pt-BR") : "-"}</span>
+              <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
+                {filteredOccs.map((o) => (
+                  <div
+                    key={o.id}
+                    className={`rounded-xl border px-3 py-2.5 text-xs ${occurrenceStatusTone(o.status)}`}
+                  >
+                    <div className="flex flex-wrap items-center gap-2 justify-between">
+                      <div className="font-mono font-bold">
+                        CTE {o.cte} <span className="text-slate-500">/ série {o.serie || "0"}</span>
+                      </div>
+                      <span className="rounded-full border px-2 py-0.5 text-[10px] font-bold bg-white/80">{o.status}</span>
                     </div>
-                    <div className="mt-1">{it.description}</div>
+                    <div className="mt-1 text-[11px] opacity-90">
+                      <span className="font-bold text-violet-800">[{o.occurrence_type}]</span> {o.description}
+                    </div>
+                    <div className="mt-1 text-[10px] text-slate-600">
+                      {o.created_at ? new Date(o.created_at).toLocaleString("pt-BR") : ""}
+                      {o.resolution_track ? ` · Trilha: ${o.resolution_track}` : ""}
+                    </div>
+                    {String(o.status || "").toUpperCase() === "ABERTA" && (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => encaminharOcorrencia(o.id, "INDENIZACAO")}
+                          className="inline-flex items-center gap-1 rounded border border-amber-400 bg-white px-2 py-1 text-[11px] font-bold text-amber-900"
+                        >
+                          <HandCoins size={14} /> Indenização
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => encaminharOcorrencia(o.id, "DOSSIE_DIRETO")}
+                          className="inline-flex items-center gap-1 rounded border border-indigo-400 bg-white px-2 py-1 text-[11px] font-bold text-indigo-900"
+                        >
+                          <FolderOpen size={14} /> Dossiê direto
+                        </button>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
             )}
           </div>
+        </>
+      )}
+
+      {tab === "INDENIZACOES" && (
+        <div className="surface-card p-4 space-y-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-600">Indenizações</p>
+              <p className="text-xs text-slate-600 mt-1 max-w-3xl">
+                Processo de ressarcimento ligado à ocorrência. Quando o caso estiver maduro juridicamente/financeiramente, a{" "}
+                <strong>última etapa</strong> costuma ser consolidar tudo no <button type="button" className="text-[#2c348c] font-bold underline" onClick={() => setTab("DOSSIE")}>Dossiê</button> — documentação única para defesa e arquivo.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={loadIndemnifications}
+              disabled={loadingIndem}
+              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700"
+            >
+              <RefreshCw size={14} className={loadingIndem ? "animate-spin" : ""} /> Atualizar
+            </button>
+          </div>
+
+          {indemMsg && <p className="text-xs text-slate-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">{indemMsg}</p>}
+
+          <div className="flex flex-wrap gap-2">
+            {["TODAS", "ATIVA", "EM_ANALISE", "PROPOSTA_ENVIADA", "ACORDO", "PAGA", "NEGADA", "ENCERRADA"].map((f) => (
+              <button
+                key={f}
+                type="button"
+                onClick={() => setIndemFilter(f)}
+                className={`rounded-full px-3 py-1 text-[10px] font-bold border ${
+                  indemFilter === f ? "bg-slate-800 text-white border-slate-800" : "bg-slate-50 text-slate-600 border-slate-200"
+                }`}
+              >
+                {f === "TODAS" ? "Todas" : f.replace(/_/g, " ")}
+              </button>
+            ))}
+          </div>
+
+          {loadingIndem ? (
+            <p className="text-xs text-slate-500 flex items-center gap-2">
+              <Loader2 className="animate-spin" size={14} /> Carregando indenizações…
+            </p>
+          ) : filteredIndem.length === 0 ? (
+            <p className="text-xs text-slate-500">Nenhuma indenização neste filtro.</p>
+          ) : (
+            <div className="space-y-2">
+              {filteredIndem.map((row) => {
+                const exp = expandedIndem === row.id;
+                const cte = row.occurrence_cte || "";
+                const serie = row.occurrence_serie || "0";
+                return (
+                  <div key={row.id} className={`rounded-xl border text-xs ${indemStatusTone(row.status)}`}>
+                    <button
+                      type="button"
+                      onClick={() => setExpandedIndem(exp ? null : row.id)}
+                      className="w-full flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-left hover:bg-white/40 rounded-xl"
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-mono font-bold">
+                          CTE {cte} / {serie}
+                        </span>
+                        <span className="rounded-full border px-2 py-0.5 text-[10px] font-bold bg-white/70">{row.status}</span>
+                        <span className="text-[10px] opacity-80">{row.occurrence_type}</span>
+                      </div>
+                      <ChevronRight size={16} className={exp ? "rotate-90 transition-transform" : "transition-transform"} />
+                    </button>
+                    {exp && (
+                      <div className="px-3 pb-3 pt-0 space-y-2 border-t border-white/50 bg-white/30 rounded-b-xl">
+                        <p className="text-[11px] mt-2">{row.notes || "—"}</p>
+                        {row.amount != null && (
+                          <p className="text-[11px] font-bold">
+                            Valor: {Number(row.amount).toLocaleString("pt-BR", { style: "currency", currency: row.currency || "BRL" })}
+                          </p>
+                        )}
+                        <div className="flex flex-wrap gap-2 items-center">
+                          <label className="text-[10px] font-bold text-slate-600">Status:</label>
+                          <select
+                            value={row.status}
+                            onChange={(e) => patchIndemStatus(row.id, e.target.value)}
+                            className="rounded border border-slate-200 bg-white px-2 py-1 text-[11px]"
+                          >
+                            {["ATIVA", "EM_ANALISE", "AGUARDANDO_DOC", "PROPOSTA_ENVIADA", "ACORDO", "PAGA", "NEGADA", "ENCERRADA"].map((s) => (
+                              <option key={s} value={s}>
+                                {s.replace(/_/g, " ")}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => gerarDossieCte(cte, serie)}
+                            className="rounded border border-indigo-300 bg-indigo-50 px-2 py-1 text-[11px] font-bold text-indigo-800"
+                          >
+                            Gerar / atualizar Dossiê (última etapa)
+                          </button>
+                          <a
+                            href={pdfUrl(cte, serie)}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1 rounded border border-slate-200 bg-white px-2 py-1 text-[11px] font-bold text-slate-700"
+                          >
+                            <ExternalLink size={12} /> PDF
+                          </a>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === "DOSSIE" && (
+        <div className="surface-card p-4 space-y-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-600">Dossiê</p>
+              <p className="text-xs text-slate-600 mt-1 max-w-3xl">
+                Etapa final de resguardo: uma visão por CTE/série. Clique em cada pasta para abrir o bloco (resumo, ocorrências,
+                notas, processo, PDF). Quem veio só de <strong>dossiê direto</strong> na ocorrência também aparece aqui.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={loadDossierIndex}
+              disabled={loadingDossiers}
+              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700"
+            >
+              <RefreshCw size={14} className={loadingDossiers ? "animate-spin" : ""} /> Atualizar
+            </button>
+          </div>
+
+          <input
+            value={dossierSearch}
+            onChange={(e) => setDossierSearch(e.target.value)}
+            placeholder="Filtrar por CTE, série ou título…"
+            className="w-full max-w-md rounded-lg border border-slate-200 px-3 py-2 text-sm"
+          />
+
+          {dossMsg && <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1.5">{dossMsg}</p>}
+
+          {loadingDossiers ? (
+            <p className="text-xs text-slate-500 flex items-center gap-2">
+              <Loader2 className="animate-spin" size={14} /> Carregando lista…
+            </p>
+          ) : filteredDossierList.length === 0 ? (
+            <p className="text-xs text-slate-500">Nenhum dossiê encontrado. Gere a partir de uma ocorrência (trilha direta) ou pela aba Indenizações.</p>
+          ) : (
+            <div className="space-y-2">
+              {filteredDossierList.map((d) => {
+                const key = `${d.cte}::${d.serie || "0"}`;
+                const open = openDossierKey === key;
+                return (
+                  <div key={key} className="rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => openDossierCard(d)}
+                      className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-slate-50/80"
+                    >
+                      <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-indigo-100 text-indigo-800 border border-indigo-200">
+                        <FolderOpen size={22} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold text-slate-800 truncate">{d.title || `Dossiê ${d.cte}`}</p>
+                        <p className="text-[11px] text-slate-500 font-mono">
+                          CTE {d.cte} · série {d.serie || "0"}
+                          {d.updated_at ? ` · ${new Date(d.updated_at).toLocaleString("pt-BR")}` : ""}
+                        </p>
+                      </div>
+                      <ChevronRight size={18} className={`text-slate-400 shrink-0 transition-transform ${open ? "rotate-90" : ""}`} />
+                    </button>
+
+                    {open && (
+                      <div className="border-t border-slate-200 bg-white px-4 py-3">
+                        {loadingDossierDetail ? (
+                          <p className="text-xs flex items-center gap-2 text-slate-500">
+                            <Loader2 className="animate-spin" size={14} /> Abrindo pastas…
+                          </p>
+                        ) : dossierDetail ? (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                            {folderBlocks.map((fb) => (
+                              <button
+                                key={fb.key}
+                                type="button"
+                                onClick={() => setActiveFolder(fb.key)}
+                                className={`flex flex-col items-start gap-1 rounded-xl border p-3 text-left transition-colors ${
+                                  activeFolder === fb.key
+                                    ? "border-[#2c348c] bg-[#f0f1fb] shadow-sm"
+                                    : "border-slate-200 bg-slate-50 hover:border-slate-300"
+                                }`}
+                              >
+                                <div className="flex items-center gap-2 text-slate-800">
+                                  {fb.icon}
+                                  <span className="text-xs font-bold">{fb.label}</span>
+                                </div>
+                                <span className="text-[10px] text-slate-500 leading-snug">{fb.hint}</span>
+                              </button>
+                            ))}
+                          </div>
+                        ) : null}
+
+                        {dossierDetail && !loadingDossierDetail && (
+                          <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700 max-h-[340px] overflow-y-auto">
+                            {activeFolder === "resumo" && (
+                              <div className="space-y-1">
+                                <p>
+                                  <strong>Título:</strong> {dossierDetail.dossier?.title || d.title}
+                                </p>
+                                <p>
+                                  <strong>Status:</strong> {dossierDetail.dossier?.status || "—"}
+                                </p>
+                                <p>
+                                  <strong>Gerado por:</strong> {dossierDetail.dossier?.generated_by || "—"}
+                                </p>
+                              </div>
+                            )}
+                            {activeFolder === "ocorrencias" && (
+                              <ul className="space-y-2">
+                                {(dossierDetail.occurrences || []).length === 0 ? (
+                                  <li>Nenhuma ocorrência vinculada.</li>
+                                ) : (
+                                  (dossierDetail.occurrences || []).map((o: any, idx: number) => (
+                                    <li key={o.id || idx} className="rounded border border-slate-200 bg-white p-2">
+                                      <span className="font-bold text-violet-800">[{o.occurrence_type}]</span> {o.status}
+                                      <div className="text-[11px] mt-1">{o.description}</div>
+                                    </li>
+                                  ))
+                                )}
+                              </ul>
+                            )}
+                            {activeFolder === "notas" && (
+                              <ul className="space-y-2">
+                                {(dossierDetail.notes || []).length === 0 ? (
+                                  <li>Sem notas.</li>
+                                ) : (
+                                  (dossierDetail.notes || []).slice(0, 40).map((n: any, idx: number) => (
+                                    <li key={n.id || idx} className="rounded border border-slate-200 bg-white p-2">
+                                      <div className="text-[10px] text-slate-500">{n.data}</div>
+                                      <div className="font-bold text-[11px]">{n.usuario}</div>
+                                      <div>{n.texto}</div>
+                                      {n.link_imagem ? (
+                                        <a href={String(n.link_imagem).split(/[\s,]+/)[0]} target="_blank" rel="noreferrer" className="text-[10px] text-[#2c348c] font-bold underline">
+                                          Abrir anexo
+                                        </a>
+                                      ) : null}
+                                    </li>
+                                  ))
+                                )}
+                              </ul>
+                            )}
+                            {activeFolder === "processo" && (
+                              <ul className="space-y-2">
+                                {(dossierDetail.process || []).length === 0 ? (
+                                  <li>Sem eventos de processo.</li>
+                                ) : (
+                                  (dossierDetail.process || []).map((p: any, idx: number) => (
+                                    <li key={p.id || idx} className="rounded border border-slate-200 bg-white p-2">
+                                      <span className="font-bold">{p.status}</span> · {p.data}
+                                      <div className="text-[11px]">{p.description}</div>
+                                    </li>
+                                  ))
+                                )}
+                              </ul>
+                            )}
+                            {activeFolder === "pdf" && (
+                              <div className="flex flex-wrap gap-2">
+                                <a
+                                  href={pdfUrl(d.cte, d.serie)}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-flex items-center gap-1 rounded-lg bg-[#2c348c] px-3 py-2 text-white text-xs font-bold"
+                                >
+                                  <ExternalLink size={14} /> Baixar PDF
+                                </a>
+                                <button
+                                  type="button"
+                                  onClick={() => enviarOutlook(d.cte, d.serie)}
+                                  className="inline-flex items-center gap-1 rounded-lg border border-blue-300 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-800"
+                                >
+                                  <Mail size={14} /> Outlook
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
     </div>

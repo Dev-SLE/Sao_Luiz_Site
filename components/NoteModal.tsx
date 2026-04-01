@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { X, Send, Paperclip, Loader2, CheckCircle2, Check, History, FileText, Music, Film, ExternalLink, Image as ImageIcon, Trash2, File as FileIcon } from 'lucide-react';
+import { X, Send, Paperclip, Loader2, CheckCircle2, Check, History, FileText, Music, Film, ExternalLink, Image as ImageIcon, Trash2, File as FileIcon, FolderOpen, HandCoins } from 'lucide-react';
 import { CteData, NoteData } from '../types';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
@@ -172,7 +172,7 @@ interface PendingFile {
 }
 
 const NoteModal: React.FC<Props> = ({ cte, onClose }) => {
-  const { notes, addNote, resolveIssue, baseData, isCteEmBusca, isCteOcorrencia, getLatestNote, processControlData, hasPermission } = useData();
+  const { notes, addNote, resolveIssue, baseData, isCteEmBusca, isCteOcorrencia, getLatestNote, processControlData, hasPermission, refreshData } = useData();
   const { user } = useAuth();
   const [text, setText] = useState('');
   const [isSearch, setIsSearch] = useState(false);
@@ -189,6 +189,9 @@ const NoteModal: React.FC<Props> = ({ cte, onClose }) => {
     message: string;
     variant: AppMessageVariant;
   } | null>(null);
+  const [formalOccurrenceId, setFormalOccurrenceId] = useState<string | null>(null);
+  const [formalOccLoading, setFormalOccLoading] = useState(false);
+  const [trackActionLoading, setTrackActionLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   if (!cte) return null;
@@ -246,6 +249,29 @@ const NoteModal: React.FC<Props> = ({ cte, onClose }) => {
     return () => { cancelled = true; };
   }, [cte.CTE, cte.SERIE]);
 
+  useEffect(() => {
+    let cancelled = false;
+    if (!isCteOcorrencia(cte.CTE, cte.SERIE || '0')) {
+      setFormalOccurrenceId(null);
+      setFormalOccLoading(false);
+      return;
+    }
+    setFormalOccLoading(true);
+    (async () => {
+      try {
+        const r = await authClient.getOccurrences({ cte: cte.CTE, serie: cte.SERIE || '0' });
+        if (cancelled) return;
+        const open = (r.items || []).find((o: any) => String(o.status || '').toUpperCase() === 'ABERTA');
+        setFormalOccurrenceId(open?.id ? String(open.id) : null);
+      } catch {
+        if (!cancelled) setFormalOccurrenceId(null);
+      } finally {
+        if (!cancelled) setFormalOccLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [cte.CTE, cte.SERIE, baseData]);
+
   const currentNotes = (remoteNotes ?? notes.filter(n => n.CTE === cte.CTE));
   const isCurrentlyEmBusca = isCteEmBusca(liveCte.CTE, liveCte.SERIE, liveCte.STATUS);
   const isCurrentlyOcorrencia = isCteOcorrencia(liveCte.CTE, liveCte.SERIE);
@@ -287,11 +313,40 @@ const NoteModal: React.FC<Props> = ({ cte, onClose }) => {
   const removeFile = (index: number) => { if (!isSending) setPendingFiles(prev => prev.filter((_, i) => i !== index)); };
 
   const confirmResolveAction = async () => {
-      setShowConfirmResolve(false);
-      try { 
-          const resolveText = isCurrentlyOcorrencia ? "RESOLVIDO: OCORRÊNCIA ENCERRADA." : undefined;
-          await resolveIssue(cte.CTE, cte.SERIE, resolveText); 
-      } catch (err) { setResolveChecked(false); }
+    setShowConfirmResolve(false);
+    try {
+      await resolveIssue(cte.CTE, cte.SERIE);
+    } catch (err) {
+      setResolveChecked(false);
+    }
+  };
+
+  const encaminharTrilha = async (track: "INDENIZACAO" | "DOSSIE_DIRETO") => {
+    if (!formalOccurrenceId || !hasPermission("EDIT_NOTES")) return;
+    setTrackActionLoading(true);
+    try {
+      await authClient.patchOccurrenceTrack({ id: formalOccurrenceId, track });
+      setNoteNotice({
+        title: track === "INDENIZACAO" ? "Indenização" : "Dossiê",
+        message:
+          track === "INDENIZACAO"
+            ? "Ocorrência encaminhada para a trilha de Indenizações. Acompanhe na aba correspondente."
+            : "Dossiê gerado/atualizado. Acompanhe na aba Dossiê.",
+        variant: "success",
+      });
+      await refreshData();
+      const r = await authClient.getOccurrences({ cte: cte.CTE, serie: cte.SERIE || "0" });
+      const open = (r.items || []).find((o: any) => String(o.status || "").toUpperCase() === "ABERTA");
+      setFormalOccurrenceId(open?.id ? String(open.id) : null);
+    } catch (e: any) {
+      setNoteNotice({
+        title: "Trilha",
+        message: e?.message || "Não foi possível encaminhar. Verifique se a ocorrência ainda está ABERTA.",
+        variant: "error",
+      });
+    } finally {
+      setTrackActionLoading(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -339,7 +394,8 @@ const NoteModal: React.FC<Props> = ({ cte, onClose }) => {
         USUARIO: user?.username || 'Sistema', TEXTO: finalText || (pendingFiles.length > 0 ? "Anexo enviado" : ""), 
         LINK_IMAGEM: '', 
         STATUS_BUSCA: isSearch ? 'EM BUSCA' : (isOcorrencia ? 'OCORRENCIA' : ''), 
-        attachments: pendingFiles
+        attachments: pendingFiles,
+        occurrenceType: isOcorrencia ? occurrenceType : undefined,
       });
       if (created) {
         const normalized = normalizeNoteRow(created);
@@ -393,10 +449,10 @@ const NoteModal: React.FC<Props> = ({ cte, onClose }) => {
                        <Check size={28} />
                      </div>
                      <h3 className="text-lg font-bold mb-2">
-                        {isCurrentlyOcorrencia ? 'Confirmar encerramento da ocorrência?' : 'Gravar como Localizada?'}
+                        Gravar como Localizada?
                      </h3>
                      <p className="text-sm text-slate-600 mb-6">
-                       O status mudará para <strong className="text-emerald-300">RESOLVIDO</strong>.
+                       O status mudará para <strong className="text-emerald-600">RESOLVIDO</strong>.
                      </p>
                      <div className="flex gap-3 w-full">
                          <button
@@ -542,9 +598,48 @@ const NoteModal: React.FC<Props> = ({ cte, onClose }) => {
             </div>
         )}
 
+        {isCurrentlyOcorrencia && !isResolvido && (
+          <div className="px-4 py-3 bg-violet-50/90 border-t border-violet-200 shrink-0">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-violet-900">Encaminhar ocorrência formal</p>
+            <p className="text-xs text-violet-900/85 mt-1">
+              O fluxo operacional prevê apenas um destino: <strong>indenização</strong> (processo de ressarcimento) ou{' '}
+              <strong>dossiê direto</strong> (resguardo / última etapa documental). Use a aba específica para acompanhar.
+            </p>
+            {formalOccLoading ? (
+              <p className="text-xs text-violet-700 mt-2 flex items-center gap-2">
+                <Loader2 className="animate-spin" size={14} /> Carregando registro da ocorrência…
+              </p>
+            ) : !formalOccurrenceId ? (
+              <p className="text-xs text-amber-900 mt-2 rounded border border-amber-200 bg-amber-50 px-2 py-1.5">
+                Não há ocorrência com status <strong>ABERTA</strong> para este CTE. Envie uma anotação marcando{' '}
+                <strong>OCORRÊNCIA</strong> (com detalhes) ou abra pelo CRM para criar o registro.
+              </p>
+            ) : (
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={trackActionLoading || isSending || !hasPermission("EDIT_NOTES")}
+                  onClick={() => encaminharTrilha("INDENIZACAO")}
+                  className="inline-flex items-center gap-2 rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-amber-900 shadow-sm hover:bg-amber-50 disabled:opacity-50"
+                >
+                  <HandCoins size={16} /> Indenização
+                </button>
+                <button
+                  type="button"
+                  disabled={trackActionLoading || isSending || !hasPermission("EDIT_NOTES")}
+                  onClick={() => encaminharTrilha("DOSSIE_DIRETO")}
+                  className="inline-flex items-center gap-2 rounded-lg border border-indigo-300 bg-white px-3 py-2 text-xs font-bold text-indigo-900 shadow-sm hover:bg-indigo-50 disabled:opacity-50"
+                >
+                  <FolderOpen size={16} /> Dossiê direto
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="p-4 bg-white border-t border-slate-200 shrink-0">
           <div className="flex items-center gap-4 mb-3">
-             {(isCurrentlyEmBusca || isCurrentlyOcorrencia || isResolvido) && (
+             {(isCurrentlyEmBusca || isResolvido) && (
                  <label className="flex items-center gap-2 text-xs font-bold cursor-pointer text-slate-700 group">
                     <div className={clsx(
                         "w-5 h-5 rounded border-2 flex items-center justify-center transition-all",
@@ -553,7 +648,7 @@ const NoteModal: React.FC<Props> = ({ cte, onClose }) => {
                         {resolveChecked && <Check size={14} className="text-white" strokeWidth={3} />}
                     </div>
                     <input type="checkbox" className="hidden" checked={resolveChecked} onChange={e => { setResolveChecked(e.target.checked); if(e.target.checked) setShowConfirmResolve(true); }} disabled={isResolvido || isSending || !hasPermission('EDIT_NOTES')} />
-                    <span>Marcar como <span className="text-emerald-400">{isCurrentlyOcorrencia ? "OCORRÊNCIA ENCERRADA" : "LOCALIZADA"}</span></span>
+                    <span>Marcar como <span className="text-emerald-600">LOCALIZADA</span></span>
                 </label>
              )}
              {!isResolvido && !isCurrentlyOcorrencia && (

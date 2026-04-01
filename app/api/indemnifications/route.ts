@@ -15,7 +15,22 @@ export async function GET(req: Request) {
     const pool = getPool();
     const { searchParams } = new URL(req.url);
     const occurrenceId = String(searchParams.get("occurrenceId") || "").trim();
-    if (!occurrenceId) return NextResponse.json({ items: [] });
+    if (!occurrenceId) {
+      const r = await pool.query(`
+        SELECT
+          i.*,
+          o.cte AS occurrence_cte,
+          o.serie AS occurrence_serie,
+          o.occurrence_type,
+          o.status AS occurrence_status,
+          o.resolution_track AS occurrence_resolution_track
+        FROM pendencias.indemnifications i
+        INNER JOIN pendencias.occurrences o ON o.id = i.occurrence_id
+        ORDER BY i.updated_at DESC, i.created_at DESC
+        LIMIT 500
+      `);
+      return NextResponse.json({ items: r.rows || [] });
+    }
     const r = await pool.query(
       `SELECT * FROM pendencias.indemnifications WHERE occurrence_id = $1::uuid ORDER BY created_at DESC`,
       [occurrenceId]
@@ -61,6 +76,53 @@ export async function POST(req: Request) {
     return NextResponse.json({ item: q.rows?.[0] || null });
   } catch (e) {
     console.error("[indemnifications.post]", e);
+    return NextResponse.json({ error: "Erro interno" }, { status: 500 });
+  }
+}
+
+export async function PATCH(req: Request) {
+  try {
+    const session = await getSessionContext(req);
+    if (!session || !can(session, "module.operacional.view")) {
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+    }
+    await ensureOccurrencesSchemaTables();
+    const pool = getPool();
+    const body = await req.json().catch(() => ({}));
+    const id = String(body?.id || "").trim();
+    if (!id) return NextResponse.json({ error: "id obrigatório" }, { status: 400 });
+    const status = body?.status != null ? String(body.status).toUpperCase() : null;
+    const notes = body?.notes != null ? String(body.notes) : null;
+    const amount = body?.amount != null && body?.amount !== "" ? Number(body.amount) : null;
+
+    const cur = await pool.query(`SELECT id FROM pendencias.indemnifications WHERE id = $1::uuid LIMIT 1`, [id]);
+    if (!cur.rows?.length) return NextResponse.json({ error: "Indenização não encontrada" }, { status: 404 });
+
+    const updates: string[] = [];
+    const params: any[] = [];
+    if (status) {
+      params.push(status);
+      updates.push(`status = $${params.length}`);
+    }
+    if (notes != null) {
+      params.push(notes);
+      updates.push(`notes = $${params.length}`);
+    }
+    if (amount !== null && !Number.isNaN(amount)) {
+      params.push(amount);
+      updates.push(`amount = $${params.length}`);
+    }
+    if (updates.length === 0) {
+      return NextResponse.json({ error: "Informe status, notes ou amount" }, { status: 400 });
+    }
+    params.push(id);
+    const r = await pool.query(
+      `UPDATE pendencias.indemnifications SET ${updates.join(", ")}, updated_at = NOW() WHERE id = $${params.length}::uuid RETURNING *`,
+      params
+    );
+    return NextResponse.json({ item: r.rows?.[0] || null });
+  } catch (e) {
+    console.error("[indemnifications.patch]", e);
     return NextResponse.json({ error: "Erro interno" }, { status: 500 });
   }
 }

@@ -715,10 +715,12 @@ export async function ensureOccurrencesSchemaTables() {
         contact_name text,
         contact_phone text,
         created_by text,
+        resolution_track text,
         created_at timestamptz NOT NULL DEFAULT NOW(),
         updated_at timestamptz NOT NULL DEFAULT NOW()
       )
     `);
+    await pool.query(`ALTER TABLE pendencias.occurrences ADD COLUMN IF NOT EXISTS resolution_track text`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_occurrences_cte_serie ON pendencias.occurrences(cte, serie, created_at DESC)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_occurrences_lead ON pendencias.occurrences(lead_id, created_at DESC)`);
 

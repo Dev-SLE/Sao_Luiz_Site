@@ -35,7 +35,7 @@ interface DataContextType {
   setFilterDirection: (d: 'all' | 'inbound' | 'outbound') => void;
   searchTerm: string;
   setSearchTerm: (s: string) => void;
-  addNote: (note: Omit<NoteData, 'ID'> & { attachments?: Attachment[] }) => Promise<any>;
+  addNote: (note: Omit<NoteData, 'ID'> & { attachments?: Attachment[]; occurrenceType?: string }) => Promise<any>;
   deleteNote: (id: string) => Promise<void>;
   resolveIssue: (cte: string, serie?: string, customText?: string) => Promise<void>;
   addUser: (user: UserData) => Promise<void>;
@@ -370,7 +370,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setFullData(baseData);
   }, [baseData]);
 
-  const addNote = async (notePayload: Omit<NoteData, 'ID'> & { attachments?: Attachment[] }) => {
+  const addNote = async (notePayload: Omit<NoteData, 'ID'> & { attachments?: Attachment[]; occurrenceType?: string }) => {
     const now = new Date();
     const formattedDate = now.toISOString();
     try {
@@ -471,6 +471,28 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           serie: notePayload.SERIE || '0',
           payload: { text: notePayload.TEXTO || '', links },
         });
+        try {
+          const existing = await authClient.getOccurrences({
+            cte: notePayload.CTE,
+            serie: notePayload.SERIE || '0',
+          });
+          const hasAberta = (existing.items || []).some((row: { status?: string }) =>
+            String(row.status || '').toUpperCase() === 'ABERTA'
+          );
+          if (!hasAberta) {
+            const occType = String(notePayload.occurrenceType || 'OUTROS').toUpperCase();
+            const desc = String(notePayload.TEXTO || 'Ocorrência operacional').trim();
+            await authClient.createOccurrence({
+              cte: notePayload.CTE,
+              serie: notePayload.SERIE || '0',
+              occurrenceType: occType,
+              description: desc,
+              createdBy: notePayload.USUARIO,
+            });
+          }
+        } catch (e) {
+          console.warn('createOccurrence paralelo:', e);
+        }
       }
 
       await refreshData();

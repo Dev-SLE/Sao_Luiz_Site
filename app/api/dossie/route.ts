@@ -14,6 +14,13 @@ export async function GET(req: Request) {
     await ensureOccurrencesSchemaTables();
     const pool = getPool();
     const { searchParams } = new URL(req.url);
+    const listAll = String(searchParams.get("list") || "") === "1";
+    if (listAll) {
+      const dossiers = await pool.query(
+        `SELECT * FROM pendencias.dossiers ORDER BY updated_at DESC NULLS LAST, created_at DESC LIMIT 500`
+      );
+      return NextResponse.json({ items: dossiers.rows || [] });
+    }
     const cte = String(searchParams.get("cte") || "").trim();
     const serie = String(searchParams.get("serie") || "0").trim() || "0";
     if (!cte) return NextResponse.json({ error: "cte obrigatório" }, { status: 400 });

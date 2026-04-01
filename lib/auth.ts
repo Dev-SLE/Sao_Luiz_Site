@@ -687,16 +687,47 @@ export class NeonDataClient {
     return this.postJson("/occurrences", payload);
   }
 
-  async getIndemnifications(occurrenceId: string): Promise<any> {
-    return this.fetchData(`/indemnifications?occurrenceId=${encodeURIComponent(occurrenceId)}`);
+  async patchOccurrenceTrack(payload: { id: string; track: "INDENIZACAO" | "DOSSIE_DIRETO" }): Promise<any> {
+    const response = await fetch(this.makeApiUrl("/occurrences"), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      credentials: "include",
+    });
+    if (!response.ok) throw await this.buildHttpError("Erro ao atualizar trilha da ocorrência", response);
+    return response.json();
+  }
+
+  async getIndemnifications(occurrenceId?: string): Promise<{ items: any[] }> {
+    const qs = occurrenceId ? `?occurrenceId=${encodeURIComponent(occurrenceId)}` : "";
+    const response = await fetch(this.makeApiUrl(`/indemnifications${qs}`), { credentials: "include" });
+    if (!response.ok) throw await this.buildHttpError("Erro ao buscar indenizações", response);
+    return response.json();
   }
 
   async createIndemnification(payload: any): Promise<any> {
     return this.postJson("/indemnifications", payload);
   }
 
+  async patchIndemnification(payload: { id: string; status?: string; notes?: string; amount?: number | null }): Promise<any> {
+    const response = await fetch(this.makeApiUrl("/indemnifications"), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      credentials: "include",
+    });
+    if (!response.ok) throw await this.buildHttpError("Erro ao atualizar indenização", response);
+    return response.json();
+  }
+
   async getDossier(cte: string, serie = "0"): Promise<any> {
     return this.fetchData(`/dossie?cte=${encodeURIComponent(cte)}&serie=${encodeURIComponent(serie)}`);
+  }
+
+  async listDossiers(): Promise<{ items: any[] }> {
+    const response = await fetch(this.makeApiUrl("/dossie?list=1"), { credentials: "include" });
+    if (!response.ok) throw await this.buildHttpError("Erro ao listar dossiês", response);
+    return response.json();
   }
 
   async createDossier(payload: { cte: string; serie?: string; title?: string; generatedBy?: string }): Promise<any> {
