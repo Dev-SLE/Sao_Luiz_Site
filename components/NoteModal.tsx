@@ -21,6 +21,11 @@ const getFileIdFromUrl = (url: string): string => {
   return '';
 };
 
+const isGoogleDriveUrl = (url: string): boolean => {
+  const u = String(url || "").toLowerCase();
+  return u.includes("drive.google.com") || u.includes("docs.google.com");
+};
+
 const detectMimeType = (url: string): string => {
   if (!url) return '';
   const u = url.toLowerCase();
@@ -91,7 +96,7 @@ interface MediaAttachmentProps {
 const MediaAttachment: React.FC<MediaAttachmentProps> = ({ url, onImageClick }) => {
   const fileId = getFileIdFromUrl(url);
   const mimeType = detectMimeType(url);
-  const isGoogleDrive = !!fileId;
+  const isGoogleDrive = !!fileId || isGoogleDriveUrl(url);
 
   if (isGoogleDrive) {
       return (
