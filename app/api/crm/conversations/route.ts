@@ -239,6 +239,7 @@ export async function GET(req: Request) {
       const isGenericName =
         !rawName ||
         /^whatsapp(\s|$)/i.test(rawName) ||
+        /^contato web(\s|$)/i.test(rawName) ||
         /^unknown(\s|$)/i.test(rawName) ||
         /^sem nome(\s|$)/i.test(rawName);
       const suffix = r.contact_phone ? String(r.contact_phone).slice(-4) : "sem número";

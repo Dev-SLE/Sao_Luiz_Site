@@ -134,6 +134,41 @@ function extractProfilePhotoUrl(item: any): string | null {
   return null;
 }
 
+function isUsableProfileName(value: string | null | undefined): boolean {
+  const s = String(value || "").trim();
+  if (!s) return false;
+  const low = s.toLowerCase();
+  if (low === "undefined" || low === "null" || low === "sem nome") return false;
+  if (/^whatsapp(\s|$)/i.test(s)) return false;
+  if (/^contato web(\s|$)/i.test(s)) return false;
+  if (/^\+?\d[\d\s().-]{6,}$/.test(s)) return false;
+  return true;
+}
+
+function extractProfileNameFromEvolutionItem(item: any): string | null {
+  if (!item || typeof item !== "object") return null;
+  const candidates = [
+    item.pushName,
+    item.verifiedBizName,
+    item.senderName,
+    item.fromName,
+    item.contactName,
+    item.notifyName,
+    item?.key?.pushName,
+    item?.data?.pushName,
+    item?.data?.verifiedBizName,
+    item?.data?.senderName,
+    item?.data?.fromName,
+    item?.data?.contactName,
+    item?.data?.notifyName,
+  ];
+  for (const c of candidates) {
+    const name = String(c || "").trim();
+    if (isUsableProfileName(name)) return name;
+  }
+  return null;
+}
+
 async function getOrMergeLeadByPhoneLast10(pool: any, phoneLast10: string) {
   const leadsRes = await pool.query(
     `
@@ -904,6 +939,16 @@ export async function POST(req: Request) {
       }
       const applied = await processWebhookMessageStatusUpdates(pool, body);
       console.log("[evolution-webhook] status updates applied", { instance, applied });
+      if (!applied) {
+        const items = collectMessageUpdateItems((body as any)?.data);
+        const sample = (items || []).slice(0, 3).map((it: any) => ({
+          keyId: String(it?.keyId || it?.key?.id || it?.messageId || "").slice(0, 40),
+          fromMe: !!it?.fromMe,
+          remoteJid: String(it?.remoteJid || it?.key?.remoteJid || "").slice(0, 40),
+          status: String(it?.status ?? it?.ack ?? ""),
+        }));
+        console.warn("[evolution-webhook] status_update_without_match", { instance, count: items.length, sample });
+      }
       return NextResponse.json({ ok: true, message_updates_applied: applied });
     }
 
@@ -1000,7 +1045,7 @@ export async function POST(req: Request) {
       const text = extractEvolutionMessageText(msgObj) || extractEvolutionMessageText(item) || "[Mensagem sem texto]";
       const cteDetected = extractCteFromText(text);
       const last10 = lastN(phoneDigits, 10);
-      const pushName = String(item.pushName || item.verifiedBizName || "").trim();
+      const profileNameRaw = extractProfileNameFromEvolutionItem(item);
       let profilePhotoUrl = extractProfilePhotoUrl(item);
       if (
         !profilePhotoUrl &&
@@ -1021,9 +1066,9 @@ export async function POST(req: Request) {
             number: phoneDigits,
           }));
       }
-      // Em mensagens de saída (fromMe), alguns payloads trazem o nome do próprio atendente
-      // no pushName. Nesses casos, não usamos esse valor para nome do lead.
-      const profileName = isFromMe ? null : pushName || null;
+      // Em mensagens de saída (fromMe), alguns payloads trazem o nome do próprio atendente.
+      // Nesses casos, não usamos esse valor para nome do lead.
+      const profileName = isFromMe ? null : profileNameRaw;
       const quotedMessageId = extractEvolutionQuotedMessageId(item);
       const agencyContact = await findAgencyByLast10(pool, last10);
 
@@ -1071,11 +1116,15 @@ export async function POST(req: Request) {
           : leadTitle.trim();
         const normalizedTitleName = titleNamePart.toLowerCase();
         const normalizedProfileName = String(profileName || "").trim().toLowerCase();
+        const titleLooksGeneric =
+          /^whatsapp(\s|$)/i.test(leadTitle) ||
+          /^contato web(\s|$)/i.test(leadTitle) ||
+          /^unknown(\s|$)/i.test(leadTitle) ||
+          /^sem nome(\s|$)/i.test(leadTitle);
         const shouldRefreshLeadTitle =
           !!profileName &&
           !isFromMe &&
-          (/^whatsapp\s+\d+/i.test(leadTitle) ||
-            (titleEndsWithLast10 && normalizedTitleName !== normalizedProfileName));
+          (titleLooksGeneric || (titleEndsWithLast10 && normalizedTitleName !== normalizedProfileName));
         if (shouldRefreshLeadTitle) {
           const upgradedTitle = `${profileName} (${last10})`;
           await pool.query(`UPDATE pendencias.crm_leads SET title = $1, updated_at = NOW() WHERE id = $2`, [
@@ -1136,6 +1185,7 @@ export async function POST(req: Request) {
             mode: intakeSettings.mode,
             messageCount: Number(bufferRow?.message_count || 0),
             hasCte: !!cteDetected,
+            profileName: profileName || null,
           });
           continue;
         }
