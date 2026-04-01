@@ -15,24 +15,11 @@ cp .env.example .env
 # Editar .env com suas configurações do banco
 ```
 
-### 3. Migrar Dados (se necessário)
+### 3. Iniciar aplicação
 ```bash
-node migrate_excel.js
-```
-
-### 4. Iniciar Servidor Backend
-```bash
-# Terminal 1
-npm run server
-```
-Backend roda em: http://localhost:3001
-
-### 5. Iniciar Frontend
-```bash
-# Terminal 2
 npm run dev
 ```
-Frontend roda em: http://localhost:5173
+Aplicação roda em: http://localhost:3000
 
 ## 🌐 Deploy em Produção
 
@@ -67,12 +54,6 @@ Converter o backend para serverless functions do Vercel.
 - **3 Perfis**
 - **71 Registros de Processo**
 
-## 🔐 Autenticação
-
-As senhas foram mantidas iguais às da planilha original. Exemplo:
-- **Usuário**: HARA
-- **Senha**: 716154
-
 ## 📝 Funcionalidades
 
 - ✅ Dashboard com métricas
@@ -85,9 +66,7 @@ As senhas foram mantidas iguais às da planilha original. Exemplo:
 ## 🛠️ Scripts Disponíveis
 
 - `npm run dev` - Desenvolvimento frontend
-- `npm run server` - Servidor backend
 - `npm run build` - Build de produção
-- `npm run preview` - Preview do build
 - ✅ Lista de CTes com filtros
 - ✅ Sistema de notas
 - ✅ Controle de usuários
