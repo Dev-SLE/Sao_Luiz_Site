@@ -215,6 +215,8 @@ const AppContent: React.FC = () => {
           <OcorrenciasHub
             data={ocorrencias.data}
             onNoteClick={setSelectedCte}
+            hasDossieView={hasPermission("tab.operacional.dossie.view")}
+            hasFinanceAttach={hasPermission("dossie.financeiro.attach")}
             serverPagination={{
               page: ocorrencias.page,
               limit: ocorrencias.limit,

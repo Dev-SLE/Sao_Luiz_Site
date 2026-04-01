@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { google } from "googleapis";
 import { Readable } from "stream";
 import { getPool } from "../../../lib/server/db";
-import { getDriveFolderId, getGoogleOAuthClient } from "../../../lib/server/googleDrive";
+import { ensureDriveCaseFolder, getDriveFolderId, getGoogleOAuthClient } from "../../../lib/server/googleDrive";
 import { ensureAppLogsTable, ensureUserTokensTable } from "../../../lib/server/ensureSchema";
 
 export const runtime = "nodejs";
@@ -40,7 +40,16 @@ export async function POST(req: Request) {
     const arrayBuffer = await f.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    const folderId = getDriveFolderId();
+    const uploadTarget = String(form.get("uploadTarget") || "").trim().toLowerCase();
+    const caseCte = String(form.get("caseCte") || "").trim();
+    const caseSerie = String(form.get("caseSerie") || "0").trim() || "0";
+
+    let folderId: string;
+    if (uploadTarget === "processos" && caseCte) {
+      folderId = await ensureDriveCaseFolder(drive, caseCte, caseSerie);
+    } else {
+      folderId = getDriveFolderId();
+    }
 
     const response = await drive.files.create({
       requestBody: {

@@ -14,6 +14,20 @@ export async function GET(req: Request) {
     await ensureOccurrencesSchemaTables();
     const pool = getPool();
     const { searchParams } = new URL(req.url);
+    const byId = String(searchParams.get("id") || "").trim();
+    if (byId) {
+      const one = await pool.query(
+        `
+          SELECT i.*, o.cte AS occurrence_cte, o.serie AS occurrence_serie, o.occurrence_type,
+                 o.status AS occurrence_status, o.resolution_track AS occurrence_resolution_track
+          FROM pendencias.indemnifications i
+          INNER JOIN pendencias.occurrences o ON o.id = i.occurrence_id
+          WHERE i.id = $1::uuid LIMIT 1
+        `,
+        [byId]
+      );
+      return NextResponse.json({ item: one.rows?.[0] || null });
+    }
     const occurrenceId = String(searchParams.get("occurrenceId") || "").trim();
     if (!occurrenceId) {
       const r = await pool.query(`
@@ -56,8 +70,10 @@ export async function POST(req: Request) {
     const q = await pool.query(
       `
         INSERT INTO pendencias.indemnifications (
-          occurrence_id, status, amount, currency, decision, due_date, responsible, legal_risk, notes, created_by, created_at, updated_at
-        ) VALUES ($1::uuid,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW(),NOW())
+          occurrence_id, status, amount, currency, decision, due_date, responsible, legal_risk, notes,
+          facts, responsibilities, indemnification_body, others,
+          created_by, created_at, updated_at
+        ) VALUES ($1::uuid,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NOW(),NOW())
         RETURNING *
       `,
       [
@@ -70,6 +86,10 @@ export async function POST(req: Request) {
         body?.responsible ? String(body.responsible) : null,
         !!body?.legalRisk,
         body?.notes ? String(body.notes) : null,
+        body?.facts != null ? String(body.facts) : null,
+        body?.responsibilities != null ? String(body.responsibilities) : null,
+        body?.indemnificationBody != null ? String(body.indemnificationBody) : null,
+        body?.others != null ? String(body.others) : null,
         body?.createdBy ? String(body.createdBy) : null,
       ]
     );
@@ -94,6 +114,10 @@ export async function PATCH(req: Request) {
     const status = body?.status != null ? String(body.status).toUpperCase() : null;
     const notes = body?.notes != null ? String(body.notes) : null;
     const amount = body?.amount != null && body?.amount !== "" ? Number(body.amount) : null;
+    const facts = body?.facts !== undefined ? (body.facts != null ? String(body.facts) : null) : undefined;
+    const responsibilities = body?.responsibilities !== undefined ? (body.responsibilities != null ? String(body.responsibilities) : null) : undefined;
+    const indemnification_body = body?.indemnification_body !== undefined ? (body.indemnification_body != null ? String(body.indemnification_body) : null) : undefined;
+    const others = body?.others !== undefined ? (body.others != null ? String(body.others) : null) : undefined;
 
     const cur = await pool.query(`SELECT id FROM pendencias.indemnifications WHERE id = $1::uuid LIMIT 1`, [id]);
     if (!cur.rows?.length) return NextResponse.json({ error: "Indenização não encontrada" }, { status: 404 });
@@ -112,8 +136,24 @@ export async function PATCH(req: Request) {
       params.push(amount);
       updates.push(`amount = $${params.length}`);
     }
+    if (facts !== undefined) {
+      params.push(facts);
+      updates.push(`facts = $${params.length}`);
+    }
+    if (responsibilities !== undefined) {
+      params.push(responsibilities);
+      updates.push(`responsibilities = $${params.length}`);
+    }
+    if (indemnification_body !== undefined) {
+      params.push(indemnification_body);
+      updates.push(`indemnification_body = $${params.length}`);
+    }
+    if (others !== undefined) {
+      params.push(others);
+      updates.push(`others = $${params.length}`);
+    }
     if (updates.length === 0) {
-      return NextResponse.json({ error: "Informe status, notes ou amount" }, { status: 400 });
+      return NextResponse.json({ error: "Nada para atualizar" }, { status: 400 });
     }
     params.push(id);
     const r = await pool.query(

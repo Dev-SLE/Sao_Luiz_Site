@@ -770,6 +770,88 @@ export async function ensureOccurrencesSchemaTables() {
       )
     `);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_dossier_events_dossier ON pendencias.dossier_events(dossier_id, event_date DESC)`);
+
+    await pool.query(`ALTER TABLE pendencias.indemnifications ADD COLUMN IF NOT EXISTS facts text`);
+    await pool.query(`ALTER TABLE pendencias.indemnifications ADD COLUMN IF NOT EXISTS responsibilities text`);
+    await pool.query(`ALTER TABLE pendencias.indemnifications ADD COLUMN IF NOT EXISTS indemnification_body text`);
+    await pool.query(`ALTER TABLE pendencias.indemnifications ADD COLUMN IF NOT EXISTS others text`);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS pendencias.indemnification_workflows (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        indemnification_id uuid NOT NULL UNIQUE REFERENCES pendencias.indemnifications(id) ON DELETE CASCADE,
+        state text NOT NULL DEFAULT 'RASCUNHO',
+        current_assignee text,
+        previous_assignee text,
+        rejection_reason text,
+        created_at timestamptz NOT NULL DEFAULT NOW(),
+        updated_at timestamptz NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_indem_workflows_assignee ON pendencias.indemnification_workflows(current_assignee)`);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS pendencias.indemnification_workflow_events (
+        id bigserial PRIMARY KEY,
+        workflow_id uuid NOT NULL REFERENCES pendencias.indemnification_workflows(id) ON DELETE CASCADE,
+        event_type text NOT NULL,
+        actor text,
+        message text,
+        payload jsonb NOT NULL DEFAULT '{}'::jsonb,
+        created_at timestamptz NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(
+      `CREATE INDEX IF NOT EXISTS idx_indem_wf_events_wf ON pendencias.indemnification_workflow_events(workflow_id, created_at DESC)`
+    );
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS pendencias.indemnification_agency_followups (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        indemnification_id uuid NOT NULL REFERENCES pendencias.indemnifications(id) ON DELETE CASCADE,
+        agency_id uuid NOT NULL,
+        expected_by date,
+        responded_at timestamptz,
+        response_note_id bigint,
+        chase_count int NOT NULL DEFAULT 0,
+        last_chase_at timestamptz,
+        created_at timestamptz NOT NULL DEFAULT NOW(),
+        UNIQUE (indemnification_id, agency_id)
+      )
+    `);
+    await pool.query(
+      `CREATE INDEX IF NOT EXISTS idx_indem_followups_indem ON pendencias.indemnification_agency_followups(indemnification_id)`
+    );
+
+    await pool.query(`ALTER TABLE pendencias.notes ADD COLUMN IF NOT EXISTS agency_id uuid`);
+    await pool.query(`ALTER TABLE pendencias.notes ADD COLUMN IF NOT EXISTS indemnification_id uuid`);
+
+    await pool.query(`ALTER TABLE pendencias.dossiers ADD COLUMN IF NOT EXISTS finalization_status text`);
+    await pool.query(`ALTER TABLE pendencias.dossiers ADD COLUMN IF NOT EXISTS finalized_at timestamptz`);
+    await pool.query(`ALTER TABLE pendencias.dossiers ADD COLUMN IF NOT EXISTS finalized_by text`);
+    await pool.query(`ALTER TABLE pendencias.dossiers ADD COLUMN IF NOT EXISTS pdf_drive_file_id text`);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS pendencias.dossier_attachments (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        dossier_id uuid NOT NULL REFERENCES pendencias.dossiers(id) ON DELETE CASCADE,
+        category text NOT NULL DEFAULT 'GERAL',
+        label text,
+        url text NOT NULL,
+        drive_file_id text,
+        uploaded_by text,
+        created_at timestamptz NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_dossier_attachments_dossier ON pendencias.dossier_attachments(dossier_id, created_at DESC)`);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS pendencias.ocorrencias_notification_acks (
+        username text PRIMARY KEY,
+        last_log_id bigint NOT NULL DEFAULT 0,
+        updated_at timestamptz NOT NULL DEFAULT NOW()
+      )
+    `);
   })();
   try {
     await occurrencesSchemaPromise;

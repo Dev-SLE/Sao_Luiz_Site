@@ -1,12 +1,27 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import DataTable from "./DataTable";
+import IndemnificationModal from "./IndemnificationModal";
 import { CteData } from "../types";
 import { authClient } from "../lib/auth";
-import { FolderOpen, FileText, RefreshCw, Scale, HandCoins, ChevronRight, Loader2, ExternalLink, Mail } from "lucide-react";
+import {
+  FolderOpen,
+  FileText,
+  RefreshCw,
+  Scale,
+  HandCoins,
+  ChevronRight,
+  Loader2,
+  ExternalLink,
+  Mail,
+  Bell,
+  Clock,
+} from "lucide-react";
 
 type Props = {
   data: CteData[];
   onNoteClick: (cte: CteData) => void;
+  hasDossieView?: boolean;
+  hasFinanceAttach?: boolean;
   serverPagination: {
     page: number;
     limit: number;
@@ -18,7 +33,7 @@ type Props = {
 
 type HubTab = "OCORRENCIAS" | "INDENIZACOES" | "DOSSIE";
 
-type DossierFolderKey = "resumo" | "ocorrencias" | "notas" | "processo" | "pdf";
+type DossierFolderKey = "resumo" | "timeline" | "ocorrencias" | "notas" | "processo" | "pdf";
 
 const occurrenceStatusTone = (status: string) => {
   const s = String(status || "").toUpperCase();
@@ -37,7 +52,7 @@ const indemStatusTone = (status: string) => {
   return "bg-slate-50 border-slate-200 text-slate-700";
 };
 
-const OcorrenciasHub: React.FC<Props> = ({ data, onNoteClick, serverPagination }) => {
+const OcorrenciasHub: React.FC<Props> = ({ data, onNoteClick, serverPagination, hasDossieView = true, hasFinanceAttach = false }) => {
   const [tab, setTab] = useState<HubTab>("OCORRENCIAS");
   const [formalOccs, setFormalOccs] = useState<any[]>([]);
   const [occFilter, setOccFilter] = useState<string>("TODAS");
@@ -49,6 +64,12 @@ const OcorrenciasHub: React.FC<Props> = ({ data, onNoteClick, serverPagination }
   const [loadingIndem, setLoadingIndem] = useState(false);
   const [indemMsg, setIndemMsg] = useState("");
   const [expandedIndem, setExpandedIndem] = useState<string | null>(null);
+  const [indemModalId, setIndemModalId] = useState<string | null>(null);
+
+  const [occNotifOpen, setOccNotifOpen] = useState(false);
+  const [occNotifItems, setOccNotifItems] = useState<any[]>([]);
+  const [occNotifUnread, setOccNotifUnread] = useState(0);
+  const notifRef = useRef<HTMLDivElement | null>(null);
 
   const [dossierList, setDossierList] = useState<any[]>([]);
   const [dossierSearch, setDossierSearch] = useState("");
@@ -58,6 +79,62 @@ const OcorrenciasHub: React.FC<Props> = ({ data, onNoteClick, serverPagination }
   const [dossierDetail, setDossierDetail] = useState<any | null>(null);
   const [loadingDossierDetail, setLoadingDossierDetail] = useState(false);
   const [activeFolder, setActiveFolder] = useState<DossierFolderKey>("resumo");
+  const [finalizeStatus, setFinalizeStatus] = useState("CONCLUIDO");
+  const [syncPdfToDrive, setSyncPdfToDrive] = useState(false);
+  const [finalizeMsg, setFinalizeMsg] = useState("");
+  const [emailTo, setEmailTo] = useState("");
+  const [emailSubject, setEmailSubject] = useState("");
+  const [emailBusy, setEmailBusy] = useState(false);
+  const [attachCategory, setAttachCategory] = useState("GERAL");
+  const [attachLabel, setAttachLabel] = useState("");
+  const [attachBusy, setAttachBusy] = useState(false);
+
+  const loadOccNotifications = useCallback(async () => {
+    try {
+      const resp = await authClient.getOcorrenciasNotifications({ limit: 25 });
+      setOccNotifItems(Array.isArray(resp?.items) ? resp.items : []);
+      setOccNotifUnread(Number(resp?.unreadCount || 0));
+    } catch {
+      setOccNotifItems([]);
+      setOccNotifUnread(0);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (tab !== "OCORRENCIAS" && tab !== "INDENIZACOES") return;
+    loadOccNotifications();
+    const id = window.setInterval(loadOccNotifications, 25000);
+    return () => window.clearInterval(id);
+  }, [tab, loadOccNotifications]);
+
+  useEffect(() => {
+    if (!hasDossieView && tab === "DOSSIE") setTab("OCORRENCIAS");
+  }, [hasDossieView, tab]);
+
+  useEffect(() => {
+    if (!occNotifOpen) return;
+    const onDoc = (e: MouseEvent) => {
+      if (notifRef.current && !notifRef.current.contains(e.target as Node)) setOccNotifOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [occNotifOpen]);
+
+  const ackOccNotifications = async () => {
+    const ids = occNotifItems.map((i: any) => Number(i.id)).filter((n) => Number.isFinite(n));
+    if (ids.length === 0) {
+      setOccNotifOpen(false);
+      return;
+    }
+    const maxId = Math.max(...ids);
+    try {
+      await authClient.ackOcorrenciasNotifications(maxId);
+      await loadOccNotifications();
+    } catch {
+      /* noop */
+    }
+    setOccNotifOpen(false);
+  };
 
   const loadFormalOccurrences = useCallback(async () => {
     setLoadingOccs(true);
@@ -110,8 +187,8 @@ const OcorrenciasHub: React.FC<Props> = ({ data, onNoteClick, serverPagination }
   }, [tab, loadIndemnifications]);
 
   useEffect(() => {
-    if (tab === "DOSSIE") loadDossierIndex();
-  }, [tab, loadDossierIndex]);
+    if (tab === "DOSSIE" && hasDossieView) loadDossierIndex();
+  }, [tab, hasDossieView, loadDossierIndex]);
 
   const filteredOccs = useMemo(() => {
     if (occFilter === "TODAS") return formalOccs;
@@ -164,6 +241,10 @@ const OcorrenciasHub: React.FC<Props> = ({ data, onNoteClick, serverPagination }
   };
 
   const gerarDossieCte = async (cte: string, serie: string) => {
+    if (!hasDossieView) {
+      setIndemMsg("Seu perfil não tem permissão para o Dossiê. Solicite a permissão “Aba Operacional: Dossiê”.");
+      return;
+    }
     setIndemMsg("");
     try {
       await authClient.createDossier({ cte, serie: serie || "0" });
@@ -195,6 +276,76 @@ const OcorrenciasHub: React.FC<Props> = ({ data, onNoteClick, serverPagination }
     }
   };
 
+  const refreshOpenDossier = async () => {
+    if (!openDossierKey) return;
+    const [cte, serie = "0"] = openDossierKey.split("::");
+    setLoadingDossierDetail(true);
+    try {
+      const d = await authClient.getDossier(cte, serie);
+      setDossierDetail(d);
+    } catch (e: any) {
+      setDossMsg(e?.message || "Falha ao atualizar dossiê.");
+    } finally {
+      setLoadingDossierDetail(false);
+    }
+  };
+
+  const runFinalizeDossier = async (cte: string, serie: string) => {
+    setFinalizeMsg("");
+    try {
+      await authClient.finalizeDossier({
+        cte,
+        serie: serie || "0",
+        finalizationStatus: finalizeStatus,
+        syncPdfToDrive,
+      });
+      setFinalizeMsg("Finalização registrada.");
+      await refreshOpenDossier();
+      loadDossierIndex();
+    } catch (e: any) {
+      setFinalizeMsg(e?.message || "Falha ao finalizar.");
+    }
+  };
+
+  const uploadDossierFile = async (cte: string, serie: string, file: File | null) => {
+    if (!file) return;
+    setAttachBusy(true);
+    setFinalizeMsg("");
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("cte", cte);
+    fd.append("serie", serie || "0");
+    fd.append("category", attachCategory);
+    if (attachLabel.trim()) fd.append("label", attachLabel.trim());
+    try {
+      await authClient.uploadDossierAttachment(fd);
+      setFinalizeMsg("Anexo enviado ao Drive do processo.");
+      await refreshOpenDossier();
+    } catch (e: any) {
+      setFinalizeMsg(e?.message || "Falha no anexo (Drive ou permissão).");
+    } finally {
+      setAttachBusy(false);
+    }
+  };
+
+  const sendDossieSmtp = async (cte: string, serie: string) => {
+    setEmailBusy(true);
+    setFinalizeMsg("");
+    try {
+      await authClient.sendDossieEmail({
+        cte,
+        serie: serie || "0",
+        to: emailTo.trim(),
+        subject: emailSubject.trim() || undefined,
+      });
+      setFinalizeMsg("E-mail com PDF enviado (SMTP).");
+    } catch (e: any) {
+      setFinalizeMsg(e?.message || "SMTP indisponível — use Baixar PDF e Outlook.");
+    } finally {
+      setEmailBusy(false);
+    }
+  };
+
   const pdfUrl = (cte: string, serie: string) =>
     `/api/dossie/pdf?cte=${encodeURIComponent(cte)}&serie=${encodeURIComponent(serie || "0")}`;
 
@@ -212,22 +363,32 @@ const OcorrenciasHub: React.FC<Props> = ({ data, onNoteClick, serverPagination }
 
   const folderBlocks: { key: DossierFolderKey; label: string; icon: React.ReactNode; hint: string }[] = [
     { key: "resumo", label: "Resumo", icon: <FileText size={18} />, hint: "Título, status e identificação do CTE" },
+    { key: "timeline", label: "Linha do tempo", icon: <Clock size={18} />, hint: "Eventos do dossiê com data e hora" },
     { key: "ocorrencias", label: "Ocorrências", icon: <Scale size={18} />, hint: "Registros formais vinculados" },
     { key: "notas", label: "Notas / anexos", icon: <FileText size={18} />, hint: "Histórico de anotações" },
     { key: "processo", label: "Processo operacional", icon: <ChevronRight size={18} />, hint: "Linha do tempo em process_control" },
-    { key: "pdf", label: "PDF e e-mail", icon: <Mail size={18} />, hint: "Download e Outlook" },
+    { key: "pdf", label: "PDF, anexos e encerramento", icon: <Mail size={18} />, hint: "PDF, Drive, e-mail SMTP e finalização" },
   ];
+
+  const formatDossierWhen = (d: string | null | undefined) => {
+    if (!d) return "—";
+    const t = new Date(d);
+    if (Number.isNaN(t.getTime())) return String(d);
+    return t.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+  };
+
+  const hubTabs = (
+    [
+      ["OCORRENCIAS", "Ocorrências"],
+      ["INDENIZACOES", "Indenizações"],
+      ...(hasDossieView ? ([["DOSSIE", "Dossiê"]] as const) : []),
+    ] as const
+  );
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-2">
-        {(
-          [
-            ["OCORRENCIAS", "Ocorrências"],
-            ["INDENIZACOES", "Indenizações"],
-            ["DOSSIE", "Dossiê"],
-          ] as const
-        ).map(([id, label]) => (
+      <div className="flex flex-wrap items-center gap-2">
+        {hubTabs.map(([id, label]) => (
           <button
             key={id}
             type="button"
@@ -239,7 +400,66 @@ const OcorrenciasHub: React.FC<Props> = ({ data, onNoteClick, serverPagination }
             {label}
           </button>
         ))}
+        {(tab === "OCORRENCIAS" || tab === "INDENIZACOES") && (
+          <div className="relative ml-auto" ref={notifRef}>
+            <button
+              type="button"
+              onClick={() => setOccNotifOpen((v) => !v)}
+              className="relative inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-2 text-slate-700 hover:bg-slate-50"
+              aria-label="Notificações de ocorrências e indenizações"
+            >
+              <Bell size={18} />
+              {occNotifUnread > 0 ? (
+                <span className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-600 px-1 text-[9px] font-bold text-white">
+                  {occNotifUnread > 99 ? "99+" : occNotifUnread}
+                </span>
+              ) : null}
+            </button>
+            {occNotifOpen && (
+              <div className="absolute right-0 z-50 mt-1 w-[min(100vw-2rem,22rem)] rounded-xl border border-slate-200 bg-white shadow-lg">
+                <div className="flex items-center justify-between border-b border-slate-100 px-3 py-2">
+                  <span className="text-[11px] font-bold text-slate-700">Alertas operacionais</span>
+                  <button type="button" onClick={ackOccNotifications} className="text-[10px] font-bold text-[#2c348c] underline">
+                    Marcar como lidas
+                  </button>
+                </div>
+                <ul className="max-h-64 overflow-y-auto py-1">
+                  {occNotifItems.length === 0 ? (
+                    <li className="px-3 py-2 text-[11px] text-slate-500">Nada novo por aqui.</li>
+                  ) : (
+                    occNotifItems.map((n: any) => (
+                      <li key={n.id} className="border-b border-slate-50 px-3 py-2 text-[10px] text-slate-700">
+                        <div className="font-bold text-slate-800">{n.event}</div>
+                        <div className="text-slate-500">
+                          {n.createdAt ? new Date(n.createdAt).toLocaleString("pt-BR") : ""}
+                          {n.username ? ` · ${n.username}` : ""}
+                        </div>
+                        {n.cte ? (
+                          <div className="font-mono text-[10px] mt-0.5">
+                            CTE {n.cte}
+                            {n.serie != null ? ` / ${n.serie}` : ""}
+                          </div>
+                        ) : null}
+                      </li>
+                    ))
+                  )}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
       </div>
+
+      {indemModalId ? (
+        <IndemnificationModal
+          indemnificationId={indemModalId}
+          onClose={() => setIndemModalId(null)}
+          onUpdated={() => {
+            loadIndemnifications();
+            loadOccNotifications();
+          }}
+        />
+      ) : null}
 
       {tab === "OCORRENCIAS" && (
         <>
@@ -392,20 +612,29 @@ const OcorrenciasHub: React.FC<Props> = ({ data, onNoteClick, serverPagination }
                 const serie = row.occurrence_serie || "0";
                 return (
                   <div key={row.id} className={`rounded-xl border text-xs ${indemStatusTone(row.status)}`}>
-                    <button
-                      type="button"
-                      onClick={() => setExpandedIndem(exp ? null : row.id)}
-                      className="w-full flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-left hover:bg-white/40 rounded-xl"
-                    >
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-mono font-bold">
-                          CTE {cte} / {serie}
-                        </span>
-                        <span className="rounded-full border px-2 py-0.5 text-[10px] font-bold bg-white/70">{row.status}</span>
-                        <span className="text-[10px] opacity-80">{row.occurrence_type}</span>
-                      </div>
-                      <ChevronRight size={16} className={exp ? "rotate-90 transition-transform" : "transition-transform"} />
-                    </button>
+                    <div className="flex flex-wrap items-stretch gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setExpandedIndem(exp ? null : row.id)}
+                        className="flex-1 min-w-0 flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-left hover:bg-white/40 rounded-xl"
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-mono font-bold">
+                            CTE {cte} / {serie}
+                          </span>
+                          <span className="rounded-full border px-2 py-0.5 text-[10px] font-bold bg-white/70">{row.status}</span>
+                          <span className="text-[10px] opacity-80">{row.occurrence_type}</span>
+                        </div>
+                        <ChevronRight size={16} className={exp ? "rotate-90 transition-transform shrink-0" : "transition-transform shrink-0"} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIndemModalId(row.id)}
+                        className="shrink-0 rounded-lg border border-violet-300 bg-violet-50 px-2 py-2 text-[10px] font-bold text-violet-900 self-center mr-1"
+                      >
+                        Fluxo
+                      </button>
+                    </div>
                     {exp && (
                       <div className="px-3 pb-3 pt-0 space-y-2 border-t border-white/50 bg-white/30 rounded-b-xl">
                         <p className="text-[11px] mt-2">{row.notes || "—"}</p>
@@ -432,18 +661,21 @@ const OcorrenciasHub: React.FC<Props> = ({ data, onNoteClick, serverPagination }
                           <button
                             type="button"
                             onClick={() => gerarDossieCte(cte, serie)}
-                            className="rounded border border-indigo-300 bg-indigo-50 px-2 py-1 text-[11px] font-bold text-indigo-800"
+                            disabled={!hasDossieView}
+                            className="rounded border border-indigo-300 bg-indigo-50 px-2 py-1 text-[11px] font-bold text-indigo-800 disabled:opacity-40"
                           >
                             Gerar / atualizar Dossiê (última etapa)
                           </button>
-                          <a
-                            href={pdfUrl(cte, serie)}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center gap-1 rounded border border-slate-200 bg-white px-2 py-1 text-[11px] font-bold text-slate-700"
-                          >
-                            <ExternalLink size={12} /> PDF
-                          </a>
+                          {hasDossieView ? (
+                            <a
+                              href={pdfUrl(cte, serie)}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 rounded border border-slate-200 bg-white px-2 py-1 text-[11px] font-bold text-slate-700"
+                            >
+                              <ExternalLink size={12} /> PDF
+                            </a>
+                          ) : null}
                         </div>
                       </div>
                     )}
@@ -455,7 +687,7 @@ const OcorrenciasHub: React.FC<Props> = ({ data, onNoteClick, serverPagination }
         </div>
       )}
 
-      {tab === "DOSSIE" && (
+      {tab === "DOSSIE" && hasDossieView && (
         <div className="surface-card p-4 space-y-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -557,6 +789,73 @@ const OcorrenciasHub: React.FC<Props> = ({ data, onNoteClick, serverPagination }
                                 <p>
                                   <strong>Gerado por:</strong> {dossierDetail.dossier?.generated_by || "—"}
                                 </p>
+                                {dossierDetail.dossier?.finalization_status ? (
+                                  <p>
+                                    <strong>Finalização:</strong> {dossierDetail.dossier.finalization_status}
+                                    {dossierDetail.dossier.finalized_at
+                                      ? ` · ${formatDossierWhen(dossierDetail.dossier.finalized_at)}`
+                                      : ""}
+                                  </p>
+                                ) : null}
+                                {dossierDetail.dossier?.pdf_drive_file_id ? (
+                                  <p>
+                                    <strong>PDF no Drive:</strong>{" "}
+                                    <a
+                                      href={`https://drive.google.com/file/d/${dossierDetail.dossier.pdf_drive_file_id}/view`}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="text-[#2c348c] font-bold underline"
+                                    >
+                                      abrir
+                                    </a>
+                                  </p>
+                                ) : null}
+                              </div>
+                            )}
+                            {activeFolder === "timeline" && (
+                              <div className="space-y-3">
+                                <p className="text-[10px] text-slate-500">
+                                  Eventos registrados no dossiê (ordenados do mais recente ao mais antigo).
+                                </p>
+                                <ul className="space-y-2">
+                                  {(dossierDetail.dossierEvents || []).length === 0 ? (
+                                    <li className="text-slate-500">Nenhum evento ainda.</li>
+                                  ) : (
+                                    (dossierDetail.dossierEvents || []).map((ev: any, idx: number) => (
+                                      <li key={ev.id || idx} className="rounded border border-slate-200 bg-white p-2">
+                                        <div className="font-bold">
+                                          {ev.event_type}{" "}
+                                          <span className="font-normal text-slate-500">
+                                            · {formatDossierWhen(ev.event_date)}
+                                          </span>
+                                        </div>
+                                        {ev.actor ? <div className="text-[10px] text-slate-600">Por: {ev.actor}</div> : null}
+                                        <div className="text-[11px] mt-0.5">{ev.description}</div>
+                                      </li>
+                                    ))
+                                  )}
+                                </ul>
+                                <div>
+                                  <p className="font-bold text-[11px] mb-1">Anexos do processo</p>
+                                  <ul className="space-y-1">
+                                    {(dossierDetail.attachments || []).length === 0 ? (
+                                      <li className="text-slate-500">Nenhum anexo.</li>
+                                    ) : (
+                                      (dossierDetail.attachments || []).map((at: any, idx: number) => (
+                                        <li key={at.id || idx} className="text-[11px]">
+                                          <span className="rounded bg-slate-100 px-1 font-bold">{at.category}</span>{" "}
+                                          {at.label || "arquivo"}{" "}
+                                          {at.url ? (
+                                            <a href={at.url} target="_blank" rel="noreferrer" className="text-[#2c348c] underline font-bold">
+                                              abrir
+                                            </a>
+                                          ) : null}
+                                          <span className="text-slate-400"> · {formatDossierWhen(at.created_at)}</span>
+                                        </li>
+                                      ))
+                                    )}
+                                  </ul>
+                                </div>
                               </div>
                             )}
                             {activeFolder === "ocorrencias" && (
@@ -608,22 +907,113 @@ const OcorrenciasHub: React.FC<Props> = ({ data, onNoteClick, serverPagination }
                               </ul>
                             )}
                             {activeFolder === "pdf" && (
-                              <div className="flex flex-wrap gap-2">
-                                <a
-                                  href={pdfUrl(d.cte, d.serie)}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="inline-flex items-center gap-1 rounded-lg bg-[#2c348c] px-3 py-2 text-white text-xs font-bold"
-                                >
-                                  <ExternalLink size={14} /> Baixar PDF
-                                </a>
-                                <button
-                                  type="button"
-                                  onClick={() => enviarOutlook(d.cte, d.serie)}
-                                  className="inline-flex items-center gap-1 rounded-lg border border-blue-300 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-800"
-                                >
-                                  <Mail size={14} /> Outlook
-                                </button>
+                              <div className="space-y-4">
+                                <div className="flex flex-wrap gap-2">
+                                  <a
+                                    href={pdfUrl(d.cte, d.serie)}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center gap-1 rounded-lg bg-[#2c348c] px-3 py-2 text-white text-xs font-bold"
+                                  >
+                                    <ExternalLink size={14} /> Baixar PDF
+                                  </a>
+                                  <button
+                                    type="button"
+                                    onClick={() => enviarOutlook(d.cte, d.serie)}
+                                    className="inline-flex items-center gap-1 rounded-lg border border-blue-300 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-800"
+                                  >
+                                    <Mail size={14} /> Outlook (link)
+                                  </button>
+                                </div>
+                                <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-2">
+                                  <p className="text-[11px] font-bold text-slate-800">E-mail com PDF em anexo (servidor / SMTP)</p>
+                                  <p className="text-[10px] text-slate-500">
+                                    Requer SMTP_HOST e SMTP_FROM no ambiente. Se não estiver configurado, use “Baixar PDF” e anexe no Outlook.
+                                  </p>
+                                  <input
+                                    type="email"
+                                    className="w-full rounded border border-slate-200 px-2 py-1 text-xs"
+                                    placeholder="Destinatário"
+                                    value={emailTo}
+                                    onChange={(e) => setEmailTo(e.target.value)}
+                                  />
+                                  <input
+                                    className="w-full rounded border border-slate-200 px-2 py-1 text-xs"
+                                    placeholder="Assunto (opcional)"
+                                    value={emailSubject}
+                                    onChange={(e) => setEmailSubject(e.target.value)}
+                                  />
+                                  <button
+                                    type="button"
+                                    disabled={emailBusy || !emailTo.trim()}
+                                    onClick={() => sendDossieSmtp(d.cte, d.serie)}
+                                    className="rounded-lg bg-slate-800 px-3 py-1.5 text-[11px] font-bold text-white disabled:opacity-40"
+                                  >
+                                    {emailBusy ? "Enviando…" : "Enviar e-mail"}
+                                  </button>
+                                </div>
+                                <div className="rounded-lg border border-emerald-200 bg-emerald-50/40 p-3 space-y-2">
+                                  <p className="text-[11px] font-bold text-emerald-900">Encerramento formal</p>
+                                  <select
+                                    className="w-full rounded border border-slate-200 px-2 py-1 text-xs"
+                                    value={finalizeStatus}
+                                    onChange={(e) => setFinalizeStatus(e.target.value)}
+                                  >
+                                    {["CONCLUIDO", "ARQUIVADO", "EM_ACOMPANHAMENTO_JURIDICO", "PENDENTE_PAGAMENTO"].map((s) => (
+                                      <option key={s} value={s}>
+                                        {s.replace(/_/g, " ")}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <label className="flex items-center gap-2 text-[11px]">
+                                    <input type="checkbox" checked={syncPdfToDrive} onChange={(e) => setSyncPdfToDrive(e.target.checked)} />
+                                    Sincronizar PDF na pasta do processo no Drive (conta Google conectada)
+                                  </label>
+                                  <button
+                                    type="button"
+                                    onClick={() => runFinalizeDossier(d.cte, d.serie)}
+                                    className="rounded-lg bg-emerald-700 px-3 py-1.5 text-[11px] font-bold text-white"
+                                  >
+                                    Gravar finalização
+                                  </button>
+                                </div>
+                                <div className="rounded-lg border border-indigo-200 bg-indigo-50/30 p-3 space-y-2">
+                                  <p className="text-[11px] font-bold text-indigo-900">Novo anexo (upload → pasta CTE no Drive)</p>
+                                  <div className="flex flex-wrap gap-2 items-center">
+                                    <select
+                                      className="rounded border border-slate-200 px-2 py-1 text-xs"
+                                      value={attachCategory}
+                                      onChange={(e) => setAttachCategory(e.target.value)}
+                                    >
+                                      <option value="GERAL">GERAL</option>
+                                      <option value="JURIDICO">JURÍDICO</option>
+                                      {hasFinanceAttach ? <option value="PAGAMENTO">PAGAMENTO</option> : null}
+                                    </select>
+                                    {!hasFinanceAttach ? (
+                                      <span className="text-[10px] text-amber-800">
+                                        Anexos PAGAMENTO exigem permissão financeira.
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                  <input
+                                    className="w-full rounded border border-slate-200 px-2 py-1 text-xs"
+                                    placeholder="Rótulo (opcional)"
+                                    value={attachLabel}
+                                    onChange={(e) => setAttachLabel(e.target.value)}
+                                  />
+                                  <input
+                                    type="file"
+                                    className="block w-full text-[11px]"
+                                    onChange={(e) => uploadDossierFile(d.cte, d.serie, e.target.files?.[0] || null)}
+                                    disabled={attachBusy}
+                                  />
+                                  {attachBusy ? <p className="text-[10px] text-slate-500">Enviando…</p> : null}
+                                </div>
+                                {finalizeMsg ? (
+                                  <p className="text-[11px] text-slate-700 bg-slate-100 border border-slate-200 rounded px-2 py-1.5">
+                                    {finalizeMsg}
+                                  </p>
+                                ) : null}
                               </div>
                             )}
                           </div>

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getPool } from "../../../lib/server/db";
 import { ensureOccurrencesSchemaTables } from "../../../lib/server/ensureSchema";
 import { can, getSessionContext } from "../../../lib/server/authorization";
+import { insertOcorrenciasLog } from "../../../lib/server/indemnificationWorkflow";
 
 export const runtime = "nodejs";
 
@@ -161,7 +162,11 @@ export async function PATCH(req: Request) {
     }
 
     const refreshed = await pool.query(`SELECT * FROM pendencias.occurrences WHERE id = $1::uuid`, [id]);
-    return NextResponse.json({ item: refreshed.rows?.[0] || null });
+    const item = refreshed.rows?.[0];
+    try {
+      await insertOcorrenciasLog(pool, "OCCURRENCE_TRACK", actor, { occurrenceId: id, track }, String(occ.cte || ""), String(occ.serie || "0"));
+    } catch {}
+    return NextResponse.json({ item: item || null });
   } catch (e) {
     console.error("[occurrences.patch]", e);
     return NextResponse.json({ error: "Erro interno" }, { status: 500 });

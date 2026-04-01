@@ -15,6 +15,7 @@
     "googleapis": "^171.4.0",
     "lucide-react": "^0.344.0",
     "next": "^15.0.0",
+    "nodemailer": "^6.9.16",
     "papaparse": "^5.4.1",
     "pg": "^8.20.0",
     "react": "^18.2.0",
@@ -24,6 +25,7 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@types/nodemailer": "^7.0.11",
     "@types/papaparse": "^5.3.14",
     "@types/pg": "^8.18.0",
     "@types/react": "^18.2.56",

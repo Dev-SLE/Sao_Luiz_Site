@@ -11,6 +11,9 @@ export async function GET(req: Request) {
     if (!session || !can(session, "module.operacional.view")) {
       return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
     }
+    if (!can(session, "tab.operacional.dossie.view")) {
+      return NextResponse.json({ error: "Sem permissão para o Dossiê" }, { status: 403 });
+    }
     await ensureOccurrencesSchemaTables();
     const pool = getPool();
     const { searchParams } = new URL(req.url);
@@ -60,12 +63,34 @@ export async function GET(req: Request) {
        LIMIT 100`,
       [cte, serie]
     );
+    let dossierEvents: any[] = [];
+    let attachments: any[] = [];
+    if (dossier?.id) {
+      const ev = await pool.query(
+        `SELECT id, event_type, event_date, actor, description, metadata
+         FROM pendencias.dossier_events
+         WHERE dossier_id = $1::uuid
+         ORDER BY event_date DESC, id DESC`,
+        [dossier.id]
+      );
+      dossierEvents = ev.rows || [];
+      const att = await pool.query(
+        `SELECT id, category, label, url, drive_file_id, uploaded_by, created_at
+         FROM pendencias.dossier_attachments
+         WHERE dossier_id = $1::uuid
+         ORDER BY created_at DESC`,
+        [dossier.id]
+      );
+      attachments = att.rows || [];
+    }
     return NextResponse.json({
       dossier,
       occurrences: occRows,
       indemnifications,
       notes: notes.rows || [],
       process: process.rows || [],
+      dossierEvents,
+      attachments,
     });
   } catch (e) {
     console.error("[dossie.get]", e);
@@ -78,6 +103,9 @@ export async function POST(req: Request) {
     const session = await getSessionContext(req);
     if (!session || !can(session, "module.operacional.view")) {
       return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+    }
+    if (!can(session, "tab.operacional.dossie.view")) {
+      return NextResponse.json({ error: "Sem permissão para o Dossiê" }, { status: 403 });
     }
     await ensureOccurrencesSchemaTables();
     const pool = getPool();

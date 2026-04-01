@@ -705,11 +705,144 @@ export class NeonDataClient {
     return response.json();
   }
 
+  async getIndemnificationById(id: string): Promise<{ item: any | null }> {
+    const response = await fetch(this.makeApiUrl(`/indemnifications?id=${encodeURIComponent(id)}`), {
+      credentials: "include",
+    });
+    if (!response.ok) throw await this.buildHttpError("Erro ao buscar indenização", response);
+    return response.json();
+  }
+
+  async getIndemnificationWorkflow(indemnificationId: string): Promise<any> {
+    const response = await fetch(
+      this.makeApiUrl(`/indemnifications/workflow?indemnificationId=${encodeURIComponent(indemnificationId)}`),
+      { credentials: "include" }
+    );
+    if (!response.ok) throw await this.buildHttpError("Erro ao carregar workflow", response);
+    return response.json();
+  }
+
+  async postIndemnificationWorkflow(body: Record<string, unknown>): Promise<any> {
+    const response = await fetch(this.makeApiUrl("/indemnifications/workflow"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      credentials: "include",
+    });
+    if (!response.ok) throw await this.buildHttpError("Erro no workflow", response);
+    return response.json();
+  }
+
+  async getCrmAgenciesList(): Promise<{ items: any[] }> {
+    const response = await fetch(this.makeApiUrl("/crm/agencies-list"), { credentials: "include" });
+    if (!response.ok) throw await this.buildHttpError("Erro ao listar agências", response);
+    return response.json();
+  }
+
+  async getIndemnificationFollowups(indemnificationId: string): Promise<{ items: any[] }> {
+    const response = await fetch(
+      this.makeApiUrl(`/indemnifications/followups?indemnificationId=${encodeURIComponent(indemnificationId)}`),
+      { credentials: "include" }
+    );
+    if (!response.ok) throw await this.buildHttpError("Erro ao carregar follow-ups", response);
+    return response.json();
+  }
+
+  async postIndemnificationFollowup(payload: { indemnificationId: string; agencyId: string; expectedBy?: string }): Promise<any> {
+    const response = await fetch(this.makeApiUrl("/indemnifications/followups"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      credentials: "include",
+    });
+    if (!response.ok) throw await this.buildHttpError("Erro ao registrar agência", response);
+    return response.json();
+  }
+
+  async patchIndemnificationFollowup(payload: { id: string; action: string; noteId?: number }): Promise<any> {
+    const response = await fetch(this.makeApiUrl("/indemnifications/followups"), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      credentials: "include",
+    });
+    if (!response.ok) throw await this.buildHttpError("Erro ao atualizar follow-up", response);
+    return response.json();
+  }
+
+  async getOcorrenciasNotifications(params?: { limit?: number }): Promise<any> {
+    const usp = new URLSearchParams();
+    if (params?.limit) usp.set("limit", String(params.limit));
+    const qs = usp.toString();
+    const response = await fetch(this.makeApiUrl(`/ocorrencias-notifications${qs ? `?${qs}` : ""}`), {
+      credentials: "include",
+    });
+    if (!response.ok) throw await this.buildHttpError("Erro ao buscar notificações", response);
+    return response.json();
+  }
+
+  async ackOcorrenciasNotifications(lastLogId: number): Promise<any> {
+    const response = await fetch(this.makeApiUrl("/ocorrencias-notifications"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lastLogId }),
+      credentials: "include",
+    });
+    if (!response.ok) throw await this.buildHttpError("Erro ao confirmar notificações", response);
+    return response.json();
+  }
+
+  async finalizeDossier(payload: {
+    cte: string;
+    serie?: string;
+    finalizationStatus: string;
+    syncPdfToDrive?: boolean;
+  }): Promise<any> {
+    const response = await fetch(this.makeApiUrl("/dossie/finalize"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      credentials: "include",
+    });
+    if (!response.ok) throw await this.buildHttpError("Erro ao finalizar dossiê", response);
+    return response.json();
+  }
+
+  async uploadDossierAttachment(formData: FormData): Promise<any> {
+    const response = await fetch(this.makeApiUrl("/dossie/attachments"), {
+      method: "POST",
+      body: formData,
+      credentials: "include",
+    });
+    if (!response.ok) throw await this.buildHttpError("Erro ao enviar anexo", response);
+    return response.json();
+  }
+
+  async sendDossieEmail(payload: { cte: string; serie?: string; to: string; subject?: string; text?: string }): Promise<any> {
+    const response = await fetch(this.makeApiUrl("/dossie/send-email"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      credentials: "include",
+    });
+    if (!response.ok) throw await this.buildHttpError("Erro ao enviar e-mail", response);
+    return response.json();
+  }
+
   async createIndemnification(payload: any): Promise<any> {
     return this.postJson("/indemnifications", payload);
   }
 
-  async patchIndemnification(payload: { id: string; status?: string; notes?: string; amount?: number | null }): Promise<any> {
+  async patchIndemnification(payload: {
+    id: string;
+    status?: string;
+    notes?: string;
+    amount?: number | null;
+    facts?: string;
+    responsibilities?: string;
+    indemnification_body?: string;
+    others?: string;
+  }): Promise<any> {
     const response = await fetch(this.makeApiUrl("/indemnifications"), {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
