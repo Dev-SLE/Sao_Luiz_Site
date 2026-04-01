@@ -104,13 +104,12 @@ const MediaAttachment: React.FC<MediaAttachmentProps> = ({ url, onImageClick }) 
                       <ExternalLink size={14} />
                   </a>
                </div>
-               <iframe 
-                 src={`https://drive.google.com/file/d/${fileId}/preview`} 
-                 loading="lazy"
-                 className="w-full h-[350px] border border-slate-200 rounded bg-white"
-                 allow="autoplay"
-                 title="Drive Preview"
-               ></iframe>
+               <div className="rounded border border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-600">
+                 A visualização incorporada do Google Drive pode ser bloqueada por políticas de segurança do navegador.
+                 <a href={url} target="_blank" rel="noreferrer" className="ml-1 font-bold text-[#2c348c] underline">
+                   Abrir arquivo no Drive
+                 </a>
+               </div>
           </div>
       );
   }
@@ -594,30 +593,6 @@ const NoteModal: React.FC<Props> = ({ cte, onClose }) => {
               </select>
             </div>
           )}
-          <div className="mb-2">
-            <button
-              type="button"
-              onClick={async () => {
-                const occ = await authClient.getOccurrences({ cte: cte.CTE, serie: cte.SERIE || "0" });
-                const latest = Array.isArray(occ?.items) ? occ.items[0] : null;
-                if (!latest?.id) return;
-                await authClient.createIndemnification({
-                  occurrenceId: latest.id,
-                  status: "ATIVA",
-                  notes: "Indenização aberta a partir do módulo operacional.",
-                  createdBy: user?.username || "Sistema",
-                });
-                setNoteNotice({
-                  title: "Indenização",
-                  message: "Indenização criada para a ocorrência mais recente deste CTE.",
-                  variant: "success",
-                });
-              }}
-              className="w-full rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-700 hover:bg-amber-100"
-            >
-              Abrir indenização da ocorrência atual
-            </button>
-          </div>
           <div className="flex gap-2 items-end">
             <textarea 
                 value={text} onChange={e => setText(e.target.value)} 
