@@ -713,9 +713,146 @@ function isDeliveredLikeStatus(status: string) {
   return status === "sent" || status === "delivered" || status === "read" || status === "played";
 }
 
-async function processWebhookMessageStatusUpdates(pool: any, body: Record<string, unknown>) {
+function extractUpdateRemoteJid(item: any): string {
+  return String(
+    item?.remoteJid ||
+      item?.key?.remoteJid ||
+      item?.jid ||
+      item?.data?.remoteJid ||
+      item?.data?.key?.remoteJid ||
+      ""
+  ).trim();
+}
+
+function extractUpdateFromMe(item: any): boolean {
+  return item?.fromMe === true || item?.key?.fromMe === true || item?.data?.fromMe === true;
+}
+
+function buildUpdateFallbackBody(status: string) {
+  return `📨 Atualização recebida do WhatsApp (fallback): status "${status}".`;
+}
+
+async function persistStatusUpdateFallback(args: {
+  pool: any;
+  instance: string;
+  inboxId: string;
+  waMessageId: string;
+  remoteJid: string;
+  status: string;
+  fromMe: boolean;
+  defaultIds: { pipelineId: string; stageId: string } | null;
+}) {
+  const { pool, waMessageId, remoteJid, status, fromMe, instance, inboxId, defaultIds } = args;
+  if (!fromMe) return { created: false, reason: "skip_not_from_me" as const };
+  if (!waMessageId) return { created: false, reason: "skip_no_message_id" as const };
+  const phoneDigits = evolutionNumberDigits(remoteJid);
+  if (!phoneDigits) return { created: false, reason: "skip_no_phone_digits" as const };
+  const last10 = lastN(phoneDigits, 10);
+
+  const exists = await pool.query(
+    `
+      SELECT m.id
+      FROM pendencias.crm_messages m
+      WHERE m.metadata->>'message_id' = $1
+         OR m.metadata#>>'{outbound_whatsapp,message_id}' = $1
+      LIMIT 1
+    `,
+    [waMessageId]
+  );
+  if (exists.rows?.[0]?.id) return { created: false, reason: "skip_already_exists" as const };
+
+  let lead = await getOrMergeLeadByPhoneLast10(pool, last10);
+  let leadId = String(lead?.id || "");
+  if (!leadId) {
+    if (!defaultIds) return { created: false, reason: "skip_no_default_pipeline" as const };
+    const positionRow = await pool.query(
+      `
+        SELECT COALESCE(MAX(position), 0) + 1 AS next_pos
+        FROM pendencias.crm_leads
+        WHERE pipeline_id = $1 AND stage_id = $2
+      `,
+      [defaultIds.pipelineId, defaultIds.stageId]
+    );
+    const position = Number(positionRow.rows?.[0]?.next_pos || 0);
+    const created = await pool.query(
+      `
+        INSERT INTO pendencias.crm_leads (
+          pipeline_id, stage_id, title, contact_phone, source, priority, position, created_at, updated_at
+        )
+        VALUES ($1,$2,$3,$4,'WHATSAPP_WEB','MEDIA',$5,NOW(),NOW())
+        RETURNING id
+      `,
+      [defaultIds.pipelineId, defaultIds.stageId, `WhatsApp ${last10}`, phoneDigits, position]
+    );
+    leadId = String(created.rows?.[0]?.id || "");
+  }
+  if (!leadId) return { created: false, reason: "skip_no_lead" as const };
+
+  let conversationId = await getOrMergeWhatsappConversationByLead(pool, leadId, inboxId);
+  if (!conversationId) {
+    const inboxDefault = await resolveInboxDefaultAssignment({
+      inboxId,
+      conversationId: `${leadId}:${inboxId}:fallback`,
+    });
+    const insertConv = await pool.query(
+      `
+        INSERT INTO pendencias.crm_conversations (
+          lead_id, channel, is_active, created_at, last_message_at, whatsapp_inbox_id,
+          assigned_username, assigned_team_id, assignment_mode
+        )
+        VALUES ($1, 'WHATSAPP', true, NOW(), NULL, $2::uuid, $3, $4::uuid, 'AUTO')
+        RETURNING id
+      `,
+      [leadId, inboxId, inboxDefault.assignedUsername, inboxDefault.assignedTeamId]
+    );
+    conversationId = String(insertConv.rows?.[0]?.id || "");
+  }
+  if (!conversationId) return { created: false, reason: "skip_no_conversation" as const };
+
+  await pool.query(
+    `
+      INSERT INTO pendencias.crm_messages (
+        conversation_id, sender_type, body, has_attachments, metadata, created_at
+      )
+      VALUES ($1, 'AGENT', $2, false, $3::jsonb, NOW())
+    `,
+    [
+      conversationId,
+      buildUpdateFallbackBody(status),
+      JSON.stringify({
+        provider: "EVOLUTION",
+        evolution_instance: instance,
+        message_id: waMessageId,
+        from_me: true,
+        remote_jid: remoteJid,
+        update_fallback: true,
+        outbound_whatsapp: {
+          status,
+          delivered: isDeliveredLikeStatus(status),
+          updated_at: new Date().toISOString(),
+          message_id: waMessageId,
+        },
+      }),
+    ]
+  );
+  await pool.query(`UPDATE pendencias.crm_conversations SET last_message_at = NOW() WHERE id = $1`, [
+    conversationId,
+  ]);
+  return { created: true, reason: "created" as const, conversationId, leadId };
+}
+
+async function processWebhookMessageStatusUpdates(args: {
+  pool: any;
+  body: Record<string, unknown>;
+  instance: string;
+  inboxId: string;
+  defaultIds: { pipelineId: string; stageId: string } | null;
+}) {
+  const { pool, body, instance, inboxId, defaultIds } = args;
   const items = collectMessageUpdateItems(body?.data);
   let applied = 0;
+  let fallbackCreated = 0;
+  const fallbackReasons: Record<string, number> = {};
   for (const item of items) {
     const waMessageId = extractUpdateMessageId(item);
     const status = extractUpdateStatus(item);
@@ -739,9 +876,23 @@ async function processWebhookMessageStatusUpdates(pool: any, body: Record<string
       `,
       [JSON.stringify(patch), waMessageId]
     );
-    applied += Number(res.rowCount || 0);
+    const updated = Number(res.rowCount || 0);
+    applied += updated;
+    if (updated > 0) continue;
+    const fallback = await persistStatusUpdateFallback({
+      pool,
+      instance,
+      inboxId,
+      waMessageId,
+      remoteJid: extractUpdateRemoteJid(item),
+      status,
+      fromMe: extractUpdateFromMe(item),
+      defaultIds,
+    });
+    if (fallback.created) fallbackCreated += 1;
+    fallbackReasons[fallback.reason] = (fallbackReasons[fallback.reason] || 0) + 1;
   }
-  return applied;
+  return { applied, fallbackCreated, fallbackReasons, itemCount: items.length };
 }
 
 function hasRenderableEditInPayload(body: Record<string, unknown>): boolean {
@@ -937,9 +1088,22 @@ export async function POST(req: Request) {
         console.warn("[evolution-webhook] status update ignored: unknown instance", { instance, eventNorm });
         return NextResponse.json({ ok: true, skipped: "unknown_instance_for_update" });
       }
-      const applied = await processWebhookMessageStatusUpdates(pool, body);
-      console.log("[evolution-webhook] status updates applied", { instance, applied });
-      if (!applied) {
+      const defaultIds = await ensureDefaultPipelineAndFirstStage(pool);
+      const result = await processWebhookMessageStatusUpdates({
+        pool,
+        body,
+        instance,
+        inboxId: String(inboxUpdateRes.rows[0].id),
+        defaultIds,
+      });
+      console.log("[evolution-webhook] status updates applied", {
+        instance,
+        applied: result.applied,
+        fallbackCreated: result.fallbackCreated,
+        fallbackReasons: result.fallbackReasons,
+        itemCount: result.itemCount,
+      });
+      if (!result.applied && !result.fallbackCreated) {
         const items = collectMessageUpdateItems((body as any)?.data);
         const sample = (items || []).slice(0, 3).map((it: any) => ({
           keyId: String(it?.keyId || it?.key?.id || it?.messageId || "").slice(0, 40),
@@ -949,7 +1113,11 @@ export async function POST(req: Request) {
         }));
         console.warn("[evolution-webhook] status_update_without_match", { instance, count: items.length, sample });
       }
-      return NextResponse.json({ ok: true, message_updates_applied: applied });
+      return NextResponse.json({
+        ok: true,
+        message_updates_applied: result.applied,
+        message_updates_fallback_created: result.fallbackCreated,
+      });
     }
 
     // Só messages.upsert precisa de inbox no CRM — demais eventos não consultam DB (evita log enganoso e ~15s).
