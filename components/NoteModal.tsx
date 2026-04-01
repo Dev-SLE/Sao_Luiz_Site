@@ -556,8 +556,9 @@ const NoteModal: React.FC<Props> = ({ cte, onClose }) => {
                     <span>Marcar como <span className="text-emerald-400">{isCurrentlyOcorrencia ? "OCORRÊNCIA ENCERRADA" : "LOCALIZADA"}</span></span>
                 </label>
              )}
-             {!isResolvido && !isCurrentlyEmBusca && !isCurrentlyOcorrencia && (
+             {!isResolvido && !isCurrentlyOcorrencia && (
                 <>
+                    {!isCurrentlyEmBusca && (
                     <label className="flex items-center gap-2 text-xs font-bold cursor-pointer text-slate-700 group">
                       <div className={clsx(
                           "w-5 h-5 rounded border-2 flex items-center justify-center transition-all",
@@ -568,6 +569,7 @@ const NoteModal: React.FC<Props> = ({ cte, onClose }) => {
                       <input type="checkbox" className="hidden" checked={isSearch} onChange={e => { setIsSearch(e.target.checked); if(e.target.checked) setIsOcorrencia(false); }} disabled={isSending || !hasPermission('EDIT_NOTES')} />
                       <span>Marcar <span className="text-red-600">EM BUSCA</span></span>
                     </label>
+                    )}
                     <label className="flex items-center gap-2 text-xs font-bold cursor-pointer text-slate-700 group">
                       <div className={clsx(
                           "w-5 h-5 rounded border-2 flex items-center justify-center transition-all",
