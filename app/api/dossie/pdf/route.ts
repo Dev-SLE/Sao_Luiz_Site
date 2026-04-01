@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getPool } from "../../../../lib/server/db";
 import { ensureOccurrencesSchemaTables } from "../../../../lib/server/ensureSchema";
+import { can, getSessionContext } from "../../../../lib/server/authorization";
 
 export const runtime = "nodejs";
 
@@ -47,6 +48,10 @@ startxref
 
 export async function GET(req: Request) {
   try {
+    const session = await getSessionContext(req);
+    if (!session || !can(session, "module.operacional.view")) {
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+    }
     await ensureOccurrencesSchemaTables();
     const pool = getPool();
     const { searchParams } = new URL(req.url);

@@ -12,7 +12,7 @@ export async function GET(req: Request) {
     ?.split("=")[1];
   const session = decodeSession(sessionCookie ? decodeURIComponent(sessionCookie) : null);
   if (!session) {
-    return NextResponse.json({ authenticated: false, user: null }, { status: 401 });
+    return NextResponse.json({ authenticated: false, user: null }, { status: 200 });
   }
   return NextResponse.json({
     authenticated: true,

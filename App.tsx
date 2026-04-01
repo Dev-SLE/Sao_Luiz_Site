@@ -18,6 +18,7 @@ import ComercialAuditoria from './components/ComercialAuditoria';
 import ComercialRoboSupremo from './components/ComercialRoboSupremo';
 import { Page, CteData } from './types';
 import OperationalTracking from './components/OperationalTracking';
+import OcorrenciasHub from './components/OcorrenciasHub';
 import { ChevronDown, CircleDot, LogOut, KeyRound, User as UserIcon, Bell, Moon, Sun } from 'lucide-react';
 import clsx from 'clsx';
 import { authClient } from './lib/auth';
@@ -211,12 +212,9 @@ const AppContent: React.FC = () => {
           return noAccess('Seu perfil não possui acesso à tela de Ocorrências.');
         }
         return (
-           <DataTable 
-            title="Ocorrências Operacionais" 
+          <OcorrenciasHub
             data={ocorrencias.data}
             onNoteClick={setSelectedCte}
-            enableFilters={true}
-            ignoreUnitFilter={true}
             serverPagination={{
               page: ocorrencias.page,
               limit: ocorrencias.limit,
