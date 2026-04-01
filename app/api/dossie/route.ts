@@ -27,7 +27,39 @@ export async function GET(req: Request) {
       `SELECT * FROM pendencias.occurrences WHERE cte = $1 AND (serie = $2 OR ltrim(serie,'0') = ltrim($2,'0')) ORDER BY created_at DESC`,
       [cte, serie]
     );
-    return NextResponse.json({ dossier, occurrences: occurrences.rows || [] });
+    const occRows = occurrences.rows || [];
+    const occIds = occRows.map((o: any) => o.id).filter(Boolean);
+    let indemnifications: any[] = [];
+    if (occIds.length > 0) {
+      const indemRes = await pool.query(
+        `SELECT * FROM pendencias.indemnifications WHERE occurrence_id = ANY($1::uuid[]) ORDER BY created_at DESC`,
+        [occIds]
+      );
+      indemnifications = indemRes.rows || [];
+    }
+    const notes = await pool.query(
+      `SELECT id, cte, serie, usuario, texto, status_busca, data, link_imagem
+       FROM pendencias.notes
+       WHERE cte = $1 AND (serie = $2 OR ltrim(serie,'0') = ltrim($2,'0'))
+       ORDER BY data DESC
+       LIMIT 100`,
+      [cte, serie]
+    );
+    const process = await pool.query(
+      `SELECT id, cte, serie, user_name, description, status, data
+       FROM pendencias.process_control
+       WHERE cte = $1 AND (serie = $2 OR ltrim(serie,'0') = ltrim($2,'0'))
+       ORDER BY data DESC
+       LIMIT 100`,
+      [cte, serie]
+    );
+    return NextResponse.json({
+      dossier,
+      occurrences: occRows,
+      indemnifications,
+      notes: notes.rows || [],
+      process: process.rows || [],
+    });
   } catch (e) {
     console.error("[dossie.get]", e);
     return NextResponse.json({ error: "Erro interno" }, { status: 500 });
