@@ -8,6 +8,8 @@ let operationalAssignmentsReady = false;
 let operationalAssignmentsPromise: Promise<void> | null = null;
 let commercialSchemaReady = false;
 let commercialSchemaPromise: Promise<void> | null = null;
+let occurrencesSchemaReady = false;
+let occurrencesSchemaPromise: Promise<void> | null = null;
 
 export async function ensureUserTokensTable() {
   const pool = getPool();
@@ -692,6 +694,86 @@ export async function ensureCommercialTables() {
     commercialSchemaReady = true;
   } finally {
     commercialSchemaPromise = null;
+  }
+}
+
+export async function ensureOccurrencesSchemaTables() {
+  if (occurrencesSchemaReady) return;
+  if (occurrencesSchemaPromise) return occurrencesSchemaPromise;
+  occurrencesSchemaPromise = (async () => {
+    const pool = getPool();
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS pendencias.occurrences (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        cte text NOT NULL,
+        serie text NOT NULL DEFAULT '0',
+        occurrence_type text NOT NULL,
+        description text NOT NULL,
+        status text NOT NULL DEFAULT 'ABERTA',
+        source text NOT NULL DEFAULT 'OPERACIONAL',
+        lead_id uuid,
+        contact_name text,
+        contact_phone text,
+        created_by text,
+        created_at timestamptz NOT NULL DEFAULT NOW(),
+        updated_at timestamptz NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_occurrences_cte_serie ON pendencias.occurrences(cte, serie, created_at DESC)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_occurrences_lead ON pendencias.occurrences(lead_id, created_at DESC)`);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS pendencias.indemnifications (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        occurrence_id uuid NOT NULL REFERENCES pendencias.occurrences(id) ON DELETE CASCADE,
+        status text NOT NULL DEFAULT 'ATIVA',
+        amount numeric(14,2),
+        currency text NOT NULL DEFAULT 'BRL',
+        decision text,
+        due_date date,
+        responsible text,
+        legal_risk boolean NOT NULL DEFAULT false,
+        notes text,
+        created_by text,
+        created_at timestamptz NOT NULL DEFAULT NOW(),
+        updated_at timestamptz NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_indemnifications_occurrence ON pendencias.indemnifications(occurrence_id, created_at DESC)`);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS pendencias.dossiers (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        cte text NOT NULL,
+        serie text NOT NULL DEFAULT '0',
+        title text NOT NULL,
+        status text NOT NULL DEFAULT 'ATIVO',
+        generated_by text,
+        generated_at timestamptz,
+        created_at timestamptz NOT NULL DEFAULT NOW(),
+        updated_at timestamptz NOT NULL DEFAULT NOW(),
+        UNIQUE (cte, serie)
+      )
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS pendencias.dossier_events (
+        id bigserial PRIMARY KEY,
+        dossier_id uuid NOT NULL REFERENCES pendencias.dossiers(id) ON DELETE CASCADE,
+        event_type text NOT NULL,
+        event_date timestamptz NOT NULL DEFAULT NOW(),
+        actor text,
+        description text NOT NULL,
+        metadata jsonb NOT NULL DEFAULT '{}'::jsonb
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_dossier_events_dossier ON pendencias.dossier_events(dossier_id, event_date DESC)`);
+  })();
+  try {
+    await occurrencesSchemaPromise;
+    occurrencesSchemaReady = true;
+  } finally {
+    occurrencesSchemaPromise = null;
   }
 }
 

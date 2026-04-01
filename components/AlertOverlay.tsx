@@ -9,11 +9,11 @@ interface Props {
 }
 
 const AlertOverlay: React.FC<Props> = ({ onOpenCte }) => {
-  const { baseData, isCteEmBusca, isCteTad } = useData();
+  const { baseData, isCteEmBusca, isCteOcorrencia } = useData();
   const { user } = useAuth();
   const [active, setActive] = useState(false);
   const [targetCte, setTargetCte] = useState<CteData | null>(null);
-  const [alertType, setAlertType] = useState<'BUSCA' | 'TAD'>('BUSCA');
+  const [alertType, setAlertType] = useState<'BUSCA' | 'OCORRENCIA'>('BUSCA');
   const [ackedByUser, setAckedByUser] = useState<Set<string>>(new Set());
 
   const normalizeSerie = (serie: string) => String(serie || '').replace(/^0+/, '') || '0';
@@ -56,12 +56,11 @@ const AlertOverlay: React.FC<Props> = ({ onOpenCte }) => {
       return;
     }
 
-    // REGRA 2: Verificação de TAD (Prioridade de Alerta Específico)
+    // REGRA 2: Verificação de Ocorrência (Prioridade de Alerta Específico)
     // "Só será notificiada a unidade de destino da pendência"
-    const tadItem = baseData.find(item => {
-        // 1. Verifica se é TAD (baseado estritamente no PROCESS_CONTROL)
-        const statusIsTad = isCteTad(item.CTE, item.SERIE);
-        if (!statusIsTad) return false;
+    const ocorrItem = baseData.find(item => {
+        const statusIsOcorrencia = isCteOcorrencia(item.CTE, item.SERIE);
+        if (!statusIsOcorrencia) return false;
         
         // 2. Verifica se a unidade do usuário é EXATAMENTE a unidade de entrega (destino)
         const userUnit = user.linkedDestUnit.trim().toUpperCase();
@@ -73,10 +72,10 @@ const AlertOverlay: React.FC<Props> = ({ onOpenCte }) => {
         return !userHasNote;
     });
 
-    if (tadItem) {
-        if (targetCte?.CTE === tadItem.CTE && active && alertType === 'TAD') return;
-        setTargetCte(tadItem);
-        setAlertType('TAD');
+    if (ocorrItem) {
+        if (targetCte?.CTE === ocorrItem.CTE && active && alertType === 'OCORRENCIA') return;
+        setTargetCte(ocorrItem);
+        setAlertType('OCORRENCIA');
         setActive(true);
         return;
     }
@@ -107,43 +106,43 @@ const AlertOverlay: React.FC<Props> = ({ onOpenCte }) => {
     setActive(false);
     setTargetCte(null);
 
-  }, [baseData, user, ackedByUser, isCteEmBusca, isCteTad]);
+  }, [baseData, user, ackedByUser, isCteEmBusca, isCteOcorrencia]);
 
   if (!active || !targetCte) return null;
 
-  const isTad = alertType === 'TAD';
+  const isOcorrencia = alertType === 'OCORRENCIA';
 
   return (
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-md"
     >
-      <div className={`w-full max-w-lg overflow-hidden rounded-3xl border shadow-2xl ${isTad ? 'border-violet-200 bg-white' : 'border-red-200 bg-white'}`}>
-        <div className={`px-6 py-4 ${isTad ? 'bg-gradient-to-r from-violet-700 to-violet-600' : 'bg-gradient-to-r from-[#e42424] to-[#c21820]'}`}>
+      <div className={`w-full max-w-lg overflow-hidden rounded-3xl border shadow-2xl ${isOcorrencia ? 'border-violet-200 bg-white' : 'border-red-200 bg-white'}`}>
+        <div className={`px-6 py-4 ${isOcorrencia ? 'bg-gradient-to-r from-violet-700 to-violet-600' : 'bg-gradient-to-r from-[#e42424] to-[#c21820]'}`}>
           <div className="flex items-center gap-3 text-white">
             <span className="rounded-xl bg-white/20 p-2">
               <BellRing size={20} />
             </span>
             <div>
               <div className="text-xs font-bold uppercase tracking-wider">Notificação operacional</div>
-              <h2 className="text-xl font-black">{isTad ? 'Processo TAD' : 'Mercadoria em Busca'}</h2>
+              <h2 className="text-xl font-black">{isOcorrencia ? 'Ocorrência Operacional' : 'Mercadoria em Busca'}</h2>
             </div>
           </div>
         </div>
         <div className="space-y-4 p-6 text-slate-800">
-          <div className={`flex items-center gap-3 rounded-2xl border p-4 ${isTad ? 'border-violet-200 bg-violet-50' : 'border-red-200 bg-red-50'}`}>
-            {isTad ? (
+          <div className={`flex items-center gap-3 rounded-2xl border p-4 ${isOcorrencia ? 'border-violet-200 bg-violet-50' : 'border-red-200 bg-red-50'}`}>
+            {isOcorrencia ? (
               <Tag size={28} className="text-violet-700" />
             ) : (
               <AlertCircle size={28} className="text-red-700" />
             )}
             <div className="text-sm">
-              Documento <span className={`font-black ${isTad ? 'text-violet-700' : 'text-red-700'}`}>{targetCte.CTE}</span>
+              Documento <span className={`font-black ${isOcorrencia ? 'text-violet-700' : 'text-red-700'}`}>{targetCte.CTE}</span>
               {' '}série <span className="font-black">{targetCte.SERIE || '0'}</span> com status{' '}
-              <span className="font-black">{isTad ? 'TAD' : 'EM BUSCA'}</span>.
+              <span className="font-black">{isOcorrencia ? 'OCORRÊNCIA' : 'EM BUSCA'}</span>.
             </div>
           </div>
           <p className="text-sm text-slate-600">
-            {isTad
+            {isOcorrencia
               ? `Sua unidade (${user?.linkedDestUnit || '-'}) é o destino desta pendência.`
               : 'Atenção necessária para sua agência. Abra o CTE e registre uma anotação para encerrar esta notificação para você.'}
           </p>
@@ -160,7 +159,7 @@ const AlertOverlay: React.FC<Props> = ({ onOpenCte }) => {
           </button>
           <button
             onClick={() => { setActive(false); onOpenCte(targetCte); }}
-            className={`flex-1 rounded-xl px-4 py-3 text-sm font-black text-white transition-all active:scale-[0.99] ${isTad ? 'bg-violet-600 hover:bg-violet-700' : 'bg-[#e42424] hover:bg-[#c21820]'}`}
+            className={`flex-1 rounded-xl px-4 py-3 text-sm font-black text-white transition-all active:scale-[0.99] ${isOcorrencia ? 'bg-violet-600 hover:bg-violet-700' : 'bg-[#e42424] hover:bg-[#c21820]'}`}
           >
             Verificar e Anotar
           </button>

@@ -28,7 +28,7 @@ const AppContent: React.FC = () => {
     pendencias,
     criticos,
     emBusca,
-    tad,
+    ocorrencias,
     concluidos,
     setPendenciasPage,
     setPendenciasLimit,
@@ -36,8 +36,8 @@ const AppContent: React.FC = () => {
     setCriticosLimit,
     setEmBuscaPage,
     setEmBuscaLimit,
-    setTadPage,
-    setTadLimit,
+    setOcorrenciasPage,
+    setOcorrenciasLimit,
     setConcluidosPage,
     setConcluidosLimit,
     hasPermission,
@@ -206,23 +206,23 @@ const AppContent: React.FC = () => {
           return noAccess('Seu perfil não possui acesso ao Rastreio Operacional.');
         }
         return <OperationalTracking initialCte={selectedTrackingCte} initialSerie={selectedTrackingSerie} />;
-      case Page.TAD:
-        if (!hasPermission('VIEW_TAD')) {
-          return noAccess('Seu perfil não possui acesso à tela de Processos TAD.');
+      case Page.OCORRENCIAS:
+        if (!hasPermission('tab.operacional.ocorrencias.view')) {
+          return noAccess('Seu perfil não possui acesso à tela de Ocorrências.');
         }
         return (
            <DataTable 
-            title="Processo TAD" 
-            data={tad.data}
+            title="Ocorrências Operacionais" 
+            data={ocorrencias.data}
             onNoteClick={setSelectedCte}
             enableFilters={true}
             ignoreUnitFilter={true}
             serverPagination={{
-              page: tad.page,
-              limit: tad.limit,
-              total: tad.total,
-              onPageChange: setTadPage,
-              onLimitChange: setTadLimit,
+              page: ocorrencias.page,
+              limit: ocorrencias.limit,
+              total: ocorrencias.total,
+              onPageChange: setOcorrenciasPage,
+              onLimitChange: setOcorrenciasLimit,
             }}
           />
         );

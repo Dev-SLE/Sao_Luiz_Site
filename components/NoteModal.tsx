@@ -168,11 +168,12 @@ interface PendingFile {
 }
 
 const NoteModal: React.FC<Props> = ({ cte, onClose }) => {
-  const { notes, addNote, resolveIssue, baseData, isCteEmBusca, isCteTad, getLatestNote, processControlData, hasPermission } = useData();
+  const { notes, addNote, resolveIssue, baseData, isCteEmBusca, isCteOcorrencia, getLatestNote, processControlData, hasPermission } = useData();
   const { user } = useAuth();
   const [text, setText] = useState('');
   const [isSearch, setIsSearch] = useState(false);
-  const [isTad, setIsTad] = useState(false);
+  const [isOcorrencia, setIsOcorrencia] = useState(false);
+  const [occurrenceType, setOccurrenceType] = useState('AVARIA');
   const [isSending, setIsSending] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -243,7 +244,7 @@ const NoteModal: React.FC<Props> = ({ cte, onClose }) => {
 
   const currentNotes = (remoteNotes ?? notes.filter(n => n.CTE === cte.CTE));
   const isCurrentlyEmBusca = isCteEmBusca(liveCte.CTE, liveCte.SERIE, liveCte.STATUS);
-  const isCurrentlyTad = isCteTad(liveCte.CTE, liveCte.SERIE);
+  const isCurrentlyOcorrencia = isCteOcorrencia(liveCte.CTE, liveCte.SERIE);
   const latestNote = getLatestNote(liveCte.CTE);
   const isResolvido = (liveCte.STATUS === 'RESOLVIDO' || liveCte.STATUS === 'LOCALIZADA') || (latestNote && (latestNote.STATUS_BUSCA === 'RESOLVIDO' || latestNote.STATUS_BUSCA === 'LOCALIZADA'));
   const processHistory = (remoteProcess ?? processControlData.filter(p => p.CTE === liveCte.CTE && normalizeSerie(p.SERIE || '') === normalizeSerie(liveCte.SERIE || '')));
@@ -284,7 +285,7 @@ const NoteModal: React.FC<Props> = ({ cte, onClose }) => {
   const confirmResolveAction = async () => {
       setShowConfirmResolve(false);
       try { 
-          const resolveText = isCurrentlyTad ? "RESOLVIDO: TAD PAGO." : undefined;
+          const resolveText = isCurrentlyOcorrencia ? "RESOLVIDO: OCORRÊNCIA ENCERRADA." : undefined;
           await resolveIssue(cte.CTE, cte.SERIE, resolveText); 
       } catch (err) { setResolveChecked(false); }
   };
@@ -292,10 +293,10 @@ const NoteModal: React.FC<Props> = ({ cte, onClose }) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!text.trim() && pendingFiles.length === 0) return;
-    if (isTad && !text.trim()) {
+    if (isOcorrencia && !text.trim()) {
       setNoteNotice({
-        title: 'TAD',
-        message: 'Informe o motivo do TAD no texto antes de enviar.',
+        title: 'Ocorrência',
+        message: 'Informe os detalhes da ocorrência no texto antes de enviar.',
         variant: 'warning',
       });
       return;
@@ -320,7 +321,7 @@ const NoteModal: React.FC<Props> = ({ cte, onClose }) => {
       USUARIO: user?.username || 'Sistema',
       TEXTO: text || (pendingFiles.length > 0 ? "Anexo enviado" : ""),
       LINK_IMAGEM: '',
-      STATUS_BUSCA: isSearch ? 'EM BUSCA' : (isTad ? 'TAD' : ''),
+      STATUS_BUSCA: isSearch ? 'EM BUSCA' : (isOcorrencia ? 'OCORRENCIA' : ''),
       pending: true,
     };
     setRemoteNotes(prev => {
@@ -328,11 +329,12 @@ const NoteModal: React.FC<Props> = ({ cte, onClose }) => {
       return [optimistic, ...base];
     });
     try {
+      const finalText = isOcorrencia ? `[${occurrenceType}] ${text}` : text;
       const created = await addNote({
         CTE: cte.CTE, SERIE: cte.SERIE || '', CODIGO: cte.CODIGO, DATA: '', 
-        USUARIO: user?.username || 'Sistema', TEXTO: text || (pendingFiles.length > 0 ? "Anexo enviado" : ""), 
+        USUARIO: user?.username || 'Sistema', TEXTO: finalText || (pendingFiles.length > 0 ? "Anexo enviado" : ""), 
         LINK_IMAGEM: '', 
-        STATUS_BUSCA: isSearch ? 'EM BUSCA' : (isTad ? 'TAD' : ''), 
+        STATUS_BUSCA: isSearch ? 'EM BUSCA' : (isOcorrencia ? 'OCORRENCIA' : ''), 
         attachments: pendingFiles
       });
       if (created) {
@@ -347,7 +349,7 @@ const NoteModal: React.FC<Props> = ({ cte, onClose }) => {
           return base.filter(n => n.ID !== tempId);
         });
       }
-      setText(''); setIsSearch(false); setIsTad(false); setPendingFiles([]);
+      setText(''); setIsSearch(false); setIsOcorrencia(false); setOccurrenceType('AVARIA'); setPendingFiles([]);
     } catch (error) {
       setRemoteNotes(prev => {
         const base = Array.isArray(prev) ? prev : [];
@@ -387,7 +389,7 @@ const NoteModal: React.FC<Props> = ({ cte, onClose }) => {
                        <Check size={28} />
                      </div>
                      <h3 className="text-lg font-bold mb-2">
-                         {isCurrentlyTad ? 'Confirmar TAD PAGO?' : 'Gravar como Localizada?'}
+                        {isCurrentlyOcorrencia ? 'Confirmar encerramento da ocorrência?' : 'Gravar como Localizada?'}
                      </h3>
                      <p className="text-sm text-slate-600 mb-6">
                        O status mudará para <strong className="text-emerald-300">RESOLVIDO</strong>.
@@ -454,9 +456,9 @@ const NoteModal: React.FC<Props> = ({ cte, onClose }) => {
              <div className="bg-red-50 p-2 border-b border-red-300 flex items-center justify-center shrink-0">
                  <span className="text-xs font-bold text-red-700 flex items-center gap-2 px-2"><span className="w-2 h-2 rounded-full bg-red-500 animate-pulse shadow-[0_0_6px_rgba(239,68,68,0.8)]"></span> MERCADORIA EM BUSCA</span>
              </div>
-        ) : isCurrentlyTad && (
+        ) : isCurrentlyOcorrencia && (
              <div className="bg-violet-50 p-2 border-b border-violet-300 flex items-center justify-center shrink-0">
-                 <span className="text-xs font-bold text-violet-700 flex items-center gap-2 px-2"><Tag size={12} fill="currentColor"/> PROCESSO DE TAD</span>
+                 <span className="text-xs font-bold text-violet-700 flex items-center gap-2 px-2"><Tag size={12} fill="currentColor"/> OCORRÊNCIA ATIVA</span>
              </div>
         )}
 
@@ -495,7 +497,7 @@ const NoteModal: React.FC<Props> = ({ cte, onClose }) => {
                   );
                 })()}
                 {note.STATUS_BUSCA === 'EM BUSCA' && <span className="mt-2 inline-flex items-center gap-1 bg-red-50 text-red-700 text-[10px] px-2 py-0.5 rounded font-bold border border-red-300 w-fit">EM BUSCA</span>}
-                {note.STATUS_BUSCA === 'TAD' && <span className="mt-2 inline-flex items-center gap-1 bg-violet-50 text-violet-700 text-[10px] px-2 py-0.5 rounded font-bold border border-violet-300 w-fit">TAD</span>}
+                {note.STATUS_BUSCA === 'OCORRENCIA' && <span className="mt-2 inline-flex items-center gap-1 bg-violet-50 text-violet-700 text-[10px] px-2 py-0.5 rounded font-bold border border-violet-300 w-fit">OCORRÊNCIA</span>}
               </div>
             ))}
           </div>
@@ -508,7 +510,7 @@ const NoteModal: React.FC<Props> = ({ cte, onClose }) => {
                     {sortedProcessHistory.map((p, i) => (
                         <div key={i} className="bg-slate-50 p-2 rounded border border-slate-200 text-[11px] shadow-sm">
                             <div className="flex justify-between font-bold mb-1">
-                                <span className={p.STATUS === 'TAD' ? 'text-violet-700' : p.STATUS === 'EM BUSCA' ? 'text-red-700' : 'text-emerald-700'}>
+                                <span className={p.STATUS === 'OCORRENCIA' ? 'text-violet-700' : p.STATUS === 'EM BUSCA' ? 'text-red-700' : 'text-emerald-700'}>
                                   {p.STATUS}
                                 </span>
                                 <span className="text-slate-500">{p.DATA}</span>
@@ -538,7 +540,7 @@ const NoteModal: React.FC<Props> = ({ cte, onClose }) => {
 
         <form onSubmit={handleSubmit} className="p-4 bg-white border-t border-slate-200 shrink-0">
           <div className="flex items-center gap-4 mb-3">
-             {(isCurrentlyEmBusca || isCurrentlyTad || isResolvido) && (
+             {(isCurrentlyEmBusca || isCurrentlyOcorrencia || isResolvido) && (
                  <label className="flex items-center gap-2 text-xs font-bold cursor-pointer text-slate-700 group">
                     <div className={clsx(
                         "w-5 h-5 rounded border-2 flex items-center justify-center transition-all",
@@ -547,10 +549,10 @@ const NoteModal: React.FC<Props> = ({ cte, onClose }) => {
                         {resolveChecked && <Check size={14} className="text-white" strokeWidth={3} />}
                     </div>
                     <input type="checkbox" className="hidden" checked={resolveChecked} onChange={e => { setResolveChecked(e.target.checked); if(e.target.checked) setShowConfirmResolve(true); }} disabled={isResolvido || isSending || !hasPermission('EDIT_NOTES')} />
-                    <span>Marcar como <span className="text-emerald-400">{isCurrentlyTad ? "TAD PAGO" : "LOCALIZADA"}</span></span>
+                    <span>Marcar como <span className="text-emerald-400">{isCurrentlyOcorrencia ? "OCORRÊNCIA ENCERRADA" : "LOCALIZADA"}</span></span>
                 </label>
              )}
-             {!isResolvido && !isCurrentlyEmBusca && !isCurrentlyTad && (
+             {!isResolvido && !isCurrentlyEmBusca && !isCurrentlyOcorrencia && (
                 <>
                     <label className="flex items-center gap-2 text-xs font-bold cursor-pointer text-slate-700 group">
                       <div className={clsx(
@@ -565,20 +567,61 @@ const NoteModal: React.FC<Props> = ({ cte, onClose }) => {
                     <label className="flex items-center gap-2 text-xs font-bold cursor-pointer text-slate-700 group">
                       <div className={clsx(
                           "w-5 h-5 rounded border-2 flex items-center justify-center transition-all",
-                          isTad ? "bg-violet-600 border-violet-600" : "bg-slate-100 border-gray-500 group-hover:border-violet-500"
+                          isOcorrencia ? "bg-violet-600 border-violet-600" : "bg-slate-100 border-gray-500 group-hover:border-violet-500"
                       )}>
-                          {isTad && <Check size={14} className="text-white" strokeWidth={3} />}
+                          {isOcorrencia && <Check size={14} className="text-white" strokeWidth={3} />}
                       </div>
-                      <input type="checkbox" className="hidden" checked={isTad} onChange={e => { setIsTad(e.target.checked); if(e.target.checked) setIsSearch(false); }} disabled={isSending || !hasPermission('EDIT_NOTES')} />
-                      <span>Marcar <span className="text-violet-700">TAD</span></span>
+                      <input type="checkbox" className="hidden" checked={isOcorrencia} onChange={e => { setIsOcorrencia(e.target.checked); if(e.target.checked) setIsSearch(false); }} disabled={isSending || !hasPermission('EDIT_NOTES')} />
+                      <span>Marcar <span className="text-violet-700">OCORRÊNCIA</span></span>
                     </label>
                 </>
              )}
           </div>
+          {isOcorrencia && (
+            <div className="mb-2">
+              <select
+                value={occurrenceType}
+                onChange={(e) => setOccurrenceType(e.target.value)}
+                className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800"
+              >
+                <option value="AVARIA">Avaria</option>
+                <option value="EXTRAVIO">Extravio</option>
+                <option value="FALTA_VOLUME">Falta de volume</option>
+                <option value="DIVERGENCIA_DOCUMENTAL">Divergência documental/fiscal</option>
+                <option value="ATRASO_CRITICO">Atraso crítico</option>
+                <option value="TAD_LEGADO">TAD (legado)</option>
+                <option value="OUTROS">Outros</option>
+              </select>
+            </div>
+          )}
+          <div className="mb-2">
+            <button
+              type="button"
+              onClick={async () => {
+                const occ = await authClient.getOccurrences({ cte: cte.CTE, serie: cte.SERIE || "0" });
+                const latest = Array.isArray(occ?.items) ? occ.items[0] : null;
+                if (!latest?.id) return;
+                await authClient.createIndemnification({
+                  occurrenceId: latest.id,
+                  status: "ATIVA",
+                  notes: "Indenização aberta a partir do módulo operacional.",
+                  createdBy: user?.username || "Sistema",
+                });
+                setNoteNotice({
+                  title: "Indenização",
+                  message: "Indenização criada para a ocorrência mais recente deste CTE.",
+                  variant: "success",
+                });
+              }}
+              className="w-full rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-700 hover:bg-amber-100"
+            >
+              Abrir indenização da ocorrência atual
+            </button>
+          </div>
           <div className="flex gap-2 items-end">
             <textarea 
                 value={text} onChange={e => setText(e.target.value)} 
-                placeholder={isTad ? "Descreva o motivo do TAD (Obrigatório)..." : "Digite sua observação..."} 
+                placeholder={isOcorrencia ? "Descreva a ocorrência (obrigatório)..." : "Digite sua observação..."} 
                 rows={1} disabled={isSending || !hasPermission('EDIT_NOTES')}
                 className="flex-1 bg-slate-100 border border-slate-200 rounded-2xl px-4 py-2.5 text-sm text-slate-800 font-medium outline-none resize-none max-h-[100px] placeholder-gray-500 focus:bg-white focus:ring-2 focus:ring-[#2c348c]/25"
                 style={{ fieldSizing: 'content' } as any} 

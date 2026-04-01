@@ -8,7 +8,7 @@ interface KPICounts {
   pendencias: number;
   criticos: number;
   emBusca: number;
-  tad: number;
+  ocorrencias: number;
   concluidos: number;
 }
 
@@ -44,7 +44,7 @@ interface DataContextType {
   deleteProfile: (name: string) => Promise<void>;
   globalData: GlobalData;
   isCteEmBusca: (cte: string, serie: string, originalStatus: string) => boolean;
-  isCteTad: (cte: string, serie: string) => boolean;
+  isCteOcorrencia: (cte: string, serie: string) => boolean;
   counts: KPICounts;
   getLatestNote: (cte: string) => NoteData | null;
   // Pagination setters
@@ -69,7 +69,7 @@ interface DataContextType {
   pendencias: { data: CteData[]; page: number; limit: number; total: number };
   criticos: { data: CteData[]; page: number; limit: number; total: number };
   emBusca: { data: CteData[]; page: number; limit: number; total: number };
-  tad: { data: CteData[]; page: number; limit: number; total: number };
+  ocorrencias: { data: CteData[]; page: number; limit: number; total: number };
   concluidos: { data: CteData[]; page: number; limit: number; total: number };
 
   setPendenciasPage: (page: number) => void;
@@ -78,8 +78,8 @@ interface DataContextType {
   setCriticosLimit: (limit: number) => void;
   setEmBuscaPage: (page: number) => void;
   setEmBuscaLimit: (limit: number) => void;
-  setTadPage: (page: number) => void;
-  setTadLimit: (limit: number) => void;
+  setOcorrenciasPage: (page: number) => void;
+  setOcorrenciasLimit: (limit: number) => void;
   setConcluidosPage: (page: number) => void;
   setConcluidosLimit: (limit: number) => void;
 
@@ -156,12 +156,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [searchTerm, setSearchTerm] = useState('');
   const [processedData, setProcessedData] = useState<CteData[]>([]);
   const [fullData, setFullData] = useState<CteData[]>([]);
-  const [counts, setCounts] = useState<KPICounts>({ pendencias: 0, criticos: 0, emBusca: 0, tad: 0, concluidos: 0 });
+  const [counts, setCounts] = useState<KPICounts>({ pendencias: 0, criticos: 0, emBusca: 0, ocorrencias: 0, concluidos: 0 });
 
   const [pendenciasState, setPendenciasState] = useState<{ data: CteData[]; page: number; limit: number; total: number }>({ data: [], page: 1, limit: 50, total: 0 });
   const [criticosState, setCriticosState] = useState<{ data: CteData[]; page: number; limit: number; total: number }>({ data: [], page: 1, limit: 50, total: 0 });
   const [emBuscaState, setEmBuscaState] = useState<{ data: CteData[]; page: number; limit: number; total: number }>({ data: [], page: 1, limit: 50, total: 0 });
-  const [tadState, setTadState] = useState<{ data: CteData[]; page: number; limit: number; total: number }>({ data: [], page: 1, limit: 50, total: 0 });
+  const [ocorrenciasState, setOcorrenciasState] = useState<{ data: CteData[]; page: number; limit: number; total: number }>({ data: [], page: 1, limit: 50, total: 0 });
   const [concluidosState, setConcluidosState] = useState<{ data: CteData[]; page: number; limit: number; total: number }>({ data: [], page: 1, limit: 50, total: 0 });
 
   const setPendenciasPage = (page: number) => setPendenciasState(s => ({ ...s, page }));
@@ -170,8 +170,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const setCriticosLimit = (limit: number) => setCriticosState(s => ({ ...s, limit, page: 1 }));
   const setEmBuscaPage = (page: number) => setEmBuscaState(s => ({ ...s, page }));
   const setEmBuscaLimit = (limit: number) => setEmBuscaState(s => ({ ...s, limit, page: 1 }));
-  const setTadPage = (page: number) => setTadState(s => ({ ...s, page }));
-  const setTadLimit = (limit: number) => setTadState(s => ({ ...s, limit, page: 1 }));
+  const setOcorrenciasPage = (page: number) => setOcorrenciasState(s => ({ ...s, page }));
+  const setOcorrenciasLimit = (limit: number) => setOcorrenciasState(s => ({ ...s, limit, page: 1 }));
   const setConcluidosPage = (page: number) => setConcluidosState(s => ({ ...s, page }));
   const setConcluidosLimit = (limit: number) => setConcluidosState(s => ({ ...s, limit, page: 1 }));
 
@@ -226,7 +226,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         pendResp,
         critResp,
         buscaResp,
-        tadResp,
+        ocorrResp,
         conclResp,
         usersData,
       ] = await Promise.all([
@@ -234,7 +234,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         authClient.getCtesView('pendencias', pendenciasState.page, pendenciasState.limit),
         authClient.getCtesView('criticos', criticosState.page, criticosState.limit),
         authClient.getCtesView('em_busca', emBuscaState.page, emBuscaState.limit),
-        authClient.getCtesView('tad', tadState.page, tadState.limit),
+        authClient.getCtesView('ocorrencias', ocorrenciasState.page, ocorrenciasState.limit),
         authClient.getCtesView('concluidos', concluidosState.page, concluidosState.limit),
         authClient.getUsers(),
       ]);
@@ -244,7 +244,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const pendenciasData = normalizeCtes(pendResp.data || []);
       const criticosData = normalizeCtes(critResp.data || []);
       const emBuscaData = normalizeCtes(buscaResp.data || []);
-      const tadData = normalizeCtes(tadResp.data || []);
+      const ocorrenciasData = normalizeCtes(ocorrResp.data || []);
       const concluidosData = normalizeCtes(conclResp.data || []);
 
       const normalizedUsers = usersData.map((row: any) => ({
@@ -278,14 +278,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setPendenciasState(s => ({ ...s, data: pendenciasData, total: pendResp.total || 0 }));
       setCriticosState(s => ({ ...s, data: criticosData, total: critResp.total || 0 }));
       setEmBuscaState(s => ({ ...s, data: emBuscaData, total: buscaResp.total || 0 }));
-      setTadState(s => ({ ...s, data: tadData, total: tadResp.total || 0 }));
+      setOcorrenciasState(s => ({ ...s, data: ocorrenciasData, total: ocorrResp.total || 0 }));
       setConcluidosState(s => ({ ...s, data: concluidosData, total: conclResp.total || 0 }));
 
       setCounts({
         pendencias: pendResp.total || 0,
         criticos: critResp.total || 0,
         emBusca: buscaResp.total || 0,
-        tad: tadResp.total || 0,
+        ocorrencias: ocorrResp.total || 0,
         concluidos: conclResp.total || 0,
       });
 
@@ -302,7 +302,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const refreshViewPage = async (
-    view: 'pendencias' | 'criticos' | 'em_busca' | 'tad' | 'concluidos',
+    view: 'pendencias' | 'criticos' | 'em_busca' | 'ocorrencias' | 'concluidos',
     page: number,
     limit: number,
     setState: React.Dispatch<React.SetStateAction<{ data: CteData[]; page: number; limit: number; total: number }>>,
@@ -343,9 +343,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [user, emBuscaState.page, emBuscaState.limit]);
 
   useEffect(() => {
-    if (user) refreshViewPage('tad', tadState.page, tadState.limit, setTadState, 'tad');
+    if (user) refreshViewPage('ocorrencias', ocorrenciasState.page, ocorrenciasState.limit, setOcorrenciasState, 'ocorrencias');
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, tadState.page, tadState.limit]);
+  }, [user, ocorrenciasState.page, ocorrenciasState.limit]);
 
   useEffect(() => {
     if (user) refreshViewPage('concluidos', concluidosState.page, concluidosState.limit, setConcluidosState, 'concluidos');
@@ -354,7 +354,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const getLatestNote = (_cte: string) => null;
 
-  const isCteTad = (_cte: string, _serie: string) => false;
+  const isCteOcorrencia = (cte: string, serie: string) => {
+    const normalize = (v: string) => String(v || '').replace(/^0+/, '') || '0';
+    const row = baseData.find((c) => c.CTE === cte && normalize(c.SERIE || '0') === normalize(serie || '0'));
+    const status = String(row?.STATUS || '').toUpperCase();
+    return status.includes('OCORR');
+  };
 
   const isCteEmBusca = (_cte: string, _serie: string, originalStatus: string) => originalStatus === 'EM BUSCA';
 
@@ -432,7 +437,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
       } catch {}
 
-      // Se a nota estiver marcando EM BUSCA ou TAD, também gravamos no process_control
+      // Se a nota estiver marcando EM BUSCA ou OCORRÊNCIA, também gravamos no process_control
       // para que o CTE mude de aba (cte_view_index) imediatamente.
       const statusBusca = (notePayload.STATUS_BUSCA || '').trim().toUpperCase();
       if (statusBusca === 'EM BUSCA') {
@@ -450,17 +455,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           serie: notePayload.SERIE || '0',
           payload: { text: notePayload.TEXTO || '', links },
         });
-      } else if (statusBusca === 'TAD') {
+      } else if (statusBusca === 'OCORRENCIA' || statusBusca === 'TAD') {
         await authClient.saveProcessData({
           cte: notePayload.CTE,
           serie: notePayload.SERIE || '0',
           user: notePayload.USUARIO,
-          status: 'TAD',
-          description: notePayload.TEXTO || 'Processo de TAD',
+          status: 'OCORRENCIA',
+          description: notePayload.TEXTO || 'Ocorrência operacional',
           link: links.join(' , '),
         });
         await authClient.logEvent({
-          event: 'CTE_MARK_TAD',
+          event: 'CTE_MARK_OCORRENCIA',
           username: notePayload.USUARIO,
           cte: notePayload.CTE,
           serie: notePayload.SERIE || '0',
@@ -591,7 +596,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       deleteProfile, 
       globalData, 
       isCteEmBusca, 
-      isCteTad, 
+      isCteOcorrencia, 
       counts, 
       getLatestNote,
       // Pagination setters
@@ -615,7 +620,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       pendencias: pendenciasState,
       criticos: criticosState,
       emBusca: emBuscaState,
-      tad: tadState,
+      ocorrencias: ocorrenciasState,
       concluidos: concluidosState
       ,
       setPendenciasPage,
@@ -624,8 +629,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setCriticosLimit,
       setEmBuscaPage,
       setEmBuscaLimit,
-      setTadPage,
-      setTadLimit,
+      setOcorrenciasPage,
+      setOcorrenciasLimit,
       setConcluidosPage,
       setConcluidosLimit
       ,

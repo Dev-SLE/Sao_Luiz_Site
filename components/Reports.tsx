@@ -7,7 +7,7 @@ import { authClient } from '../lib/auth';
 import { FileSpreadsheet, Download, Loader2, SlidersHorizontal, CalendarCheck2 } from 'lucide-react';
 import { CteData } from '../types';
 
-type ReportKind = 'dashboard' | 'pendencias' | 'criticos' | 'em_busca' | 'tad' | 'concluidos' | 'mix' | 'logs';
+type ReportKind = 'dashboard' | 'pendencias' | 'criticos' | 'em_busca' | 'ocorrencias' | 'concluidos' | 'mix' | 'logs';
 
 type ColumnKey =
   | 'CTE'
@@ -174,12 +174,12 @@ const Reports: React.FC = () => {
           setRows((resp?.data || []).map(normalizeRow));
           setTotal(resp?.total || (resp?.data?.length || 0));
         } else if (kind === 'mix') {
-          // Mix: combina pendencias + criticos + em_busca + tad (sem concluídos)
+          // Mix: combina pendencias + criticos + em_busca + ocorrencias (sem concluídos)
           const [p, c, b, t] = await Promise.all([
             authClient.getCtesView('pendencias', 1, limit),
             authClient.getCtesView('criticos', 1, limit),
             authClient.getCtesView('em_busca', 1, limit),
-            authClient.getCtesView('tad', 1, limit),
+            authClient.getCtesView('ocorrencias', 1, limit),
           ]);
           if (cancelled) return;
           const merged = [...(p.data || []), ...(c.data || []), ...(b.data || []), ...(t.data || [])];
@@ -235,12 +235,12 @@ const Reports: React.FC = () => {
         return 'Críticos';
       case 'em_busca':
         return 'Em Busca';
-      case 'tad':
-        return 'TAD';
+      case 'ocorrencias':
+        return 'Ocorrências';
       case 'concluidos':
         return 'Concluídos';
       case 'mix':
-        return 'Mix (pendências + críticos + em busca + TAD)';
+        return 'Mix (pendências + críticos + em busca + ocorrências)';
       case 'logs':
         return 'Logs do sistema';
       default:
@@ -390,7 +390,7 @@ const Reports: React.FC = () => {
             ['pendencias', 'Pendências'],
             ['criticos', 'Críticos'],
             ['em_busca', 'Em Busca'],
-            ['tad', 'TAD'],
+            ['ocorrencias', 'Ocorrências'],
             ['concluidos', 'Concluídos'],
             ['mix', 'Mix'],
             ['logs', 'Logs do Sistema'],

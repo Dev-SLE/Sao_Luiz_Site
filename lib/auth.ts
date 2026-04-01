@@ -189,7 +189,7 @@ export class NeonDataClient {
     return this.fetchData('/ctes', { page, limit });
   }
 
-  async getCtesView(view: 'pendencias' | 'criticos' | 'em_busca' | 'tad' | 'concluidos', page = 1, limit = 50): Promise<{ data: any[], total: number }> {
+  async getCtesView(view: 'pendencias' | 'criticos' | 'em_busca' | 'ocorrencias' | 'concluidos', page = 1, limit = 50): Promise<{ data: any[], total: number }> {
     const endpoint = `/ctes_view?view=${encodeURIComponent(view)}&page=${page}&limit=${limit}`;
     const url = this.makeApiUrl(endpoint);
     const cached = this.getCached(url);
@@ -210,7 +210,7 @@ export class NeonDataClient {
   }
 
   async getCtesViewCounts(payload: {
-    view: 'pendencias' | 'criticos' | 'em_busca' | 'tad' | 'concluidos';
+    view: 'pendencias' | 'criticos' | 'em_busca' | 'ocorrencias' | 'concluidos';
     unit?: string;
     statusFilters?: string[];
     paymentFilters?: string[];
@@ -662,6 +662,45 @@ export class NeonDataClient {
 
   async ackOperationalNotifications(lastLogId: number): Promise<any> {
     return this.postJson("/operational-notifications", { lastLogId });
+  }
+
+  async getOccurrences(params?: { cte?: string; serie?: string; leadId?: string }): Promise<any> {
+    const usp = new URLSearchParams();
+    if (params?.cte) usp.set("cte", params.cte);
+    if (params?.serie) usp.set("serie", params.serie);
+    if (params?.leadId) usp.set("leadId", params.leadId);
+    const qs = usp.toString();
+    return this.fetchData(`/occurrences${qs ? `?${qs}` : ""}`);
+  }
+
+  async createOccurrence(payload: {
+    cte: string;
+    serie?: string;
+    occurrenceType: string;
+    description: string;
+    source?: string;
+    leadId?: string | null;
+    contactName?: string | null;
+    contactPhone?: string | null;
+    createdBy?: string | null;
+  }): Promise<any> {
+    return this.postJson("/occurrences", payload);
+  }
+
+  async getIndemnifications(occurrenceId: string): Promise<any> {
+    return this.fetchData(`/indemnifications?occurrenceId=${encodeURIComponent(occurrenceId)}`);
+  }
+
+  async createIndemnification(payload: any): Promise<any> {
+    return this.postJson("/indemnifications", payload);
+  }
+
+  async getDossier(cte: string, serie = "0"): Promise<any> {
+    return this.fetchData(`/dossie?cte=${encodeURIComponent(cte)}&serie=${encodeURIComponent(serie)}`);
+  }
+
+  async createDossier(payload: { cte: string; serie?: string; title?: string; generatedBy?: string }): Promise<any> {
+    return this.postJson("/dossie", payload);
   }
 
   async saveCrmTeam(payload: any): Promise<any> {

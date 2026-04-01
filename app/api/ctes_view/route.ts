@@ -27,7 +27,8 @@ export async function GET(req: Request) {
     const limit = parseInt(searchParams.get("limit") || "50", 10) || 50;
     const offset = (page - 1) * limit;
 
-    const viewKey = ["pendencias", "criticos", "em_busca", "tad", "concluidos"].includes(view) ? view : "pendencias";
+    const rawViewKey = ["pendencias", "criticos", "em_busca", "ocorrencias", "tad", "concluidos"].includes(view) ? view : "pendencias";
+    const viewKey = rawViewKey === "tad" ? "ocorrencias" : rawViewKey;
     const hasOperationalGlobal =
       can(session, "scope.operacional.all") || can(session, "MANAGE_SETTINGS") || String(session.role || "").toLowerCase() === "admin";
     const linkedDestUnit = String(session.dest || "").trim();
@@ -95,7 +96,13 @@ export async function GET(req: Request) {
             AND $1 <> 'criticos'
             AND (
               ($1 = 'pendencias' AND ${NORMALIZED_STATUS_SQL} IN ('FORA DO PRAZO', 'PRIORIDADE', 'VENCE AMANHA', 'NO PRAZO'))
-              OR ($1 <> 'pendencias' AND COALESCE(i.view, '') = $1)
+              OR (
+                $1 <> 'pendencias'
+                AND (
+                  COALESCE(i.view, '') = $1
+                  OR ($1 = 'ocorrencias' AND COALESCE(i.view, '') = 'tad')
+                )
+              )
             )
             AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'CONCLUIDO%'
             AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'ENTREGUE%'
@@ -124,7 +131,7 @@ export async function GET(req: Request) {
           COALESCE(i.note_count, 0) AS note_count,
           ${assignmentSelect}
           CASE
-            WHEN COALESCE(i.view, '') = 'tad' THEN 'TAD'
+            WHEN COALESCE(i.view, '') IN ('ocorrencias', 'tad') THEN 'OCORRÊNCIA'
             WHEN COALESCE(i.view, '') = 'em_busca' THEN 'EM BUSCA'
             ELSE c.status
           END AS status_exibicao
@@ -161,7 +168,13 @@ export async function GET(req: Request) {
             AND $1 <> 'criticos'
             AND (
               ($1 = 'pendencias' AND ${NORMALIZED_STATUS_SQL} IN ('FORA DO PRAZO', 'PRIORIDADE', 'VENCE AMANHA', 'NO PRAZO'))
-              OR ($1 <> 'pendencias' AND COALESCE(i.view, '') = $1)
+              OR (
+                $1 <> 'pendencias'
+                AND (
+                  COALESCE(i.view, '') = $1
+                  OR ($1 = 'ocorrencias' AND COALESCE(i.view, '') = 'tad')
+                )
+              )
             )
             AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'CONCLUIDO%'
             AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'ENTREGUE%'

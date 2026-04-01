@@ -165,7 +165,8 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
     const t = (title || '').toLowerCase();
     if (t.includes('crític') || t.includes('critic')) return 'criticos' as const;
     if (t.includes('em busca')) return 'em_busca' as const;
-    if (t.includes('tad')) return 'tad' as const;
+    if (t.includes('ocorr')) return 'ocorrencias' as const;
+    if (t.includes('tad')) return 'ocorrencias' as const;
     if (t.includes('conclu')) return 'concluidos' as const;
     return 'pendencias' as const;
   }, [title]);

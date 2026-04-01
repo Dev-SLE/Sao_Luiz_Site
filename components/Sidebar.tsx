@@ -66,11 +66,11 @@ const Sidebar: React.FC<Props> = ({ currentPage, setPage }) => {
           icon: Search,
           count: counts.emBusca,
         },
-        hasPermission('VIEW_TAD') && {
-          id: Page.TAD,
-          label: 'Processos TAD',
+        hasPermission('tab.operacional.ocorrencias.view') && {
+          id: Page.OCORRENCIAS,
+          label: 'Ocorrências',
           icon: Tag,
-          count: counts.tad,
+          count: counts.ocorrencias,
         },
         hasPermission('VIEW_RASTREIO_OPERACIONAL') && {
           id: Page.RASTREIO_OPERACIONAL,

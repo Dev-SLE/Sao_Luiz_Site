@@ -1857,6 +1857,55 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
             >
               Acionar agência e mover para retorno
             </button>
+            <div className="grid grid-cols-1 gap-2">
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!selectedLead.cte) return;
+                  await authClient.createOccurrence({
+                    cte: selectedLead.cte,
+                    serie: "0",
+                    occurrenceType: "OUTROS",
+                    description: `Ocorrência aberta pelo CRM (Lead: ${selectedLead.title})`,
+                    source: "CRM",
+                    leadId: selectedLead.id,
+                    contactPhone: selectedLead.phone || null,
+                    createdBy: user?.username || null,
+                  });
+                }}
+                className="w-full px-3 py-2 text-xs rounded-lg bg-violet-50 text-violet-700 font-semibold hover:bg-violet-100 border border-violet-200"
+              >
+                Abrir ocorrência neste LEAD
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!selectedLead.cte) return;
+                  const occ = await authClient.getOccurrences({ cte: selectedLead.cte, leadId: selectedLead.id });
+                  const count = Array.isArray(occ?.items) ? occ.items.length : 0;
+                  window.alert(`Este lead possui ${count} ocorrência(s) vinculada(s).`);
+                }}
+                className="w-full px-3 py-2 text-xs rounded-lg bg-slate-50 text-slate-700 font-semibold hover:bg-slate-100 border border-slate-200"
+              >
+                Ver histórico de ocorrências
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!selectedLead.cte) return;
+                  await authClient.createDossier({
+                    cte: selectedLead.cte,
+                    serie: "0",
+                    generatedBy: user?.username || null,
+                  });
+                  const url = `/api/dossie/pdf?cte=${encodeURIComponent(selectedLead.cte)}&serie=0`;
+                  window.open(url, "_blank");
+                }}
+                className="w-full px-3 py-2 text-xs rounded-lg bg-indigo-50 text-indigo-700 font-semibold hover:bg-indigo-100 border border-indigo-200"
+              >
+                Gerar/baixar dossiê PDF
+              </button>
+            </div>
             <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-1">
               <p className="text-[11px] text-slate-500 uppercase tracking-wide">Contato</p>
               <p className="text-xs text-slate-700">

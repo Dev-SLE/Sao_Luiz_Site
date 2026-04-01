@@ -21,7 +21,7 @@ const viewLabelOverrides: Partial<Record<Page, string>> = {
   [Page.PENDENCIAS]: 'Tela: Pendências',
   [Page.CRITICOS]: 'Tela: Críticos',
   [Page.EM_BUSCA]: 'Tela: Em Busca',
-  [Page.TAD]: 'Tela: Processos TAD',
+  [Page.OCORRENCIAS]: 'Tela: Ocorrências',
   [Page.CONCLUIDOS]: 'Tela: Concluídos/Resolvidos',
   [Page.CRM_DASHBOARD]: 'Tela: Dashboard CRM',
   [Page.CRM_FUNIL]: 'Tela: Funil de Rastreio',
@@ -35,7 +35,7 @@ const humanizePage = (p: Page) => {
   return words
     .map(w => {
       if (w.toLowerCase() === 'crm') return 'CRM';
-      if (w.toLowerCase() === 'tad') return 'TAD';
+      if (w.toLowerCase() === 'ocorrencias') return 'Ocorrências';
       const lower = w.toLowerCase();
       return lower.charAt(0).toUpperCase() + lower.slice(1);
     })
@@ -54,7 +54,7 @@ const autoViewPermissions = Array.from(
 const PERMISSIONS: Array<{ key: string; label: string; description: string }> = [
   ...autoViewPermissions,
   // Ações (funções)
-  { key: 'EDIT_NOTES', label: 'Ação: Criar/editar anotações', description: 'Permite registrar notas e marcar status (Em Busca/TAD/Resolvido).' },
+  { key: 'EDIT_NOTES', label: 'Ação: Criar/editar anotações', description: 'Permite registrar notas e marcar status (Em Busca/Ocorrência/Resolvido).' },
   { key: 'ASSIGN_OPERATIONAL_PENDING', label: 'Ação: Atribuir pendência operacional', description: 'Permite atribuir/remover pendência da agência por CTE (unidade + responsável).' },
   { key: 'RETURN_OPERATIONAL_PENDING', label: 'Ação: Devolver pendência operacional', description: 'Permite devolver atribuição com motivo obrigatório.' },
   { key: 'EXPORT_DATA', label: 'Ação: Exportar dados', description: 'Permite exportar Excel nas tabelas.' },

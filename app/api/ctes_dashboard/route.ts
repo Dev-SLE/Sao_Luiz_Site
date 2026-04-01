@@ -16,7 +16,7 @@ export async function GET(req: Request) {
     const limit = parseInt(searchParams.get("limit") || "10000", 10) || 10000;
     const offset = (page - 1) * limit;
 
-    const views = ["pendencias", "criticos", "em_busca", "tad"] as const;
+    const views = ["pendencias", "criticos", "em_busca", "ocorrencias", "tad"] as const;
 
     // Total = quantidade de (cte, serie) distinta considerando as views elegíveis
     const pool = getPool();
@@ -48,7 +48,7 @@ export async function GET(req: Request) {
             i.status_calculado,
             i.note_count,
             CASE
-              WHEN i.view = 'tad' THEN 'TAD'
+              WHEN i.view = 'ocorrencias' OR i.view = 'tad' THEN 'OCORRÊNCIA'
               WHEN i.view = 'em_busca' THEN 'EM BUSCA'
               ELSE c.status
             END AS status_exibicao,
@@ -57,7 +57,7 @@ export async function GET(req: Request) {
               ORDER BY
                 CASE
                   WHEN i.view = 'criticos' THEN 1
-                  WHEN i.view = 'tad' THEN 2
+                  WHEN i.view = 'ocorrencias' THEN 2
                   WHEN i.view = 'em_busca' THEN 3
                   WHEN i.view = 'pendencias' THEN 4
                   ELSE 5
