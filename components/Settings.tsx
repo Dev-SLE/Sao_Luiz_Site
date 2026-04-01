@@ -1,75 +1,125 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
-import { Page, UserData, ProfileData } from '../types';
+import { UserData, ProfileData } from '../types';
 import { Trash2, UserPlus, Save, Copy, Shield, Users, CheckSquare, Square, X, Activity, Search, Pencil } from 'lucide-react';
 import clsx from 'clsx';
 import { authClient } from '../lib/auth';
 import CrmOpsAdmin from './CrmOpsAdmin';
 import { AppConfirmModal, AppMessageModal, type AppMessageVariant } from './AppOverlays';
 import * as XLSX from 'xlsx';
-import { PERMISSION_CATALOG } from '../lib/permissions';
+import {
+  PERMISSION_CATALOG,
+  PERMISSION_SECTION_LABELS,
+  PERMISSION_SECTION_ORDER,
+  getPermissionEquivalence,
+  type PermissionSectionId,
+} from '../lib/permissions';
 
-const excludedViewPages = new Set<Page>([
-  Page.CONFIGURACOES,
-  Page.SOFIA_CONFIG,
-  Page.MUDAR_SENHA,
-]);
-
-const viewLabelOverrides: Partial<Record<Page, string>> = {
-  [Page.DASHBOARD]: 'Dashboard Operacional',
-  [Page.PENDENCIAS]: 'Tela: Pendências',
-  [Page.CRITICOS]: 'Tela: Críticos',
-  [Page.EM_BUSCA]: 'Tela: Em Busca',
-  [Page.OCORRENCIAS]: 'Tela: Ocorrências',
-  [Page.CONCLUIDOS]: 'Tela: Concluídos/Resolvidos',
-  [Page.CRM_DASHBOARD]: 'Tela: Dashboard CRM',
-  [Page.CRM_FUNIL]: 'Tela: Funil de Rastreio',
-  [Page.CRM_CHAT]: 'Tela: Chat IA',
-  [Page.RELATORIOS]: 'Tela: Relatórios',
+type ProfilePermissionRow = {
+  key: string;
+  label: string;
+  description: string;
+  section: PermissionSectionId;
 };
 
-const humanizePage = (p: Page) => {
-  if (viewLabelOverrides[p]) return viewLabelOverrides[p];
-  const words = String(p).split('_').filter(Boolean);
-  return words
-    .map(w => {
-      if (w.toLowerCase() === 'crm') return 'CRM';
-      if (w.toLowerCase() === 'ocorrencias') return 'Ocorrências';
-      const lower = w.toLowerCase();
-      return lower.charAt(0).toUpperCase() + lower.slice(1);
-    })
-    .join(' ');
-};
-
-const autoViewPermissions = Array.from(
-  new Set(
-    Object.values(Page)
-      .filter((p): p is Page => typeof p === 'string')
-      .filter(p => !excludedViewPages.has(p))
-      .map(p => ({ key: `VIEW_${String(p).toUpperCase()}`, label: humanizePage(p), description: `Acessar ${humanizePage(p).toLowerCase()}.` }))
-  )
-);
-
-const PERMISSIONS: Array<{ key: string; label: string; description: string }> = [
-  ...autoViewPermissions,
-  // Ações (funções)
-  { key: 'EDIT_NOTES', label: 'Ação: Criar/editar anotações', description: 'Permite registrar notas e marcar status (Em Busca/Ocorrência/Resolvido).' },
-  { key: 'ASSIGN_OPERATIONAL_PENDING', label: 'Ação: Atribuir pendência operacional', description: 'Permite atribuir/remover pendência da agência por CTE (unidade + responsável).' },
-  { key: 'RETURN_OPERATIONAL_PENDING', label: 'Ação: Devolver pendência operacional', description: 'Permite devolver atribuição com motivo obrigatório.' },
-  { key: 'EXPORT_DATA', label: 'Ação: Exportar dados', description: 'Permite exportar Excel nas tabelas.' },
-  { key: 'EXPORT_SYSTEM_LOGS', label: 'Ação: Exportar logs', description: 'Permite exportar logs do sistema (CSV/Excel).' },
-  { key: 'MANAGE_RASTREIO_OPERACIONAL', label: 'Ação: Atualizar rastreio operacional', description: 'Permite registrar atualizações manuais do rastreio (paradas, ônibus, fotos e status de descarga).' },
-  // Administração
-  { key: 'MANAGE_SETTINGS', label: 'Admin: Configurações', description: 'Acessar a área de configurações.' },
-  { key: 'MANAGE_USERS', label: 'Admin: Usuários', description: 'Criar/remover usuários.' },
-  { key: 'MANAGE_SOFIA', label: 'Admin: Sofia', description: 'Acessar configurações da Sofia.' },
-  { key: 'MANAGE_CRM_OPS', label: 'Admin: Operação CRM', description: 'Gerenciar times, membros, regras e roteamento do CRM.' },
-  { key: 'CRM_SCOPE_SELF', label: 'CRM Escopo: Somente próprio', description: 'Atendente vê apenas conversas atribuídas a ele.' },
-  { key: 'CRM_SCOPE_TEAM', label: 'CRM Escopo: Equipe', description: 'Supervisor vê conversas da equipe e não atribuídas.' },
-  { key: 'CRM_SCOPE_ALL', label: 'CRM Escopo: Global', description: 'Gestor vê todas as conversas.' },
-  ...PERMISSION_CATALOG.map((p) => ({ key: p.key, label: p.label, description: p.description })),
+/** Permissões extras (telas legadas e admin) — sem duplicar o catálogo nem EDIT_NOTES / VIEW_PENDENCIAS etc. */
+const EXTRA_PROFILE_PERMISSIONS: ProfilePermissionRow[] = [
+  {
+    key: 'VIEW_DASHBOARD',
+    section: 'operacional',
+    label: 'Visão geral (Dashboard)',
+    description: 'Tela inicial do operacional. Use também o módulo operacional para o menu.',
+  },
+  {
+    key: 'VIEW_RASTREIO_OPERACIONAL',
+    section: 'operacional',
+    label: 'Rastreio operacional (tela)',
+    description: 'Abrir a tela de rastreio; a atualização manual exige a permissão “Atualizar rastreio” abaixo.',
+  },
+  {
+    key: 'MANAGE_RASTREIO_OPERACIONAL',
+    section: 'operacional',
+    label: 'Atualizar rastreio operacional',
+    description: 'Registrar paradas, ônibus, fotos e status de descarga.',
+  },
+  {
+    key: 'VIEW_RELATORIOS',
+    section: 'comercial',
+    label: 'Relatórios',
+    description: 'Acessar relatórios.',
+  },
+  {
+    key: 'VIEW_COMERCIAL_AUDITORIA',
+    section: 'comercial',
+    label: 'Comercial — Metas / auditoria',
+    description: 'Tela Comercial Metas.',
+  },
+  {
+    key: 'VIEW_COMERCIAL_ROBO_SUPREMO',
+    section: 'comercial',
+    label: 'Comercial — Robô Supremo',
+    description: 'Ferramenta Robô Supremo.',
+  },
+  {
+    key: 'EXPORT_DATA',
+    section: 'sistema',
+    label: 'Exportar dados (Excel)',
+    description: 'Exportar Excel nas tabelas.',
+  },
+  {
+    key: 'EXPORT_SYSTEM_LOGS',
+    section: 'sistema',
+    label: 'Exportar logs do sistema',
+    description: 'Exportar CSV/Excel na aba Logs.',
+  },
+  {
+    key: 'MANAGE_SETTINGS',
+    section: 'sistema',
+    label: 'Configurações e logs',
+    description: 'Acessar configurações e visualizar logs do sistema.',
+  },
+  {
+    key: 'MANAGE_USERS',
+    section: 'sistema',
+    label: 'Gerenciar usuários',
+    description: 'Criar e remover usuários.',
+  },
+  {
+    key: 'MANAGE_SOFIA',
+    section: 'sistema',
+    label: 'Configurações Sofia',
+    description: 'Ajustes da Sofia.',
+  },
+  {
+    key: 'MANAGE_CRM_OPS',
+    section: 'sistema',
+    label: 'Operação CRM (times e roteamento)',
+    description: 'Gerenciar times, membros e roteamento do CRM.',
+  },
 ];
+
+const CATALOG_ROWS: ProfilePermissionRow[] = PERMISSION_CATALOG.map((p) => ({
+  key: p.key,
+  label: p.label,
+  description: p.description,
+  section: p.section,
+}));
+
+const PROFILE_PERMISSION_ROWS: ProfilePermissionRow[] = [...CATALOG_ROWS, ...EXTRA_PROFILE_PERMISSIONS];
+
+function groupProfilePermissions(rows: ProfilePermissionRow[]): Record<PermissionSectionId, ProfilePermissionRow[]> {
+  const out = {} as Record<PermissionSectionId, ProfilePermissionRow[]>;
+  for (const id of PERMISSION_SECTION_ORDER) {
+    out[id] = [];
+  }
+  for (const r of rows) {
+    out[r.section].push(r);
+  }
+  return out;
+}
+
+const PROFILE_PERMISSIONS_BY_SECTION = groupProfilePermissions(PROFILE_PERMISSION_ROWS);
 
 const Settings: React.FC = () => {
   const { user } = useAuth();
@@ -219,12 +269,19 @@ const Settings: React.FC = () => {
   };
 
   const togglePermission = (perm: string) => {
-      if (!editingProfile) return;
-      const current = editingProfile.permissions || [];
-      const newPerms = current.includes(perm) 
-          ? current.filter(p => p !== perm) 
-          : [...current, perm];
-      setEditingProfile({ ...editingProfile, permissions: newPerms });
+    if (!editingProfile) return;
+    const eq = getPermissionEquivalence(perm);
+    const current = editingProfile.permissions || [];
+    const has = current.some((p) => eq.has(p));
+    const newPerms = has ? current.filter((p) => !eq.has(p)) : [...current, perm];
+    setEditingProfile({ ...editingProfile, permissions: newPerms });
+  };
+
+  const isPermissionChecked = (key: string) => {
+    if (!editingProfile) return false;
+    const current = editingProfile.permissions || [];
+    const eq = getPermissionEquivalence(key);
+    return current.some((p) => eq.has(p));
   };
 
   useEffect(() => {
@@ -545,30 +602,56 @@ const Settings: React.FC = () => {
                               </div>
 
                               <div>
-                                  <label className="text-xs font-bold text-slate-600 uppercase mb-3 block">Permissões de Acesso</label>
-                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                      {PERMISSIONS.map(({ key, label, description }) => {
-                                          const isChecked = editingProfile.permissions?.includes(key);
-                                          return (
-                                              <div 
-                                                key={key} 
-                                                onClick={() => togglePermission(key)}
-                                                className={clsx(
-                                                    "flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all select-none",
+                                  <label className="text-xs font-bold text-slate-600 uppercase mb-3 block">
+                                    Permissões de acesso
+                                  </label>
+                                  <p className="text-[11px] text-slate-500 mb-4">
+                                    Itens agrupados por módulo. Chaves novas (ex.: <code className="text-[10px]">tab.operacional.*</code>) substituem
+                                    as antigas (<code className="text-[10px]">VIEW_*</code>) — marcar uma opção liga ou desliga todas as variantes equivalentes.
+                                  </p>
+                                  <div className="space-y-8">
+                                    {PERMISSION_SECTION_ORDER.map((sectionId) => {
+                                      const rows = PROFILE_PERMISSIONS_BY_SECTION[sectionId];
+                                      if (!rows.length) return null;
+                                      return (
+                                        <div key={sectionId} className="space-y-3">
+                                          <h4 className="text-sm font-bold text-slate-900 border-b border-slate-200 pb-2 flex items-center gap-2">
+                                            <span className="h-2 w-2 rounded-full bg-[#2c348c]" />
+                                            {PERMISSION_SECTION_LABELS[sectionId]}
+                                          </h4>
+                                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                            {rows.map(({ key, label, description }) => {
+                                              const isChecked = isPermissionChecked(key);
+                                              return (
+                                                <div
+                                                  key={key}
+                                                  onClick={() => togglePermission(key)}
+                                                  className={clsx(
+                                                    'flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all select-none',
                                                     isChecked
-                                                      ? "border-[#2c348c]/40 bg-slate-50 text-slate-900"
-                                                      : "border-slate-200 bg-white text-slate-600 hover:bg-slate-100"
-                                                )}
-                                              >
-                                                  {isChecked ? <CheckSquare size={20} className="text-[#2c348c]" /> : <Square size={20} />}
-                                                  <div className="flex flex-col">
+                                                      ? 'border-[#2c348c]/40 bg-slate-50 text-slate-900'
+                                                      : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-100',
+                                                  )}
+                                                >
+                                                  {isChecked ? (
+                                                    <CheckSquare size={20} className="text-[#2c348c]" />
+                                                  ) : (
+                                                    <Square size={20} />
+                                                  )}
+                                                  <div className="flex flex-col min-w-0">
                                                     <span className="font-bold text-sm text-slate-800">{label}</span>
                                                     <span className="text-[11px] text-slate-500">{description}</span>
-                                                    <span className="mt-1 font-mono text-[10px] text-[#2c348c]/80">{key}</span>
+                                                    <span className="mt-1 font-mono text-[10px] text-[#2c348c]/80 break-all">
+                                                      {key}
+                                                    </span>
                                                   </div>
-                                              </div>
-                                          );
-                                      })}
+                                                </div>
+                                              );
+                                            })}
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
                                   </div>
                               </div>
 
