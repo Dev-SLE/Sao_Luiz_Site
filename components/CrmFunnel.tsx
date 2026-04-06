@@ -727,7 +727,8 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
               Funil de Atendimento CRM
             </h1>
             <p className="text-xs text-slate-600">
-              Organize leads por estágio e prioridade, com foco em rastreio.
+              Organize leads por estágio e prioridade, com foco em rastreio. Este funil é{' '}
+              <strong>operacional</strong> (não inclui pipeline comercial de vendas com valor e forecast).
             </p>
           </div>
         </div>

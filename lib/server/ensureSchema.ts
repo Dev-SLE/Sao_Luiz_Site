@@ -267,6 +267,52 @@ export async function ensureCrmSchemaTables() {
     ON pendencias.crm_outbox(status, next_attempt_at)
   `);
 
+  // Cadências comerciais (follow-up automático por fase/tempo)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS pendencias.crm_cadences (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      name text NOT NULL,
+      is_active boolean NOT NULL DEFAULT true,
+      stage_id uuid REFERENCES pendencias.crm_stages(id) ON DELETE SET NULL,
+      trigger_after_minutes int NOT NULL DEFAULT 1440,
+      message_template text NOT NULL,
+      created_by text,
+      created_at timestamptz NOT NULL DEFAULT NOW(),
+      updated_at timestamptz NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_crm_cadences_stage_active
+    ON pendencias.crm_cadences(stage_id, is_active)
+  `);
+
+  // Campanhas outbound com consentimento explícito
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS pendencias.crm_campaigns (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      name text NOT NULL,
+      audience_filter jsonb NOT NULL DEFAULT '{}'::jsonb,
+      message_template text NOT NULL,
+      require_opt_in boolean NOT NULL DEFAULT true,
+      status text NOT NULL DEFAULT 'DRAFT',
+      created_by text,
+      created_at timestamptz NOT NULL DEFAULT NOW(),
+      updated_at timestamptz NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS pendencias.crm_campaign_dispatches (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      campaign_id uuid NOT NULL REFERENCES pendencias.crm_campaigns(id) ON DELETE CASCADE,
+      lead_id uuid NOT NULL REFERENCES pendencias.crm_leads(id) ON DELETE CASCADE,
+      conversation_id uuid REFERENCES pendencias.crm_conversations(id) ON DELETE SET NULL,
+      opted_in boolean NOT NULL DEFAULT false,
+      status text NOT NULL DEFAULT 'PENDING',
+      created_at timestamptz NOT NULL DEFAULT NOW(),
+      UNIQUE (campaign_id, lead_id)
+    )
+  `);
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS pendencias.crm_activities (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -282,6 +328,75 @@ export async function ensureCrmSchemaTables() {
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_crm_activities_lead_created
     ON pendencias.crm_activities(lead_id, created_at DESC)
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS pendencias.crm_tasks (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      title text NOT NULL,
+      notes text,
+      status text NOT NULL DEFAULT 'OPEN',
+      due_at timestamptz,
+      assigned_username text NOT NULL,
+      created_by text,
+      lead_id uuid REFERENCES pendencias.crm_leads(id) ON DELETE SET NULL,
+      conversation_id uuid REFERENCES pendencias.crm_conversations(id) ON DELETE SET NULL,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_crm_tasks_assignee_status_due
+    ON pendencias.crm_tasks(assigned_username, status, due_at)
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_crm_tasks_lead
+    ON pendencias.crm_tasks(lead_id)
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS pendencias.crm_contact_prefs (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      phone_last10 text,
+      email_normalized text,
+      allow_whatsapp_marketing boolean NOT NULL DEFAULT true,
+      allow_campaigns boolean NOT NULL DEFAULT true,
+      notes text,
+      updated_by text,
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_crm_contact_prefs_phone
+    ON pendencias.crm_contact_prefs(phone_last10)
+    WHERE phone_last10 IS NOT NULL AND btrim(phone_last10) <> ''
+  `);
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_crm_contact_prefs_email
+    ON pendencias.crm_contact_prefs(email_normalized)
+    WHERE email_normalized IS NOT NULL AND btrim(email_normalized) <> ''
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS pendencias.crm_consent_events (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      phone_last10 text,
+      email_normalized text,
+      lead_id uuid REFERENCES pendencias.crm_leads(id) ON DELETE SET NULL,
+      event_type text NOT NULL,
+      reason text,
+      payload jsonb,
+      actor_username text,
+      created_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_crm_consent_events_phone
+    ON pendencias.crm_consent_events(phone_last10, created_at DESC)
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_crm_consent_events_email
+    ON pendencias.crm_consent_events(email_normalized, created_at DESC)
   `);
 
   // Config da Sofia (futuro). Por enquanto, ainda pode ficar vazio.

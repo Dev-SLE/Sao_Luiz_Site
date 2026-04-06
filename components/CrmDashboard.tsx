@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, BarChart, XAxis, YAxis, Bar } from 'recharts';
-import { MessageSquare, Activity, Radar, Filter } from 'lucide-react';
+import { MessageSquare, Activity, Radar, Filter, Download } from 'lucide-react';
 import { authClient } from '../lib/auth';
 
 const CHANNEL_COLORS: Record<string, string> = {
@@ -9,8 +9,30 @@ const CHANNEL_COLORS: Record<string, string> = {
   INTERNO: '#9ca3af',
 };
 
+function csvEscape(v: unknown): string {
+  const s = v == null ? '' : String(v);
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
+function downloadCsv(filename: string, header: string[], rows: string[][]) {
+  const lines = [header.join(','), ...rows.map((r) => r.map(csvEscape).join(','))];
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 const CrmDashboard: React.FC = () => {
   const [productivity, setProductivity] = useState<any>(null);
+  const [executive, setExecutive] = useState<any>(null);
+  const [filterFrom, setFilterFrom] = useState('');
+  const [filterTo, setFilterTo] = useState('');
+  const [filterChannel, setFilterChannel] = useState('');
+  const [filterTeamId, setFilterTeamId] = useState('');
 
   const conversationsByChannel = useMemo(
     () =>
@@ -43,23 +65,84 @@ const CrmDashboard: React.FC = () => {
 
   const topAgents = useMemo(() => productivity?.agents || [], [productivity]);
 
+  const filterParams = useMemo(
+    () => ({
+      from: filterFrom.trim() || null,
+      to: filterTo.trim() || null,
+      channel: filterChannel.trim() || null,
+      teamId: filterTeamId.trim() || null,
+    }),
+    [filterFrom, filterTo, filterChannel, filterTeamId]
+  );
+
+  const loadData = useCallback(async () => {
+    try {
+      const [data, exec] = await Promise.all([
+        authClient.getCrmProductivity(filterParams),
+        authClient.getCrmExecutiveKpis(filterParams),
+      ]);
+      setProductivity(data);
+      setExecutive(exec);
+    } catch {
+      setProductivity(null);
+      setExecutive(null);
+    }
+  }, [filterParams]);
+
   useEffect(() => {
     let cancelled = false;
     const run = async () => {
-      try {
-        const data = await authClient.getCrmProductivity();
-        if (!cancelled) setProductivity(data);
-      } catch {
-        if (!cancelled) setProductivity(null);
-      }
+      await loadData();
     };
-    run();
-    const interval = window.setInterval(run, 8000);
+    void run();
+    const interval = window.setInterval(() => {
+      if (!cancelled) void loadData();
+    }, 8000);
     return () => {
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, []);
+  }, [loadData]);
+
+  const exportKpisCsv = () => {
+    if (!executive) return;
+    const f = executive?.filters || {};
+    const header = ['recorte', 'valor'];
+    const rows: string[][] = [
+      ['periodo_inicio', f.from || ''],
+      ['periodo_fim', f.to || ''],
+      ['canal', f.channel || ''],
+      ['time_id', f.teamId || ''],
+      ['total_leads', String(executive?.kpis?.totalLeads ?? '')],
+      ['convertidos', String(executive?.kpis?.convertidos ?? '')],
+      ['alta_prioridade', String(executive?.kpis?.altaPrioridade ?? '')],
+      ['conversas_ativas', String(executive?.kpis?.totalConversasAtivas ?? '')],
+      ['sla_hit_pct', String(executive?.kpis?.slaHitRate ?? '')],
+    ];
+    downloadCsv(`crm_kpis_${new Date().toISOString().slice(0, 10)}.csv`, header, rows);
+  };
+
+  const exportProductivityCsv = () => {
+    if (!productivity) return;
+    const f = productivity?.filters || {};
+    const header = ['tipo', 'chave', 'metrica', 'valor'];
+    const rows: string[][] = [];
+    rows.push(['filtro', 'periodo_inicio', '', f.from || '']);
+    rows.push(['filtro', 'periodo_fim', '', f.to || '']);
+    rows.push(['filtro', 'canal', '', f.channel || '']);
+    rows.push(['filtro', 'time_id', '', f.teamId || '']);
+    (productivity.channels || []).forEach((c: any) => {
+      rows.push(['canal', String(c.channel || ''), 'total', String(c.total ?? '')]);
+    });
+    (productivity.agents || []).forEach((a: any) => {
+      rows.push(['agente', String(a.username || ''), 'abertos', String(a.openCount ?? '')]);
+      rows.push(['agente', String(a.username || ''), 'sla_estourado', String(a.slaBreached ?? '')]);
+    });
+    (productivity.stageTimes || []).forEach((s: any) => {
+      rows.push(['estagio', String(s.stage || ''), 'avg_minutos', String(s.minutes ?? '')]);
+    });
+    downloadCsv(`crm_produtividade_${new Date().toISOString().slice(0, 10)}.csv`, header, rows);
+  };
 
   return (
     <div className="flex flex-col gap-4 animate-in fade-in duration-500 text-slate-900">
@@ -75,10 +158,79 @@ const CrmDashboard: React.FC = () => {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2 text-[11px] font-medium text-slate-700">
-          <Filter size={14} />
-          <span>Filtros globais virão da futura API CRM.</span>
+        <div className="flex flex-col gap-2 md:flex-row md:flex-wrap md:items-end md:justify-end text-[11px] font-medium text-slate-700">
+          <div className="flex items-center gap-1 text-slate-500">
+            <Filter size={14} />
+            <span>Recorte</span>
+          </div>
+          <input
+            type="date"
+            className="rounded border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-800"
+            value={filterFrom}
+            onChange={(e) => setFilterFrom(e.target.value)}
+            title="Leads atualizados a partir de (opcional)"
+          />
+          <input
+            type="date"
+            className="rounded border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-800"
+            value={filterTo}
+            onChange={(e) => setFilterTo(e.target.value)}
+            title="Leads atualizados até (opcional)"
+          />
+          <select
+            className="rounded border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-800"
+            value={filterChannel}
+            onChange={(e) => setFilterChannel(e.target.value)}
+          >
+            <option value="">Todos os canais</option>
+            <option value="WHATSAPP">WhatsApp</option>
+            <option value="IA">IA</option>
+            <option value="INTERNO">Interno</option>
+          </select>
+          <select
+            className="rounded border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-800 max-w-[180px]"
+            value={filterTeamId}
+            onChange={(e) => setFilterTeamId(e.target.value)}
+          >
+            <option value="">Todos os times</option>
+            {(productivity?.teamOptions || []).map((t: any) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="inline-flex items-center gap-1 rounded border border-slate-300 bg-white px-2 py-1 hover:bg-slate-50"
+            onClick={() => {
+              setFilterFrom('');
+              setFilterTo('');
+              setFilterChannel('');
+              setFilterTeamId('');
+            }}
+          >
+            Limpar
+          </button>
         </div>
+      </div>
+
+      <div className="flex flex-wrap gap-2 text-[11px]">
+        <button
+          type="button"
+          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold text-slate-700 hover:border-[#2c348c]/35"
+          onClick={exportKpisCsv}
+        >
+          <Download size={14} />
+          CSV KPIs
+        </button>
+        <button
+          type="button"
+          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold text-slate-700 hover:border-[#2c348c]/35"
+          onClick={exportProductivityCsv}
+        >
+          <Download size={14} />
+          CSV produtividade
+        </button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -86,7 +238,7 @@ const CrmDashboard: React.FC = () => {
           <div>
             <p className="text-[11px] text-slate-700 uppercase tracking-wide">Conversas ativas</p>
             <p className="text-2xl font-black">
-              {conversationsByChannel.reduce((acc: number, c: any) => acc + Number(c.value || 0), 0)}
+              {executive?.kpis?.totalConversasAtivas ?? conversationsByChannel.reduce((acc: number, c: any) => acc + Number(c.value || 0), 0)}
             </p>
             <p className="mt-1 text-[11px] text-slate-600">
               Distribuídas entre WhatsApp, IA e Interno.
@@ -98,11 +250,11 @@ const CrmDashboard: React.FC = () => {
         <div className="surface-card interactive-lift p-4 flex items-center justify-between">
           <div>
             <p className="text-[11px] text-slate-700 uppercase tracking-wide">
-              Tempo médio de resposta
+              Taxa de SLA cumprido
             </p>
-            <p className="text-2xl font-black">{productivity?.sla?.hitRate ?? 0}%</p>
+            <p className="text-2xl font-black">{executive?.kpis?.slaHitRate ?? productivity?.sla?.hitRate ?? 0}%</p>
             <p className="mt-1 text-[11px] text-slate-600">
-              Taxa de cumprimento do SLA nas conversas ativas.
+              Conversas que não estouraram o SLA.
             </p>
           </div>
           <Radar size={32} className="text-sky-400" />
@@ -111,13 +263,16 @@ const CrmDashboard: React.FC = () => {
         <div className="surface-card interactive-lift p-4 flex flex-col justify-between">
           <div>
             <p className="text-[11px] text-slate-700 uppercase tracking-wide">
-              Rastreios automáticos de CTE (hoje)
+              Leads convertidos
             </p>
-            <p className="text-2xl font-black">{cteVolumeToday}</p>
+            <p className="text-2xl font-black">{executive?.kpis?.convertidos ?? 0}</p>
             <p className="mt-1 text-[11px] text-slate-600">
-              Consultas disparadas pela IA ao detectar CTE nas conversas.
+              Total de oportunidades com status final positivo.
             </p>
           </div>
+          <p className="text-[10px] text-slate-500">
+            Rastreios automáticos IA hoje: {cteVolumeToday}
+          </p>
         </div>
       </div>
 

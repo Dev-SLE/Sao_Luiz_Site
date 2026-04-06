@@ -155,6 +155,7 @@ export class NeonDataClient {
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify(body ?? {}),
     });
     if (!response.ok) {
@@ -931,8 +932,19 @@ export class NeonDataClient {
     return this.postJson("/crm/sla", { action: "DELETE", id });
   }
 
-  async getCrmProductivity(): Promise<any> {
-    const url = this.makeApiUrl('/crm/productivity');
+  async getCrmProductivity(params?: {
+    from?: string | null;
+    to?: string | null;
+    channel?: string | null;
+    teamId?: string | null;
+  }): Promise<any> {
+    const usp = new URLSearchParams();
+    if (params?.from) usp.set("from", params.from);
+    if (params?.to) usp.set("to", params.to);
+    if (params?.channel) usp.set("channel", params.channel);
+    if (params?.teamId) usp.set("teamId", params.teamId);
+    const qs = usp.toString();
+    const url = `${this.makeApiUrl("/crm/productivity")}${qs ? `?${qs}` : ""}`;
     const cached = this.getCached(url);
     if (cached) return cached;
     const resp = await fetch(url);
@@ -940,6 +952,110 @@ export class NeonDataClient {
     const data = await resp.json();
     this.setCached(url, data, 8_000);
     return data;
+  }
+
+  async getCrmExecutiveKpis(params?: {
+    from?: string | null;
+    to?: string | null;
+    channel?: string | null;
+    teamId?: string | null;
+  }): Promise<any> {
+    const usp = new URLSearchParams();
+    if (params?.from) usp.set("from", params.from);
+    if (params?.to) usp.set("to", params.to);
+    if (params?.channel) usp.set("channel", params.channel);
+    if (params?.teamId) usp.set("teamId", params.teamId);
+    const qs = usp.toString();
+    const url = `${this.makeApiUrl("/crm/executive-kpis")}${qs ? `?${qs}` : ""}`;
+    const cached = this.getCached(url);
+    if (cached) return cached;
+    const resp = await fetch(url);
+    if (!resp.ok) throw await this.buildHttpError('Erro ao buscar KPIs executivos CRM', resp);
+    const data = await resp.json();
+    this.setCached(url, data, 12_000);
+    return data;
+  }
+
+  async getCrmAutomation(): Promise<any> {
+    const url = this.makeApiUrl('/crm/automation');
+    const cached = this.getCached(url);
+    if (cached) return cached;
+    const resp = await fetch(url);
+    if (!resp.ok) throw await this.buildHttpError('Erro ao buscar automações CRM', resp);
+    const data = await resp.json();
+    this.setCached(url, data, 10_000);
+    return data;
+  }
+
+  async saveCrmAutomation(payload: any): Promise<any> {
+    const r = await this.postJson('/crm/automation', payload);
+    this.clearCache('/crm/automation');
+    return r;
+  }
+
+  async getCrmTasks(params?: { status?: string; all?: boolean }): Promise<{ items: any[] }> {
+    const usp = new URLSearchParams();
+    if (params?.status) usp.set("status", params.status);
+    if (params?.all) usp.set("all", "1");
+    const qs = usp.toString();
+    const url = `${this.makeApiUrl("/crm/tasks")}${qs ? `?${qs}` : ""}`;
+    const resp = await fetch(url, { credentials: 'include' });
+    if (!resp.ok) throw await this.buildHttpError('Erro ao buscar tarefas CRM', resp);
+    return resp.json();
+  }
+
+  async saveCrmTask(payload: any): Promise<any> {
+    const r = await this.postJson('/crm/tasks', payload);
+    this.clearCache('/crm/tasks');
+    return r;
+  }
+
+  async getCrmContact360(params: { phone?: string; email?: string; leadId?: string }): Promise<any> {
+    const usp = new URLSearchParams();
+    if (params.phone) usp.set("phone", params.phone);
+    if (params.email) usp.set("email", params.email);
+    if (params.leadId) usp.set("leadId", params.leadId);
+    const qs = usp.toString();
+    if (!qs) throw new Error("Parâmetros vazios");
+    const url = `${this.makeApiUrl("/crm/contact-360")}?${qs}`;
+    const resp = await fetch(url, { credentials: "include" });
+    if (!resp.ok) throw await this.buildHttpError("Erro ao buscar contato 360", resp);
+    return resp.json();
+  }
+
+  async getCrmConsentAdmin(params?: { limit?: number }): Promise<{ prefs: any[]; events: any[] }> {
+    const usp = new URLSearchParams();
+    if (params?.limit) usp.set("limit", String(params.limit));
+    const qs = usp.toString();
+    const url = `${this.makeApiUrl("/crm/consent")}${qs ? `?${qs}` : ""}`;
+    const resp = await fetch(url, { credentials: "include" });
+    if (!resp.ok) throw await this.buildHttpError("Erro ao buscar consentimentos", resp);
+    return resp.json();
+  }
+
+  async postCrmConsent(payload: any): Promise<any> {
+    return this.postJson("/crm/consent", payload);
+  }
+
+  async downloadCrmReportCsv(type: string, opts?: { from?: string | null; to?: string | null }): Promise<void> {
+    const usp = new URLSearchParams();
+    usp.set("type", type);
+    usp.set("format", "csv");
+    if (opts?.from) usp.set("from", opts.from);
+    if (opts?.to) usp.set("to", opts.to);
+    const url = `${this.makeApiUrl("/crm/reports/export")}?${usp.toString()}`;
+    const resp = await fetch(url, { credentials: "include" });
+    if (!resp.ok) throw await this.buildHttpError("Erro ao exportar relatório", resp);
+    const blob = await resp.blob();
+    const cd = resp.headers.get("Content-Disposition") || "";
+    const m = cd.match(/filename="?([^";]+)"?/);
+    const filename = m?.[1] || `crm_export_${type}.csv`;
+    const u = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = u;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(u);
   }
 
   async getSofiaSettings(): Promise<any> {

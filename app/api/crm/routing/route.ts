@@ -2,11 +2,14 @@ import { NextResponse } from "next/server";
 import { getPool } from "../../../../lib/server/db";
 import { ensureCrmSchemaTables } from "../../../../lib/server/ensureSchema";
 import { classifyLeadTopic, pickFallbackAgent, resolveRoutingByRules } from "../../../../lib/server/crmRouting";
+import { requireApiPermissions } from "../../../../lib/server/apiAuth";
 
 export const runtime = "nodejs";
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
+    const guard = await requireApiPermissions(req, ["MANAGE_CRM_OPS", "MANAGE_SETTINGS"]);
+    if (guard.denied) return guard.denied;
     await ensureCrmSchemaTables();
     const pool = getPool();
     const rulesRes = await pool.query(
@@ -43,10 +46,17 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    await ensureCrmSchemaTables();
-    const pool = getPool();
     const body = await req.json().catch(() => ({}));
     const action = body?.action ? String(body.action).toUpperCase() : "SUGGEST";
+    const requiredPermissions =
+      action === "SUGGEST"
+        ? ["module.crm.view"]
+        : ["MANAGE_CRM_OPS", "MANAGE_SETTINGS"];
+    const guard = await requireApiPermissions(req, requiredPermissions);
+    if (guard.denied) return guard.denied;
+
+    await ensureCrmSchemaTables();
+    const pool = getPool();
 
     if (action === "UPSERT_RULE") {
       const id = body?.id ? String(body.id) : null;

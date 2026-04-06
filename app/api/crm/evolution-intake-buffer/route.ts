@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getPool } from "../../../../lib/server/db";
 import { ensureCrmSchemaTables } from "../../../../lib/server/ensureSchema";
 import { ensureDefaultPipelineAndFirstStage } from "../../../../lib/server/crmDefaultPipeline";
+import { requireApiPermissions } from "../../../../lib/server/apiAuth";
 
 export const runtime = "nodejs";
 
@@ -11,6 +12,8 @@ function onlyDigits(v: string | null | undefined) {
 
 export async function GET(req: Request) {
   try {
+    const guard = await requireApiPermissions(req, ["module.crm.view"]);
+    if (guard.denied) return guard.denied;
     await ensureCrmSchemaTables();
     const pool = getPool();
     const { searchParams } = new URL(req.url);
@@ -63,6 +66,8 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
+    const guard = await requireApiPermissions(req, ["MANAGE_CRM_OPS", "MANAGE_SETTINGS"]);
+    if (guard.denied) return guard.denied;
     await ensureCrmSchemaTables();
     const pool = getPool();
     const body = await req.json().catch(() => ({}));

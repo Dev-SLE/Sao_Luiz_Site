@@ -6,7 +6,12 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "typecheck": "next build --no-lint",
+    "lint": "next build --no-lint",
+    "test:smoke": "node scripts/smoke-crm.mjs",
+    "test:load:plan": "node scripts/load-crm-plan.mjs",
+    "check": "npm run typecheck && npm run test:smoke"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

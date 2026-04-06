@@ -2,15 +2,22 @@ import { NextResponse } from "next/server";
 import { getPool } from "../../../lib/server/db";
 import { getGoogleOAuthClient } from "../../../lib/server/googleDrive";
 import { ensureUserTokensTable } from "../../../lib/server/ensureSchema";
+import { getSessionContext } from "../../../lib/server/authorization";
 
 export const runtime = "nodejs";
 
 export async function GET(req: Request) {
   try {
+    const session = await getSessionContext(req);
+    if (!session) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+
     const { searchParams } = new URL(req.url);
     const code = searchParams.get("code");
     const username = searchParams.get("state");
     if (!code || !username) return NextResponse.json({ error: "code/state obrigatórios" }, { status: 400 });
+    if (String(username).toLowerCase() !== String(session.username).toLowerCase()) {
+      return NextResponse.json({ error: "state inválido para a sessão atual" }, { status: 403 });
+    }
 
     const oAuth2Client = getGoogleOAuthClient();
     const { tokens } = await oAuth2Client.getToken(code);

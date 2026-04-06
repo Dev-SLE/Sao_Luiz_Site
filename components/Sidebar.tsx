@@ -16,6 +16,10 @@ import {
   FileSpreadsheet,
   MapPin,
   LineChart,
+  SlidersHorizontal,
+  ListTodo,
+  UserCircle2,
+  Shield,
 } from 'lucide-react';
 import { Page } from '../types';
 import clsx from 'clsx';
@@ -106,6 +110,38 @@ const Sidebar: React.FC<Props> = ({ currentPage, setPage }) => {
           id: Page.CRM_CHAT,
           label: 'Chat IA',
           icon: MessagesSquare,
+          count: 0,
+        },
+        hasPermission('VIEW_CRM_CHAT') && {
+          id: Page.CRM_TASKS,
+          label: 'Minhas pendências',
+          icon: ListTodo,
+          count: 0,
+        },
+        (hasPermission('VIEW_CRM_CHAT') ||
+          hasPermission('VIEW_CRM_FUNIL') ||
+          hasPermission('VIEW_CRM_DASHBOARD')) && {
+          id: Page.CRM_CONTACT_360,
+          label: 'Contato 360',
+          icon: UserCircle2,
+          count: 0,
+        },
+        hasPermission('VIEW_CRM_DASHBOARD') && {
+          id: Page.CRM_REPORTS,
+          label: 'Relatórios CRM',
+          icon: FileSpreadsheet,
+          count: 0,
+        },
+        (hasPermission('MANAGE_CRM_OPS') || hasPermission('MANAGE_SETTINGS')) && {
+          id: Page.CRM_OPS,
+          label: 'Operação CRM',
+          icon: SlidersHorizontal,
+          count: 0,
+        },
+        (hasPermission('MANAGE_CRM_OPS') || hasPermission('MANAGE_SETTINGS')) && {
+          id: Page.CRM_PRIVACY,
+          label: 'Privacidade CRM',
+          icon: Shield,
           count: 0,
         },
       ].filter(Boolean) as any[],

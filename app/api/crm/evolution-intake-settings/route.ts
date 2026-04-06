@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
 import { getPool } from "../../../../lib/server/db";
 import { ensureCrmSchemaTables } from "../../../../lib/server/ensureSchema";
+import { requireApiPermissions } from "../../../../lib/server/apiAuth";
 
 export const runtime = "nodejs";
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
+    const guard = await requireApiPermissions(req, ["MANAGE_CRM_OPS", "MANAGE_SETTINGS"]);
+    if (guard.denied) return guard.denied;
     await ensureCrmSchemaTables();
     const pool = getPool();
     const settingsRes = await pool.query(
@@ -49,6 +52,8 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
+    const guard = await requireApiPermissions(req, ["MANAGE_CRM_OPS", "MANAGE_SETTINGS"]);
+    if (guard.denied) return guard.denied;
     await ensureCrmSchemaTables();
     const pool = getPool();
     const body = await req.json().catch(() => ({}));

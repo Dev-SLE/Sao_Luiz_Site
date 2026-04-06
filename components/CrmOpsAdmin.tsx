@@ -8,6 +8,28 @@ import { useAuth } from "../context/AuthContext";
 
 const CrmOpsAdmin: React.FC = () => {
   const { user } = useAuth();
+  const [cadences, setCadences] = useState<any[]>([]);
+  const [campaigns, setCampaigns] = useState<any[]>([]);
+  const [crmStages, setCrmStages] = useState<Array<{ id: string; name: string }>>([]);
+  const [cadenceForm, setCadenceForm] = useState({
+    id: "",
+    name: "",
+    messageTemplate: "",
+    triggerAfterMinutes: 1440,
+    stageId: "",
+    isActive: true,
+  });
+  const [campaignForm, setCampaignForm] = useState({
+    id: "",
+    name: "",
+    messageTemplate: "",
+    requireOptIn: true,
+    status: "DRAFT",
+    audienceStageId: "",
+    audiencePriority: "",
+    audienceLimit: 100,
+  });
+  const [queueLimit, setQueueLimit] = useState(80);
   const [teams, setTeams] = useState<any[]>([]);
   const [agents, setAgents] = useState<any[]>([]);
   const [rules, setRules] = useState<any[]>([]);
@@ -214,15 +236,29 @@ const CrmOpsAdmin: React.FC = () => {
     setLoading(true);
     setErrorText(null);
     try {
-      const [t, a, r, w, intake, intakeBuffer] = await Promise.all([
+      const [t, a, r, w, intake, intakeBuffer, auto, board] = await Promise.all([
         authClient.getCrmTeams(),
         authClient.getCrmAgents(),
         authClient.getCrmRoutingRules(),
         authClient.getCrmWhatsappInboxes().catch(() => ({ inboxes: [], evolutionDefaultsConfigured: false })),
         authClient.getCrmEvolutionIntakeSettings().catch(() => ({ settings: null, pendingBufferCount: 0 })),
         authClient.getCrmEvolutionIntakeBuffer({ limit: 40 }).catch(() => ({ items: [] })),
+        authClient.getCrmAutomation().catch(() => ({ cadences: [], campaigns: [] })),
+        authClient
+          .getCrmBoard({
+            requestUsername: user?.username || "",
+            requestRole: user?.role || "",
+          })
+          .catch(() => ({ stages: [] as any[] })),
       ]);
       const s = await authClient.getCrmSlaRules();
+      setCadences(Array.isArray(auto?.cadences) ? auto.cadences : []);
+      setCampaigns(Array.isArray(auto?.campaigns) ? auto.campaigns : []);
+      setCrmStages(
+        Array.isArray(board?.stages)
+          ? board.stages.map((st: any) => ({ id: String(st.id), name: String(st.name || "") }))
+          : []
+      );
       setTeams(Array.isArray(t?.teams) ? t.teams : []);
       setAgents(Array.isArray(a?.agents) ? a.agents : []);
       setRules(Array.isArray(r?.rules) ? r.rules : []);
@@ -252,7 +288,7 @@ const CrmOpsAdmin: React.FC = () => {
 
   useEffect(() => {
     loadAll();
-  }, []);
+  }, [user?.username, user?.role]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -298,6 +334,313 @@ const CrmOpsAdmin: React.FC = () => {
           </li>
         </ul>
       </div>
+
+      <div className="surface-card-strong p-4 border border-amber-200/60 bg-gradient-to-br from-amber-50/50 to-white">
+        <h3 className="text-sm font-bold text-slate-900">Cadências e campanhas (automação)</h3>
+        <p className="mt-1 text-[11px] text-slate-600">
+          Cadências disparam mensagem após tempo no estágio. Campanhas enfileiram template no WhatsApp para leads que
+          atendem ao filtro (respeitando opt-in quando marcado). Texto da campanha vai para o outbox como mensagem
+          simples.
+        </p>
+
+        <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-2">
+            <h4 className="text-xs font-bold text-slate-800">Cadência</h4>
+            <input
+              className="w-full rounded border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs"
+              placeholder="Nome"
+              value={cadenceForm.name}
+              onChange={(e) => setCadenceForm((f) => ({ ...f, name: e.target.value }))}
+            />
+            <textarea
+              className="w-full min-h-[72px] rounded border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs"
+              placeholder="Template da mensagem"
+              value={cadenceForm.messageTemplate}
+              onChange={(e) => setCadenceForm((f) => ({ ...f, messageTemplate: e.target.value }))}
+            />
+            <div className="flex flex-wrap gap-2">
+              <input
+                type="number"
+                min={5}
+                className="w-28 rounded border border-slate-200 bg-slate-50 px-2 py-1 text-xs"
+                title="Minutos após entrada no estágio"
+                value={cadenceForm.triggerAfterMinutes}
+                onChange={(e) => setCadenceForm((f) => ({ ...f, triggerAfterMinutes: Number(e.target.value) || 5 }))}
+              />
+              <select
+                className="flex-1 min-w-[140px] rounded border border-slate-200 bg-slate-50 px-2 py-1 text-xs"
+                value={cadenceForm.stageId}
+                onChange={(e) => setCadenceForm((f) => ({ ...f, stageId: e.target.value }))}
+              >
+                <option value="">Qualquer estágio</option>
+                {crmStages.map((st) => (
+                  <option key={st.id} value={st.id}>
+                    {st.name}
+                  </option>
+                ))}
+              </select>
+              <label className="inline-flex items-center gap-1 text-[11px] text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={cadenceForm.isActive}
+                  onChange={(e) => setCadenceForm((f) => ({ ...f, isActive: e.target.checked }))}
+                />
+                Ativa
+              </label>
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className="rounded bg-[#2c348c] px-3 py-1.5 text-[11px] font-bold text-white hover:bg-[#e42424]"
+                onClick={async () => {
+                  try {
+                    await authClient.saveCrmAutomation({
+                      action: "UPSERT_CADENCE",
+                      id: cadenceForm.id || undefined,
+                      name: cadenceForm.name.trim(),
+                      messageTemplate: cadenceForm.messageTemplate.trim(),
+                      triggerAfterMinutes: cadenceForm.triggerAfterMinutes,
+                      stageId: cadenceForm.stageId || null,
+                      isActive: cadenceForm.isActive,
+                    });
+                    setCadenceForm({
+                      id: "",
+                      name: "",
+                      messageTemplate: "",
+                      triggerAfterMinutes: 1440,
+                      stageId: "",
+                      isActive: true,
+                    });
+                    await loadAll();
+                    setOpsNotice({ title: "Cadência", message: "Salva com sucesso.", variant: "success" });
+                  } catch (err) {
+                    setOpsNotice({
+                      title: "Cadência",
+                      message: err instanceof Error ? err.message : "Falha ao salvar.",
+                      variant: "error",
+                    });
+                  }
+                }}
+              >
+                Salvar cadência
+              </button>
+              {cadenceForm.id && (
+                <button
+                  type="button"
+                  className="rounded border border-slate-200 px-3 py-1.5 text-[11px]"
+                  onClick={() =>
+                    setCadenceForm({
+                      id: "",
+                      name: "",
+                      messageTemplate: "",
+                      triggerAfterMinutes: 1440,
+                      stageId: "",
+                      isActive: true,
+                    })
+                  }
+                >
+                  Nova
+                </button>
+              )}
+            </div>
+            <div className="max-h-40 overflow-auto space-y-1 border-t border-slate-100 pt-2">
+              {cadences.map((c) => (
+                <button
+                  type="button"
+                  key={c.id}
+                  className="w-full text-left rounded border border-slate-100 bg-slate-50 px-2 py-1 text-[11px] hover:border-[#2c348c]/30"
+                  onClick={() =>
+                    setCadenceForm({
+                      id: String(c.id),
+                      name: String(c.name || ""),
+                      messageTemplate: String(c.message_template || ""),
+                      triggerAfterMinutes: Number(c.trigger_after_minutes || 1440),
+                      stageId: c.stage_id ? String(c.stage_id) : "",
+                      isActive: c.is_active !== false,
+                    })
+                  }
+                >
+                  <span className="font-semibold">{c.name}</span>
+                  <span className="text-slate-500"> · {c.stage_name || "—"} · {c.is_active ? "ativa" : "pausada"}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-2">
+            <h4 className="text-xs font-bold text-slate-800">Campanha (WhatsApp)</h4>
+            <input
+              className="w-full rounded border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs"
+              placeholder="Nome da campanha"
+              value={campaignForm.name}
+              onChange={(e) => setCampaignForm((f) => ({ ...f, name: e.target.value }))}
+            />
+            <textarea
+              className="w-full min-h-[72px] rounded border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs"
+              placeholder="Mensagem (texto)"
+              value={campaignForm.messageTemplate}
+              onChange={(e) => setCampaignForm((f) => ({ ...f, messageTemplate: e.target.value }))}
+            />
+            <div className="flex flex-wrap gap-2">
+              <select
+                className="rounded border border-slate-200 bg-slate-50 px-2 py-1 text-xs"
+                value={campaignForm.status}
+                onChange={(e) => setCampaignForm((f) => ({ ...f, status: e.target.value }))}
+              >
+                <option value="DRAFT">DRAFT</option>
+                <option value="RUNNING">RUNNING</option>
+              </select>
+              <select
+                className="flex-1 min-w-[120px] rounded border border-slate-200 bg-slate-50 px-2 py-1 text-xs"
+                value={campaignForm.audienceStageId}
+                onChange={(e) => setCampaignForm((f) => ({ ...f, audienceStageId: e.target.value }))}
+              >
+                <option value="">Público: todos os estágios</option>
+                {crmStages.map((st) => (
+                  <option key={st.id} value={st.id}>
+                    {st.name}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="rounded border border-slate-200 bg-slate-50 px-2 py-1 text-xs"
+                value={campaignForm.audiencePriority}
+                onChange={(e) => setCampaignForm((f) => ({ ...f, audiencePriority: e.target.value }))}
+              >
+                <option value="">Qualquer prioridade</option>
+                <option value="ALTA">ALTA</option>
+                <option value="MEDIA">MEDIA</option>
+                <option value="BAIXA">BAIXA</option>
+              </select>
+              <input
+                type="number"
+                min={1}
+                max={500}
+                className="w-20 rounded border border-slate-200 bg-slate-50 px-2 py-1 text-xs"
+                title="Limite no filtro"
+                value={campaignForm.audienceLimit}
+                onChange={(e) => setCampaignForm((f) => ({ ...f, audienceLimit: Number(e.target.value) || 100 }))}
+              />
+            </div>
+            <label className="inline-flex items-center gap-1 text-[11px] text-slate-700">
+              <input
+                type="checkbox"
+                checked={campaignForm.requireOptIn}
+                onChange={(e) => setCampaignForm((f) => ({ ...f, requireOptIn: e.target.checked }))}
+              />
+              Exigir opt-in (observações do lead com &quot;optin&quot;)
+            </label>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="rounded bg-[#2c348c] px-3 py-1.5 text-[11px] font-bold text-white hover:bg-[#e42424]"
+                onClick={async () => {
+                  try {
+                    const af: Record<string, unknown> = { limit: Number(campaignForm.audienceLimit || 100) };
+                    if (campaignForm.audienceStageId) af.stageId = campaignForm.audienceStageId;
+                    if (campaignForm.audiencePriority) af.priority = campaignForm.audiencePriority;
+                    await authClient.saveCrmAutomation({
+                      action: "UPSERT_CAMPAIGN",
+                      id: campaignForm.id || undefined,
+                      name: campaignForm.name.trim(),
+                      messageTemplate: campaignForm.messageTemplate.trim(),
+                      requireOptIn: campaignForm.requireOptIn,
+                      status: campaignForm.status,
+                      audienceFilter: af,
+                    });
+                    setCampaignForm({
+                      id: "",
+                      name: "",
+                      messageTemplate: "",
+                      requireOptIn: true,
+                      status: "DRAFT",
+                      audienceStageId: "",
+                      audiencePriority: "",
+                      audienceLimit: 100,
+                    });
+                    await loadAll();
+                    setOpsNotice({ title: "Campanha", message: "Salva com sucesso.", variant: "success" });
+                  } catch (err) {
+                    setOpsNotice({
+                      title: "Campanha",
+                      message: err instanceof Error ? err.message : "Falha ao salvar.",
+                      variant: "error",
+                    });
+                  }
+                }}
+              >
+                Salvar campanha
+              </button>
+              <input
+                type="number"
+                min={1}
+                max={500}
+                className="w-20 rounded border border-slate-200 px-2 py-1 text-[11px]"
+                value={queueLimit}
+                onChange={(e) => setQueueLimit(Number(e.target.value) || 50)}
+                title="Limite ao enfileirar"
+              />
+            </div>
+            <div className="max-h-48 overflow-auto space-y-1 border-t border-slate-100 pt-2">
+              {campaigns.map((c) => (
+                <div key={c.id} className="flex flex-wrap items-center justify-between gap-2 rounded border border-slate-100 bg-slate-50 px-2 py-1 text-[11px]">
+                  <button
+                    type="button"
+                    className="text-left font-semibold text-[#2c348c] hover:underline"
+                    onClick={() => {
+                      const af =
+                        c.audience_filter && typeof c.audience_filter === "object"
+                          ? (c.audience_filter as Record<string, unknown>)
+                          : {};
+                      setCampaignForm({
+                        id: String(c.id),
+                        name: String(c.name || ""),
+                        messageTemplate: String(c.message_template || ""),
+                        requireOptIn: c.require_opt_in !== false,
+                        status: String(c.status || "DRAFT"),
+                        audienceStageId: af.stageId ? String(af.stageId) : "",
+                        audiencePriority: af.priority ? String(af.priority) : "",
+                        audienceLimit: af.limit != null ? Number(af.limit) : 100,
+                      });
+                    }}
+                  >
+                    {c.name}
+                  </button>
+                  <span className="text-slate-500">{c.status}</span>
+                  <button
+                    type="button"
+                    className="rounded bg-amber-600 px-2 py-0.5 text-[10px] font-bold text-white"
+                    onClick={async () => {
+                      try {
+                        const r = await authClient.saveCrmAutomation({
+                          action: "QUEUE_CAMPAIGN",
+                          campaignId: String(c.id),
+                          limit: queueLimit,
+                        });
+                        await loadAll();
+                        setOpsNotice({
+                          title: "Fila",
+                          message: `Enfileirados: ${r?.queued ?? 0}`,
+                          variant: "success",
+                        });
+                      } catch (err) {
+                        setOpsNotice({
+                          title: "Fila",
+                          message: err instanceof Error ? err.message : "Falha.",
+                          variant: "error",
+                        });
+                      }
+                    }}
+                  >
+                    Enfileirar
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
       {errorText && (
         <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2">
           <div className="flex items-center justify-between gap-2">

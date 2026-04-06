@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
 import { getPool } from "../../../lib/server/db";
 import { serverLog } from "../../../lib/server/appLog";
+import { requireApiPermissions } from "../../../lib/server/apiAuth";
 
 export const runtime = "nodejs";
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
+    const guard = await requireApiPermissions(req, ["MANAGE_SETTINGS"]);
+    if (guard.denied) return guard.denied;
     const pool = getPool();
     const result = await pool.query("SELECT * FROM pendencias.profiles ORDER BY name ASC");
     return NextResponse.json(result.rows || []);
@@ -22,6 +25,8 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
+    const guard = await requireApiPermissions(req, ["MANAGE_SETTINGS"]);
+    if (guard.denied) return guard.denied;
     const body = await req.json();
     const name = String(body?.name || "").trim();
     const description = String(body?.description || "").trim();
@@ -55,6 +60,8 @@ export async function POST(req: Request) {
 
 export async function DELETE(req: Request) {
   try {
+    const guard = await requireApiPermissions(req, ["MANAGE_SETTINGS"]);
+    if (guard.denied) return guard.denied;
     const { searchParams } = new URL(req.url);
     const name = String(searchParams.get("name") || "").trim();
     if (!name) return NextResponse.json({ error: "name obrigatório" }, { status: 400 });

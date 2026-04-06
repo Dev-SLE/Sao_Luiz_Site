@@ -452,7 +452,8 @@ async function shouldCreateLeadForNewContact(input: {
 
 function verifyEvolutionWebhook(req: Request): boolean {
   const secret = String(process.env.EVOLUTION_WEBHOOK_TOKEN ?? "").trim();
-  if (!secret) return true;
+  const isProd = String(process.env.NODE_ENV || "").toLowerCase() === "production";
+  if (!secret) return !isProd;
   try {
     const url = new URL(req.url);
     const q = url.searchParams.get("token");

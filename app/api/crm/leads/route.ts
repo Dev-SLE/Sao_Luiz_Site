@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getPool } from "../../../../lib/server/db";
 import { ensureCrmSchemaTables } from "../../../../lib/server/ensureSchema";
 import { classifyLeadTopic } from "../../../../lib/server/crmRouting";
+import { requireApiPermissions } from "../../../../lib/server/apiAuth";
 
 export const runtime = "nodejs";
 
@@ -15,6 +16,8 @@ function buildProtocolNumber() {
 
 export async function POST(req: Request) {
   try {
+    const guard = await requireApiPermissions(req, ["module.crm.view"]);
+    if (guard.denied) return guard.denied;
     await ensureCrmSchemaTables();
     const pool = getPool();
 
@@ -241,6 +244,8 @@ export async function POST(req: Request) {
 
 export async function PATCH(req: Request) {
   try {
+    const guard = await requireApiPermissions(req, ["module.crm.view"]);
+    if (guard.denied) return guard.denied;
     await ensureCrmSchemaTables();
     const pool = getPool();
 
@@ -429,6 +434,8 @@ export async function PATCH(req: Request) {
 
 export async function DELETE(req: Request) {
   try {
+    const guard = await requireApiPermissions(req, ["module.crm.view"]);
+    if (guard.denied) return guard.denied;
     await ensureCrmSchemaTables();
     const pool = getPool();
 

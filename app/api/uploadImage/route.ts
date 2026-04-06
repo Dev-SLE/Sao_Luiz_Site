@@ -4,24 +4,27 @@ import { Readable } from "stream";
 import { getPool } from "../../../lib/server/db";
 import { ensureDriveCaseFolder, getDriveFolderId, getGoogleOAuthClient } from "../../../lib/server/googleDrive";
 import { ensureAppLogsTable, ensureUserTokensTable } from "../../../lib/server/ensureSchema";
+import { getSessionContext } from "../../../lib/server/authorization";
 
 export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   try {
+    const session = await getSessionContext(req);
+    if (!session) return NextResponse.json({ success: false, error: "Não autorizado." }, { status: 401 });
     const form = await req.formData();
     const file = form.get("file");
-    const username = String(form.get("username") || "").trim();
+    const username = String(session.username || "").trim();
 
     if (!file || typeof file === "string") return NextResponse.json({ success: false, error: "Arquivo não enviado." }, { status: 400 });
-    if (!username) return NextResponse.json({ success: false, error: "Username necessário." }, { status: 400 });
+    if (!username) return NextResponse.json({ success: false, error: "Sessão inválida." }, { status: 401 });
 
     const pool = getPool();
     await ensureUserTokensTable();
-    const tokenResult = await pool.query("SELECT * FROM pendencias.user_tokens WHERE username = $1", [username]);
+    const tokenResult = await pool.query("SELECT * FROM pendencias.user_tokens WHERE LOWER(username) = LOWER($1)", [username]);
     if (tokenResult.rows.length === 0) {
       return NextResponse.json(
-        { success: false, error: `Usuário não autenticado no Google. Faça login em /api/auth/google?username=${username}` },
+        { success: false, error: "Usuário não autenticado no Google Drive. Refaça a conexão Google." },
         { status: 401 }
       );
     }

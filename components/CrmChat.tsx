@@ -14,6 +14,7 @@ import {
   Video,
   FileText,
   MapPin,
+  Ban,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { useData } from '../context/DataContext';
@@ -315,6 +316,9 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [relatedLeadHistory, setRelatedLeadHistory] = useState<RelatedLeadHistoryItem[]>([]);
   const [conversationsLoading, setConversationsLoading] = useState(false);
+  const [conversationQuery, setConversationQuery] = useState('');
+  const [conversationChannelFilter, setConversationChannelFilter] = useState<'TODOS' | Channel>('TODOS');
+  const [conversationStatusFilter, setConversationStatusFilter] = useState<'TODOS' | 'PENDENTE' | 'CONCLUIDO' | 'EM_RASTREIO' | 'PERDIDO'>('TODOS');
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [input, setInput] = useState('');
   const [clientePhone, setClientePhone] = useState('(11) 99999-0000');
@@ -418,6 +422,25 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
     }
     return conversations[0];
   }, [conversations, selectedConversationId]);
+
+  const filteredConversations = useMemo(() => {
+    const q = conversationQuery.trim().toLowerCase();
+    return conversations.filter((c) => {
+      if (conversationChannelFilter !== 'TODOS' && c.channel !== conversationChannelFilter) return false;
+      if (conversationStatusFilter !== 'TODOS' && String(c.status || 'PENDENTE') !== conversationStatusFilter) return false;
+      if (!q) return true;
+      const hay = [
+        c.leadName,
+        c.cte || '',
+        c.protocolNumber || '',
+        c.leadPhone || '',
+        c.lastMessage || '',
+      ]
+        .join(' ')
+        .toLowerCase();
+      return hay.includes(q);
+    });
+  }, [conversations, conversationQuery, conversationChannelFilter, conversationStatusFilter]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -1202,10 +1225,30 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
               </p>
             </div>
           </div>
-          <button className="btn-ui-secondary px-2 py-1 text-[11px]">
-            <Filter size={12} />
-            Filtros
-          </button>
+          <div className="flex items-center gap-1">
+            <Filter size={12} className="text-slate-500" />
+            <select
+              value={conversationChannelFilter}
+              onChange={(e) => setConversationChannelFilter(e.target.value as any)}
+              className="rounded border border-slate-300 bg-white px-1 py-0.5 text-[10px] text-slate-700"
+            >
+              <option value="TODOS">Canais</option>
+              <option value="WHATSAPP">WhatsApp</option>
+              <option value="IA">IA</option>
+              <option value="INTERNO">Interno</option>
+            </select>
+            <select
+              value={conversationStatusFilter}
+              onChange={(e) => setConversationStatusFilter(e.target.value as any)}
+              className="rounded border border-slate-300 bg-white px-1 py-0.5 text-[10px] text-slate-700"
+            >
+              <option value="TODOS">Status</option>
+              <option value="PENDENTE">Pendente</option>
+              <option value="EM_RASTREIO">Em rastreio</option>
+              <option value="CONCLUIDO">Concluído</option>
+              <option value="PERDIDO">Perdido</option>
+            </select>
+          </div>
         </div>
         {crmScope && (
           <div className="px-3 py-2 border-b border-slate-200 bg-[#eef3ff]/80">
@@ -1223,6 +1266,8 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
             <Hash size={12} className="text-[#2c348c]/70" />
             <input
               placeholder="Buscar por nome ou CTE..."
+              value={conversationQuery}
+              onChange={(e) => setConversationQuery(e.target.value)}
               className="flex-1 bg-transparent text-[11px] text-slate-800 outline-none placeholder:text-slate-500"
             />
           </div>
@@ -1231,7 +1276,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
           {conversationsLoading && (
             <div className="px-3 py-2 text-[11px] text-slate-500">Atualizando conversas...</div>
           )}
-          {conversations.map((conv) => {
+          {filteredConversations.map((conv) => {
             const active = conv.id === selectedConversationId;
             const channel = getChannelUi(conv.channel);
             const unreadCount = effectiveUnreadByConversationId[conv.id] ?? 0;
@@ -1318,6 +1363,9 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
               </button>
             );
           })}
+          {!conversationsLoading && filteredConversations.length === 0 && (
+            <div className="px-3 py-3 text-[11px] text-slate-500">Nenhuma conversa encontrada neste filtro.</div>
+          )}
         </div>
       </aside>
 
@@ -1387,9 +1435,41 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
               }
             }}
           >
-              <Phone size={14} />
-              Ligar
-            </button>
+            <Phone size={14} />
+            Ligar
+          </button>
+            {selectedConversation?.leadId && (
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[11px] text-amber-950 hover:border-amber-400"
+                onClick={async () => {
+                  const reason = window.prompt('Motivo do opt-out de campanhas (opcional):');
+                  if (reason === null) return;
+                  try {
+                    await authClient.postCrmConsent({
+                      action: 'RECORD_EVENT',
+                      eventType: 'OPT_OUT',
+                      leadId: selectedConversation.leadId,
+                      reason: reason.trim() || 'Pedido do cliente',
+                    });
+                    setAppNotice({
+                      title: 'Privacidade',
+                      message: 'Opt-out registrado. Campanhas não devem mais incluir este contato.',
+                      variant: 'success',
+                    });
+                  } catch {
+                    setAppNotice({
+                      title: 'Privacidade',
+                      message: 'Não foi possível registrar o opt-out. Verifique permissões.',
+                      variant: 'error',
+                    });
+                  }
+                }}
+              >
+                <Ban size={14} />
+                Opt-out campanhas
+              </button>
+            )}
           </div>
         </div>
 

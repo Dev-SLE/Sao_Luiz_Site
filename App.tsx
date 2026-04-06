@@ -13,6 +13,11 @@ import SofiaSettings from './components/SofiaSettings';
 import CrmDashboard from './components/CrmDashboard';
 import CrmFunnel from './components/CrmFunnel.tsx';
 import CrmChat from './components/CrmChat.tsx';
+import CrmOpsAdmin from './components/CrmOpsAdmin';
+import CrmMyTasks from './components/CrmMyTasks';
+import CrmReports from './components/CrmReports';
+import CrmContact360 from './components/CrmContact360';
+import CrmPrivacyHub from './components/CrmPrivacyHub';
 import Reports from './components/Reports';
 import ComercialAuditoria from './components/ComercialAuditoria';
 import ComercialRoboSupremo from './components/ComercialRoboSupremo';
@@ -260,6 +265,43 @@ const AppContent: React.FC = () => {
           return noAccess('Seu perfil não possui acesso ao Chat CRM.');
         }
         return null;
+      case Page.CRM_OPS:
+        if (!hasPermission('MANAGE_CRM_OPS') && !hasPermission('MANAGE_SETTINGS')) {
+          return noAccess('Seu perfil não possui acesso à Operação CRM.');
+        }
+        return (
+          <div className="max-w-6xl space-y-4">
+            <p className="text-xs text-slate-600">
+              As mesmas opções ficam em{' '}
+              <strong>Configurações → Operação CRM</strong>; esta página expõe o console para o dia a dia.
+            </p>
+            <CrmOpsAdmin />
+          </div>
+        );
+      case Page.CRM_TASKS:
+        if (!hasPermission('VIEW_CRM_CHAT')) {
+          return noAccess('Seu perfil não possui acesso a pendências do CRM.');
+        }
+        return <CrmMyTasks />;
+      case Page.CRM_REPORTS:
+        if (!hasPermission('VIEW_CRM_DASHBOARD')) {
+          return noAccess('Seu perfil não possui acesso aos relatórios CRM.');
+        }
+        return <CrmReports />;
+      case Page.CRM_CONTACT_360:
+        if (
+          !hasPermission('VIEW_CRM_CHAT') &&
+          !hasPermission('VIEW_CRM_FUNIL') &&
+          !hasPermission('VIEW_CRM_DASHBOARD')
+        ) {
+          return noAccess('Seu perfil não possui acesso ao Contato 360.');
+        }
+        return <CrmContact360 />;
+      case Page.CRM_PRIVACY:
+        if (!hasPermission('MANAGE_CRM_OPS') && !hasPermission('MANAGE_SETTINGS')) {
+          return noAccess('Seu perfil não possui acesso ao módulo de privacidade CRM.');
+        }
+        return <CrmPrivacyHub />;
       case Page.CONFIGURACOES:
         if (!hasPermission('MANAGE_SETTINGS')) {
           return noAccess('Seu perfil não possui acesso a Configurações.');

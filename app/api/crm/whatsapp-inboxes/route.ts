@@ -4,6 +4,7 @@ import { ensureCrmSchemaTables } from "../../../../lib/server/ensureSchema";
 import { getEvolutionServerDefaults, slugifyInstancePart } from "../../../../lib/server/evolutionDefaults";
 import { evolutionExternalFetch, normalizeEvolutionServerUrl } from "../../../../lib/server/evolutionUrl";
 import { syncEvolutionInstanceWebhook } from "../../../../lib/server/evolutionWebhookSync";
+import { requireApiPermissions } from "../../../../lib/server/apiAuth";
 
 export const runtime = "nodejs";
 
@@ -128,6 +129,8 @@ function maskKey(key: string | null | undefined): string | null {
 
 export async function GET(req: Request) {
   try {
+    const guard = await requireApiPermissions(req, ["MANAGE_CRM_OPS", "MANAGE_SETTINGS"]);
+    if (guard.denied) return guard.denied;
     await ensureCrmSchemaTables();
     const pool = getPool();
     const { searchParams } = new URL(req.url);
@@ -181,6 +184,8 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
+    const guard = await requireApiPermissions(req, ["MANAGE_CRM_OPS", "MANAGE_SETTINGS"]);
+    if (guard.denied) return guard.denied;
     await ensureCrmSchemaTables();
     const pool = getPool();
     const body = await req.json().catch(() => ({}));

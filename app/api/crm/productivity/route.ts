@@ -1,22 +1,53 @@
 import { NextResponse } from "next/server";
 import { getPool } from "../../../../lib/server/db";
 import { ensureCrmSchemaTables } from "../../../../lib/server/ensureSchema";
+import { requireApiPermissions } from "../../../../lib/server/apiAuth";
 
 export const runtime = "nodejs";
 
-export async function GET() {
+function parseDateRange(url: URL): { fromTs: string | null; toTs: string | null } {
+  const from = url.searchParams.get("from");
+  const to = url.searchParams.get("to");
+  if (!from && !to) return { fromTs: null, toTs: null };
+  const fromTs = from ? `${from}T00:00:00.000Z` : null;
+  const toTs = to ? `${to}T23:59:59.999Z` : null;
+  return { fromTs, toTs };
+}
+
+export async function GET(req: Request) {
   try {
+    const guard = await requireApiPermissions(req, [
+      "module.crm.view",
+      "MANAGE_SETTINGS",
+      "VIEW_CRM_DASHBOARD",
+    ]);
+    if (guard.denied) return guard.denied;
+
     await ensureCrmSchemaTables();
     const pool = getPool();
+    const url = new URL(req.url);
+    const { fromTs, toTs } = parseDateRange(url);
+    const channel = url.searchParams.get("channel");
+    const channelUpper = channel && channel.trim() ? String(channel).trim().toUpperCase() : null;
+    const teamId = url.searchParams.get("teamId");
+    const teamUuid = teamId && teamId.trim() ? String(teamId).trim() : null;
 
-    const [channelRes, teamRes, agentRes, slaRes, stageRes] = await Promise.all([
+    const convFilter = `
+      c.is_active = true
+      AND ($1::text IS NULL OR UPPER(TRIM(COALESCE(c.channel,''))) = $1::text)
+      AND ($2::uuid IS NULL OR c.assigned_team_id = $2::uuid)
+    `;
+    const convParams = [channelUpper, teamUuid];
+
+    const [channelRes, teamRes, agentRes, slaRes, stageRes, teamOptionsRes] = await Promise.all([
       pool.query(
         `
-          SELECT channel, COUNT(*)::int AS total
-          FROM pendencias.crm_conversations
-          WHERE is_active = true
-          GROUP BY channel
-        `
+          SELECT c.channel, COUNT(*)::int AS total
+          FROM pendencias.crm_conversations c
+          WHERE ${convFilter}
+          GROUP BY c.channel
+        `,
+        convParams
       ),
       pool.query(
         `
@@ -25,10 +56,12 @@ export async function GET() {
             COUNT(*)::int AS open_count
           FROM pendencias.crm_conversations c
           LEFT JOIN pendencias.crm_teams t ON t.id = c.assigned_team_id
-          WHERE c.is_active = true AND c.status IN ('PENDENTE', 'EM_RASTREIO')
+          WHERE ${convFilter}
+            AND c.status IN ('PENDENTE', 'EM_RASTREIO')
           GROUP BY COALESCE(t.name, 'Sem time')
           ORDER BY open_count DESC
-        `
+        `,
+        convParams
       ),
       pool.query(
         `
@@ -37,20 +70,22 @@ export async function GET() {
             COUNT(*)::int AS open_count,
             COUNT(*) FILTER (WHERE c.sla_breached_at IS NOT NULL)::int AS sla_breached
           FROM pendencias.crm_conversations c
-          WHERE c.is_active = true
+          WHERE ${convFilter}
           GROUP BY COALESCE(c.assigned_username, 'Sem responsável')
           ORDER BY open_count DESC
           LIMIT 20
-        `
+        `,
+        convParams
       ),
       pool.query(
         `
           SELECT
-            COUNT(*) FILTER (WHERE sla_due_at IS NOT NULL)::int AS tracked,
-            COUNT(*) FILTER (WHERE sla_breached_at IS NOT NULL)::int AS breached
-          FROM pendencias.crm_conversations
-          WHERE is_active = true
-        `
+            COUNT(*) FILTER (WHERE c.sla_due_at IS NOT NULL)::int AS tracked,
+            COUNT(*) FILTER (WHERE c.sla_breached_at IS NOT NULL)::int AS breached
+          FROM pendencias.crm_conversations c
+          WHERE ${convFilter}
+        `,
+        convParams
       ),
       pool.query(
         `
@@ -59,9 +94,20 @@ export async function GET() {
             COALESCE(AVG(EXTRACT(EPOCH FROM (NOW() - l.updated_at)) / 60), 0)::int AS avg_minutes
           FROM pendencias.crm_stages s
           LEFT JOIN pendencias.crm_leads l ON l.stage_id = s.id
+            AND ($3::timestamptz IS NULL OR l.updated_at >= $3::timestamptz)
+            AND ($4::timestamptz IS NULL OR l.updated_at <= $4::timestamptz)
           GROUP BY s.name
           ORDER BY avg_minutes DESC
           LIMIT 12
+        `,
+        [...convParams, fromTs, toTs]
+      ),
+      pool.query(
+        `
+          SELECT id, name
+          FROM pendencias.crm_teams
+          WHERE is_active = true
+          ORDER BY name ASC
         `
       ),
     ]);
@@ -91,9 +137,16 @@ export async function GET() {
       minutes: Number(r.avg_minutes || 0),
     }));
 
+    const teamOptions = (teamOptionsRes.rows || []).map((r: any) => ({
+      id: String(r.id),
+      name: String(r.name),
+    }));
+
     return NextResponse.json({
+      filters: { from: fromTs ? url.searchParams.get("from") : null, to: toTs ? url.searchParams.get("to") : null, channel: channelUpper, teamId: teamUuid },
       channels,
       teams,
+      teamOptions,
       agents,
       sla: { tracked, breached, hitRate: slaHitRate },
       stageTimes,
@@ -103,4 +156,3 @@ export async function GET() {
     return NextResponse.json({ error: "Erro interno" }, { status: 500 });
   }
 }
-

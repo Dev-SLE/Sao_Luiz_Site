@@ -1,11 +1,16 @@
 import { NextResponse } from "next/server";
 import { getPool } from "../../../lib/server/db";
 import { ensureAppLogsTable } from "../../../lib/server/ensureSchema";
+import { requireApiPermissions } from "../../../lib/server/apiAuth";
+import { getRequestId } from "../../../lib/server/requestId";
 
 export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   try {
+    const requestId = getRequestId(req);
+    const guard = await requireApiPermissions(req, ["module.operacional.view", "module.crm.view", "module.comercial.view"]);
+    if (guard.denied) return guard.denied;
     await ensureAppLogsTable();
     const body = await req.json().catch(() => ({}));
     const level = String(body?.level || "INFO").trim().toUpperCase();
@@ -14,7 +19,7 @@ export async function POST(req: Request) {
     const username = body?.username ? String(body.username).trim() : null;
     const cte = body?.cte ? String(body.cte).trim() : null;
     const serie = body?.serie ? String(body.serie).trim() : null;
-    const payload = body?.payload ?? null;
+    const payload = { ...(body?.payload || {}), requestId };
 
     if (!event) {
       return NextResponse.json({ error: "event obrigatório" }, { status: 400 });
@@ -30,7 +35,7 @@ export async function POST(req: Request) {
       [level, source, event, username, cte, serie, payload ? JSON.stringify(payload) : null]
     );
 
-    return NextResponse.json({ success: true, ...result.rows?.[0] });
+    return NextResponse.json({ success: true, requestId, ...result.rows?.[0] });
   } catch (error) {
     console.error("Erro ao gravar app log:", error);
     return NextResponse.json({ error: "Erro interno" }, { status: 500 });
@@ -39,6 +44,9 @@ export async function POST(req: Request) {
 
 export async function GET(req: Request) {
   try {
+    const requestId = getRequestId(req);
+    const guard = await requireApiPermissions(req, ["MANAGE_SETTINGS"]);
+    if (guard.denied) return guard.denied;
     await ensureAppLogsTable();
     const { searchParams } = new URL(req.url);
     const limit = Math.min(parseInt(searchParams.get("limit") || "200", 10) || 200, 1000);
@@ -68,7 +76,7 @@ export async function GET(req: Request) {
       [...params, limit]
     );
 
-    return NextResponse.json(result.rows || []);
+    return NextResponse.json(result.rows || [], { headers: { "x-request-id": requestId } });
   } catch (error) {
     console.error("Erro ao ler app logs:", error);
     return NextResponse.json({ error: "Erro interno" }, { status: 500 });

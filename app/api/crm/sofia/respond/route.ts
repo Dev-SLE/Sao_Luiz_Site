@@ -6,6 +6,7 @@ import {
   buildSofiaOperationalPrompt,
   buildSofiaSystemInstructions,
 } from "../../../../../lib/server/sofiaGovernance";
+import { requireApiPermissions } from "../../../../../lib/server/apiAuth";
 
 export const runtime = "nodejs";
 
@@ -13,6 +14,27 @@ type AiTurn = {
   role: "user" | "model";
   text: string;
 };
+
+function buildCopilotSummary(transcript: string, maxChars = 280) {
+  const normalized = String(transcript || "").replace(/\s+/g, " ").trim();
+  if (!normalized) return "";
+  if (normalized.length <= maxChars) return normalized;
+  return `${normalized.slice(0, maxChars - 1)}…`;
+}
+
+function suggestNextBestAction(ctx: {
+  topic?: string | null;
+  shouldEscalate: boolean;
+  allowAutoSend: boolean;
+  governanceReason: string;
+  hasCte: boolean;
+}) {
+  if (ctx.shouldEscalate) return "Encaminhar para atendimento humano (escalonamento por palavra-chave).";
+  if (!ctx.allowAutoSend) return `Encaminhar para humano devido à governança: ${ctx.governanceReason}.`;
+  if (!ctx.hasCte) return "Solicitar CTE (ou NF + destino) para avançar a triagem.";
+  if (String(ctx.topic || "").toUpperCase().includes("RASTRE")) return "Confirmar status do CTE e prazo estimado no próximo retorno.";
+  return "Responder com contexto operacional e confirmar próximo passo com o cliente.";
+}
 
 function extractCteFromText(text: string): string | null {
   const raw = String(text || "");
@@ -277,6 +299,8 @@ function isGenericReply(text: string) {
 
 export async function POST(req: Request) {
   try {
+    const guard = await requireApiPermissions(req, ["module.crm.view"]);
+    if (guard.denied) return guard.denied;
     await ensureCrmSchemaTables();
     const pool = getPool();
     const body = await req.json().catch(() => ({}));
@@ -429,6 +453,16 @@ export async function POST(req: Request) {
         autoReplyEnabled: !!settings.auto_reply_enabled,
         shouldEscalate: true,
         escalateReason: "keyword_detected",
+        copilot: {
+          summary: buildCopilotSummary(transcript),
+          nextBestAction: suggestNextBestAction({
+            topic: conv.topic || null,
+            shouldEscalate: true,
+            allowAutoSend: false,
+            governanceReason: "keyword_detected",
+            hasCte: !!String(conv.cte_number || extractCteFromText(text) || "").trim(),
+          }),
+        },
         governance: {
           autoMode: String(settings.auto_mode || "ASSISTIDO").toUpperCase(),
           allowAutoSend: false,
@@ -567,6 +601,16 @@ export async function POST(req: Request) {
       autoReplyEnabled: !!settings.auto_reply_enabled,
       shouldEscalate,
       escalateReason: shouldEscalate ? "keyword_detected" : null,
+      copilot: {
+        summary: buildCopilotSummary(transcript),
+        nextBestAction: suggestNextBestAction({
+          topic: conv.topic || null,
+          shouldEscalate: !!shouldEscalate,
+          allowAutoSend,
+          governanceReason,
+          hasCte: !!String(conv.cte_number || extractCteFromText(text) || "").trim(),
+        }),
+      },
       governance: {
         autoMode,
         allowAutoSend,

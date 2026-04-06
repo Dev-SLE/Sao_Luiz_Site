@@ -2,11 +2,14 @@ import { NextResponse } from "next/server";
 import { getPool } from "../../../lib/server/db";
 import bcrypt from "../../../bcrypt.js";
 import { serverLog } from "../../../lib/server/appLog";
+import { requireApiPermissions } from "../../../lib/server/apiAuth";
 
 export const runtime = "nodejs";
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
+    const guard = await requireApiPermissions(req, ["MANAGE_USERS", "MANAGE_SETTINGS"]);
+    if (guard.denied) return guard.denied;
     const pool = getPool();
     await pool.query(`ALTER TABLE pendencias.users ADD COLUMN IF NOT EXISTS last_login_at timestamptz`);
     const result = await pool.query("SELECT * FROM pendencias.users");
@@ -24,6 +27,8 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
+    const guard = await requireApiPermissions(req, ["MANAGE_USERS", "MANAGE_SETTINGS"]);
+    if (guard.denied) return guard.denied;
     const body = await req.json();
     const username = String(body?.username || "").trim();
     const password = String(body?.password || "").trim();
@@ -80,6 +85,8 @@ export async function POST(req: Request) {
 
 export async function DELETE(req: Request) {
   try {
+    const guard = await requireApiPermissions(req, ["MANAGE_USERS", "MANAGE_SETTINGS"]);
+    if (guard.denied) return guard.denied;
     const { searchParams } = new URL(req.url);
     const username = String(searchParams.get("username") || "").trim();
     if (!username) return NextResponse.json({ error: "username obrigatório" }, { status: 400 });
