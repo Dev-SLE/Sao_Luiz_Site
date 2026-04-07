@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireApiPermissions } from "../../../../lib/server/apiAuth";
 import { getPool } from "../../../../lib/server/db";
 import { ensureOperationalTrackingTables } from "../../../../lib/server/ensureSchema";
 import { formatDateTime } from "../../../../lib/server/datetime";
@@ -17,6 +18,8 @@ type TimelineItem = {
   bus_name?: string | null;
   stop_name?: string | null;
   location_text?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   photos?: string[];
 };
 
@@ -34,6 +37,8 @@ function parsePhotos(linkImagem: any): string[] {
 
 export async function GET(req: Request) {
   try {
+    const guard = await requireApiPermissions(req, ["VIEW_RASTREIO_OPERACIONAL", "MANAGE_SETTINGS"]);
+    if (guard.denied) return guard.denied;
     await ensureOperationalTrackingTables();
     const { searchParams } = new URL(req.url);
     const cte = String(searchParams.get("cte") || "").trim();
@@ -54,9 +59,21 @@ export async function GET(req: Request) {
           c.destinatario::text AS destinatario,
           c.frete_pago::text AS frete_pago,
           c.valor_cte::numeric AS valor_cte,
-          i.status_calculado AS status_calculado
+          i.status_calculado AS status_calculado,
+          lnk.vehicle_id AS vehicle_id,
+          lnk.plate AS plate,
+          lnk.mdf AS mdf
         FROM pendencias.cte_view_index i
         JOIN pendencias.ctes c ON c.cte = i.cte AND c.serie = i.serie
+        LEFT JOIN LATERAL (
+          SELECT ll.vehicle_id, ll.plate, ll.mdf
+          FROM pendencias.operational_load_links ll
+          WHERE ll.cte = c.cte
+            AND ll.serie = c.serie
+            AND ll.ends_at IS NULL
+          ORDER BY ll.starts_at DESC
+          LIMIT 1
+        ) lnk ON true
         WHERE i.view = 'em_busca'
           AND c.cte = $1
           AND c.serie = $2
@@ -95,6 +112,8 @@ export async function GET(req: Request) {
             e.bus_name AS bus_name,
             e.stop_name AS stop_name,
             e.location_text AS location_text,
+            e.latitude AS latitude,
+            e.longitude AS longitude,
             e.photos AS photos
           FROM pendencias.operacional_tracking_events e
           WHERE e.cte = $1
@@ -154,6 +173,8 @@ export async function GET(req: Request) {
         stop_name: e.stop_name ? String(e.stop_name) : null,
         location_text: e.location_text ? String(e.location_text) : null,
         photos: Array.isArray(e.photos) ? e.photos.map((x: any) => String(x)) : [],
+        latitude: e.latitude != null ? Number(e.latitude) : null,
+        longitude: e.longitude != null ? Number(e.longitude) : null,
       });
     }
 
@@ -185,8 +206,46 @@ export async function GET(req: Request) {
         stop_name: String(e.stop_name),
         bus_name: e.bus_name ? String(e.bus_name) : null,
         location_text: e.location_text ? String(e.location_text) : null,
+        latitude: e.latitude != null ? Number(e.latitude) : null,
+        longitude: e.longitude != null ? Number(e.longitude) : null,
         at: formatDateTime(e.event_time),
       }));
+
+    const linksRes = await pool.query(
+      `
+        SELECT id, cte, serie, mdf, vehicle_id, plate, starts_at, ends_at, source, changed_by, notes
+        FROM pendencias.operational_load_links
+        WHERE cte = $1
+          AND (serie = $2 OR ltrim(serie, '0') = ltrim($2, '0'))
+        ORDER BY starts_at DESC
+        LIMIT 50
+      `,
+      [cte, serie]
+    );
+    const activeLink = (linksRes.rows || []).find((x: any) => !x.ends_at) || null;
+    const trailRes = await pool.query(
+      `
+        WITH active AS (
+          SELECT vehicle_id, plate, starts_at
+          FROM pendencias.operational_load_links
+          WHERE cte = $1
+            AND (serie = $2 OR ltrim(serie, '0') = ltrim($2, '0'))
+            AND ends_at IS NULL
+          ORDER BY starts_at DESC
+          LIMIT 1
+        )
+        SELECT p.lat, p.lng, p.position_at, p.vehicle_id, p.plate, p.odometer_km
+        FROM pendencias.operational_vehicle_positions p
+        JOIN active a ON (
+          (a.plate IS NOT NULL AND p.plate = a.plate)
+          OR (a.vehicle_id IS NOT NULL AND p.vehicle_id = a.vehicle_id)
+        )
+        WHERE p.position_at >= NOW() - INTERVAL '24 hours'
+        ORDER BY p.position_at DESC
+        LIMIT 500
+      `,
+      [cte, serie]
+    );
 
     const item = {
       CTE: itemRow.cte,
@@ -197,9 +256,26 @@ export async function GET(req: Request) {
       FRETE_PAGO: itemRow.frete_pago || "",
       VALOR_CTE: itemRow.valor_cte != null ? String(itemRow.valor_cte) : "",
       STATUS_CALCULADO: itemRow.status_calculado || "",
+      VEHICLE_ID: itemRow.vehicle_id || "",
+      PLATE: itemRow.plate || "",
+      MDF: itemRow.mdf || "",
     };
-
-    return NextResponse.json({ item, timeline: timelineOut, stops });
+    return NextResponse.json({
+      item,
+      timeline: timelineOut,
+      stops,
+      activeLink,
+      links: linksRes.rows || [],
+      trail: (trailRes.rows || []).map((r: any) => ({
+        lat: Number(r.lat),
+        lng: Number(r.lng),
+        at: formatDateTime(r.position_at),
+        position_at: r.position_at,
+        vehicle_id: r.vehicle_id || null,
+        plate: r.plate || null,
+        odometer_km: r.odometer_km != null ? Number(r.odometer_km) : null,
+      })),
+    });
   } catch (error) {
     console.error("OperationalTracking item GET error:", error);
     return NextResponse.json({ error: "Erro interno" }, { status: 500 });

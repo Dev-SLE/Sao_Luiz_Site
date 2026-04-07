@@ -670,6 +670,8 @@ export async function ensureOperationalTrackingTables() {
       bus_name text,
       stop_name text,
       location_text text,
+      latitude double precision,
+      longitude double precision,
 
       photos jsonb NOT NULL DEFAULT '[]'::jsonb,
 
@@ -682,6 +684,97 @@ export async function ensureOperationalTrackingTables() {
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_operacional_tracking_events_cte_serie_time
     ON pendencias.operacional_tracking_events(cte, serie, event_time DESC)
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS pendencias.operational_vehicle_positions (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      provider text NOT NULL DEFAULT 'LIFE',
+      vehicle_id text,
+      plate text,
+      lat double precision NOT NULL,
+      lng double precision NOT NULL,
+      speed double precision,
+      heading double precision,
+      ignition boolean,
+      odometer_km double precision,
+      position_at timestamptz NOT NULL,
+      received_at timestamptz NOT NULL DEFAULT NOW(),
+      raw_payload jsonb NOT NULL DEFAULT '{}'::jsonb,
+      created_at timestamptz NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_operational_vehicle_positions_dedupe
+    ON pendencias.operational_vehicle_positions(provider, COALESCE(vehicle_id,''), COALESCE(plate,''), position_at)
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_operational_vehicle_positions_plate_time
+    ON pendencias.operational_vehicle_positions(plate, position_at DESC)
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_operational_vehicle_positions_vehicle_time
+    ON pendencias.operational_vehicle_positions(vehicle_id, position_at DESC)
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS pendencias.operational_load_links (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      cte text NOT NULL,
+      serie text NOT NULL DEFAULT '0',
+      mdf text,
+      vehicle_id text,
+      plate text,
+      starts_at timestamptz NOT NULL DEFAULT NOW(),
+      ends_at timestamptz,
+      source text NOT NULL DEFAULT 'MANUAL',
+      changed_by text,
+      notes text,
+      created_at timestamptz NOT NULL DEFAULT NOW(),
+      updated_at timestamptz NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_operational_load_links_cte_serie_starts
+    ON pendencias.operational_load_links(cte, serie, starts_at DESC)
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_operational_load_links_plate_active
+    ON pendencias.operational_load_links(plate, starts_at DESC)
+    WHERE ends_at IS NULL
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_operational_load_links_vehicle_active
+    ON pendencias.operational_load_links(vehicle_id, starts_at DESC)
+    WHERE ends_at IS NULL
+  `);
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_operational_load_links_active_unique
+    ON pendencias.operational_load_links(cte, serie)
+    WHERE ends_at IS NULL
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS pendencias.operational_vehicle_position_latest (
+      provider text NOT NULL DEFAULT 'LIFE',
+      vehicle_id text,
+      plate text,
+      lat double precision NOT NULL,
+      lng double precision NOT NULL,
+      speed double precision,
+      heading double precision,
+      ignition boolean,
+      odometer_km double precision,
+      position_at timestamptz NOT NULL,
+      received_at timestamptz NOT NULL DEFAULT NOW(),
+      raw_payload jsonb NOT NULL DEFAULT '{}'::jsonb,
+      updated_at timestamptz NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (provider, plate)
+    )
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_operational_vehicle_latest_vehicle
+    ON pendencias.operational_vehicle_position_latest(vehicle_id, position_at DESC)
   `);
   })();
   try {

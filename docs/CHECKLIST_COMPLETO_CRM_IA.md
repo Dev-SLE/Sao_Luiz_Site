@@ -12,7 +12,7 @@ Objetivo: validar de forma completa tudo que envolve CRM, WhatsApp (Evolution/Me
 ## 2) Pre-check tecnico (ambiente)
 
 - [ ] Deploy atual acessivel no Vercel sem erro 500.
-- [ ] Variaveis de ambiente configuradas (`DATABASE_URL`, `SESSION_SECRET`, chaves IA, Evolution).
+- [ ] Variaveis de ambiente configuradas (`DATABASE_URL`, `AUTH_SESSION_SECRET` obrigatorio em producao, `EVOLUTION_WEBHOOK_TOKEN`, chaves IA, Evolution; opcional `CRON_SECRET` para jobs; `LIFE_TRACKING_TOKEN`/`LIFE_TRACKING_API_URL` para mapa operacional).
 - [ ] Banco acessivel e schema atualizado sem erro de migracao em runtime.
 - [ ] Pelo menos 1 inbox Evolution ativa e conectada.
 - [ ] Webhook Evolution sincronizado para eventos principais.

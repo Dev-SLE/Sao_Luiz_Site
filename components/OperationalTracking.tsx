@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { MapPin, Search, Plus, Camera, Loader2 } from "lucide-react";
+import { MapPin, Search, Plus, Camera, Loader2, RefreshCw } from "lucide-react";
 import clsx from "clsx";
+import dynamic from "next/dynamic";
 import { useAuth } from "../context/AuthContext";
 import { useData } from "../context/DataContext";
 import {
@@ -19,6 +20,12 @@ type TrackingItem = {
   VALOR_CTE: string;
   STATUS_CALCULADO: string;
   LAST_UPDATE_AT: string;
+  VEHICLE_ID?: string;
+  PLATE?: string;
+  LAST_LAT?: number | null;
+  LAST_LNG?: number | null;
+  LAST_POSITION_AT?: string;
+  MINUTES_SINCE_LAST_POSITION?: number | null;
 };
 
 type TimelineEntry = {
@@ -42,7 +49,25 @@ type TrackingDetail = {
     stop_name: string;
     bus_name: string | null;
     location_text: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
     at: string;
+  }>;
+  activeLink?: {
+    id: string;
+    mdf?: string | null;
+    vehicle_id?: string | null;
+    plate?: string | null;
+  } | null;
+  links?: Array<any>;
+  trail?: Array<{
+    lat: number;
+    lng: number;
+    at: string;
+    position_at: string;
+    vehicle_id?: string | null;
+    plate?: string | null;
+    odometer_km?: number | null;
   }>;
 };
 
@@ -52,6 +77,8 @@ type DescargaStatus = "RECEBIDO" | "EXTRAVIADO" | "DANIFICADO" | "OUTRO";
 
 const googleMapsSearchUrl = (query: string) =>
   `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+
+const OperationalMap = dynamic(() => import("./OperationalMap"), { ssr: false });
 
 const googleMapsDirectionsUrl = ({
   origin,
@@ -148,6 +175,7 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
   const { hasPermission } = useData();
 
   const [loadingItems, setLoadingItems] = useState(false);
+  const [isSyncingLife, setIsSyncingLife] = useState(false);
   const [items, setItems] = useState<TrackingItem[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -176,6 +204,12 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
   const [uploadedPhotoUrls, setUploadedPhotoUrls] = useState<string[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [linkVehicleId, setLinkVehicleId] = useState("");
+  const [linkPlate, setLinkPlate] = useState("");
+  const [linkMdf, setLinkMdf] = useState("");
+  const [linkReason, setLinkReason] = useState("BALDEACAO");
+  const [linkNotes, setLinkNotes] = useState("");
+  const [isLinking, setIsLinking] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const unitOptions = useMemo(() => {
@@ -204,6 +238,25 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
     }
   };
 
+  const runLifeSync = async () => {
+    if (!canManage) return;
+    if (isSyncingLife) return;
+    setIsSyncingLife(true);
+    try {
+      const resp = await fetch("/api/operational_tracking/sync", { method: "POST" });
+      if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}));
+        throw new Error(data?.error || `HTTP ${resp.status}`);
+      }
+      await fetchItems();
+      if (selected?.item?.CTE) {
+        await fetchDetail(selected.item.CTE, selected.item.SERIE);
+      }
+    } finally {
+      setIsSyncingLife(false);
+    }
+  };
+
   useEffect(() => {
     const t = setTimeout(() => {
       fetchItems();
@@ -211,6 +264,16 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q, unit, dateFrom, dateTo, page, limit]);
+
+  useEffect(() => {
+    if (!canManage) return;
+    runLifeSync();
+    const id = setInterval(() => {
+      runLifeSync();
+    }, 60000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canManage]);
 
   const resetForm = () => {
     setMode("ROTA");
@@ -248,6 +311,27 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialCte, initialSerie]);
+
+  useEffect(() => {
+    if (!selected?.item?.CTE) return;
+    const id = setInterval(() => {
+      fetchDetail(selected.item.CTE, selected.item.SERIE);
+    }, 60000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected?.item?.CTE, selected?.item?.SERIE]);
+
+  useEffect(() => {
+    if (!selected?.activeLink) {
+      setLinkVehicleId("");
+      setLinkPlate("");
+      setLinkMdf("");
+      return;
+    }
+    setLinkVehicleId(String(selected.activeLink.vehicle_id || ""));
+    setLinkPlate(String(selected.activeLink.plate || ""));
+    setLinkMdf(String(selected.activeLink.mdf || ""));
+  }, [selected?.activeLink]);
 
   const handleOpenMapsForList = async (i: TrackingItem) => {
     const data = await fetchDetail(i.CTE, i.SERIE);
@@ -396,6 +480,35 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
     }
   };
 
+  const handleSaveLink = async () => {
+    if (!selected || !canManage || isLinking) return;
+    if (!linkVehicleId.trim() && !linkPlate.trim()) return;
+    setIsLinking(true);
+    try {
+      const resp = await fetch("/api/operational_tracking/link", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cte: selected.item.CTE,
+          serie: selected.item.SERIE,
+          mdf: linkMdf.trim() || null,
+          vehicleId: linkVehicleId.trim() || null,
+          plate: linkPlate.trim().toUpperCase() || null,
+          reason: linkReason,
+          notes: linkNotes.trim() || null,
+        }),
+      });
+      if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}));
+        throw new Error(data?.error || `HTTP ${resp.status}`);
+      }
+      await fetchDetail(selected.item.CTE, selected.item.SERIE);
+      setLinkNotes("");
+    } finally {
+      setIsLinking(false);
+    }
+  };
+
   const timelineEmpty = !selected?.timeline?.length;
 
   return (
@@ -411,6 +524,18 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {canManage && (
+            <button
+              type="button"
+              onClick={runLifeSync}
+              className="inline-flex items-center gap-2 rounded-xl bg-slate-800 px-4 py-2 text-xs font-semibold text-white shadow-md transition-all hover:bg-slate-700"
+              disabled={isSyncingLife}
+              title="Sincroniza telemetria da Life API (janela recomendada: 60s)"
+            >
+              {isSyncingLife ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+              {isSyncingLife ? "Sincronizando Life..." : "Sincronizar Life"}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => fetchItems()}
@@ -518,6 +643,24 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
                     <span className="text-slate-500">Última atualização:</span>{" "}
                     <span className="font-semibold">{i.LAST_UPDATE_AT || "—"}</span>
                   </div>
+                  <div>
+                    <span className="text-slate-500">Última posição:</span>{" "}
+                    <span className="font-semibold">
+                      {i.LAST_LAT != null && i.LAST_LNG != null
+                        ? `${i.LAST_LAT.toFixed(5)}, ${i.LAST_LNG.toFixed(5)}`
+                        : "—"}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500">Sinal:</span>{" "}
+                    <span className="font-semibold">
+                      {i.MINUTES_SINCE_LAST_POSITION == null
+                        ? "Sem telemetria"
+                        : i.MINUTES_SINCE_LAST_POSITION <= 10
+                          ? `Online (${i.MINUTES_SINCE_LAST_POSITION} min)`
+                          : `Atrasado (${i.MINUTES_SINCE_LAST_POSITION} min)`}
+                    </span>
+                  </div>
                 </div>
               </div>
 
@@ -614,8 +757,78 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
                 <div>
                   <span className="text-slate-500">Status:</span> <span className="font-semibold">{selected.item.STATUS_CALCULADO || "—"}</span>
                 </div>
+                <div>
+                  <span className="text-slate-500">Veículo:</span>{" "}
+                  <span className="font-semibold">
+                    {selected.activeLink?.vehicle_id || selected.item.VEHICLE_ID || "—"}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-500">Placa:</span>{" "}
+                  <span className="font-semibold">{selected.activeLink?.plate || selected.item.PLATE || "—"}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500">MDF-e:</span>{" "}
+                  <span className="font-semibold">{selected.activeLink?.mdf || "—"}</span>
+                </div>
               </div>
             </div>
+
+            <div className="bg-white border border-slate-200 rounded-xl p-2">
+              <OperationalMap trail={selected.trail || []} />
+            </div>
+
+            {canManage && (
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2">
+                <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Vínculo CTE/MDF-e → veículo</div>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    className="rounded-lg bg-white border border-slate-200 px-3 py-2 text-xs"
+                    value={linkVehicleId}
+                    onChange={(e) => setLinkVehicleId(e.target.value)}
+                    placeholder="vehicleId (ex: 10000 (44) LD)"
+                  />
+                  <input
+                    className="rounded-lg bg-white border border-slate-200 px-3 py-2 text-xs uppercase"
+                    value={linkPlate}
+                    onChange={(e) => setLinkPlate(e.target.value.toUpperCase())}
+                    placeholder="placa"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    className="rounded-lg bg-white border border-slate-200 px-3 py-2 text-xs"
+                    value={linkMdf}
+                    onChange={(e) => setLinkMdf(e.target.value)}
+                    placeholder="MDF-e"
+                  />
+                  <select
+                    className="rounded-lg bg-white border border-slate-200 px-3 py-2 text-xs"
+                    value={linkReason}
+                    onChange={(e) => setLinkReason(e.target.value)}
+                  >
+                    <option value="BALDEACAO">Baldeação</option>
+                    <option value="CORRECAO">Correção</option>
+                    <option value="INICIO_VIAGEM">Início de viagem</option>
+                  </select>
+                </div>
+                <textarea
+                  className="w-full rounded-lg bg-white border border-slate-200 px-3 py-2 text-xs"
+                  value={linkNotes}
+                  onChange={(e) => setLinkNotes(e.target.value)}
+                  placeholder="Observação da troca (opcional)"
+                />
+                <button
+                  type="button"
+                  onClick={handleSaveLink}
+                  disabled={isLinking || (!linkVehicleId.trim() && !linkPlate.trim())}
+                  className="inline-flex items-center gap-2 rounded-lg bg-[#2c348c] px-3 py-2 text-xs text-white disabled:opacity-50"
+                >
+                  {isLinking ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                  {isLinking ? "Salvando vínculo..." : "Salvar vínculo / baldeação"}
+                </button>
+              </div>
+            )}
 
             {selected.stops?.length ? (
               <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2">
