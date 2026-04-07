@@ -62,7 +62,10 @@ export async function GET(req: Request) {
           i.status_calculado AS status_calculado,
           lnk.vehicle_id AS vehicle_id,
           lnk.plate AS plate,
-          lnk.mdf AS mdf
+          lnk.mdf AS mdf,
+          pos.lat AS last_lat,
+          pos.lng AS last_lng,
+          pos.position_at AS last_position_at
         FROM pendencias.cte_view_index i
         JOIN pendencias.ctes c ON c.cte = i.cte AND c.serie = i.serie
         LEFT JOIN LATERAL (
@@ -74,6 +77,17 @@ export async function GET(req: Request) {
           ORDER BY ll.starts_at DESC
           LIMIT 1
         ) lnk ON true
+        LEFT JOIN LATERAL (
+          SELECT p.lat, p.lng, p.position_at
+          FROM pendencias.operational_vehicle_position_latest p
+          WHERE p.provider = 'LIFE'
+            AND (
+              (lnk.plate IS NOT NULL AND p.plate = lnk.plate)
+              OR (lnk.vehicle_id IS NOT NULL AND p.vehicle_id = lnk.vehicle_id)
+            )
+          ORDER BY p.position_at DESC
+          LIMIT 1
+        ) pos ON true
         WHERE i.view = 'em_busca'
           AND c.cte = $1
           AND c.serie = $2
@@ -240,7 +254,6 @@ export async function GET(req: Request) {
           (a.plate IS NOT NULL AND p.plate = a.plate)
           OR (a.vehicle_id IS NOT NULL AND p.vehicle_id = a.vehicle_id)
         )
-        WHERE p.position_at >= NOW() - INTERVAL '24 hours'
         ORDER BY p.position_at DESC
         LIMIT 500
       `,
@@ -259,6 +272,9 @@ export async function GET(req: Request) {
       VEHICLE_ID: itemRow.vehicle_id || "",
       PLATE: itemRow.plate || "",
       MDF: itemRow.mdf || "",
+      LAST_LAT: itemRow.last_lat != null ? Number(itemRow.last_lat) : null,
+      LAST_LNG: itemRow.last_lng != null ? Number(itemRow.last_lng) : null,
+      LAST_POSITION_AT: itemRow.last_position_at ? formatDateTime(itemRow.last_position_at) : "",
     };
     return NextResponse.json({
       item,

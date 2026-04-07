@@ -26,6 +26,7 @@ type TrackingItem = {
   LAST_LNG?: number | null;
   LAST_POSITION_AT?: string;
   MINUTES_SINCE_LAST_POSITION?: number | null;
+  MDF?: string;
 };
 
 type TimelineEntry = {
@@ -210,6 +211,7 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
   const [linkReason, setLinkReason] = useState("BALDEACAO");
   const [linkNotes, setLinkNotes] = useState("");
   const [isLinking, setIsLinking] = useState(false);
+  const [showMapModal, setShowMapModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const unitOptions = useMemo(() => {
@@ -335,14 +337,22 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
 
   const handleOpenMapsForList = async (i: TrackingItem) => {
     const data = await fetchDetail(i.CTE, i.SERIE);
-    if (data) openMapsForItem(data);
+    if (data) setShowMapModal(true);
+  };
+
+  const isTrackingDetail = (arg: TrackingItem | TrackingDetail): arg is TrackingDetail => {
+    return typeof (arg as TrackingDetail)?.item === "object";
   };
 
   const openMapsForItem = (arg: TrackingItem | TrackingDetail) => {
-    const origin = extractMainLocation("item" in arg ? arg.item.COLETA : arg.COLETA);
-    const destination = extractMainLocation("item" in arg ? arg.item.ENTREGA : arg.ENTREGA);
-    const waypoints =
-      "item" in arg ? arg.stops?.map((s) => extractMainLocation(s.stop_name)).filter(Boolean) : [];
+    // MVP atual: abre mapa interno com trilha/ponto do vínculo.
+    if (isTrackingDetail(arg)) {
+      setShowMapModal(true);
+      return;
+    }
+    const origin = extractMainLocation(arg.COLETA);
+    const destination = extractMainLocation(arg.ENTREGA);
+    const waypoints: string[] = [];
 
     if (origin && destination) {
       window.open(
@@ -353,12 +363,12 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
     }
 
     // Fallback: tenta link fixo por destino
-    const destRaw = "item" in arg ? arg.item.ENTREGA : arg.ENTREGA;
+    const destRaw = arg.ENTREGA;
     const destLink = getMapsUrlForDestination(destRaw);
     if (destLink) return window.open(destLink, "_blank");
 
-    const originRaw = "item" in arg ? arg.item.COLETA : arg.COLETA;
-    const destForSearch = "item" in arg ? arg.item.ENTREGA : arg.ENTREGA;
+    const originRaw = arg.COLETA;
+    const destForSearch = arg.ENTREGA;
     const query = `${originRaw} ${destForSearch}`.trim();
     window.open(googleMapsSearchUrl(query), "_blank");
   };
@@ -744,10 +754,10 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
                 <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Mapa</span>
                 <button
                   type="button"
-                  onClick={() => openMapsForItem(selected)}
+                  onClick={() => setShowMapModal(true)}
                   className="rounded-lg bg-[#2c348c] px-3 py-1.5 text-[11px] text-white hover:bg-[#243a7a]"
                 >
-                  Abrir destino
+                  Abrir mapa
                 </button>
               </div>
               <div className="mt-1 text-xs text-slate-600">
@@ -775,7 +785,18 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
             </div>
 
             <div className="bg-white border border-slate-200 rounded-xl p-2">
-              <OperationalMap trail={selected.trail || []} />
+              <OperationalMap
+                trail={selected.trail || []}
+                fallbackPoint={
+                  selected.item.LAST_LAT != null && selected.item.LAST_LNG != null
+                    ? {
+                        lat: Number(selected.item.LAST_LAT),
+                        lng: Number(selected.item.LAST_LNG),
+                        label: selected.item.LAST_POSITION_AT || "Última posição",
+                      }
+                    : null
+                }
+              />
             </div>
 
             {canManage && (
@@ -1194,6 +1215,49 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
                   {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
                   {isSaving ? "Salvando..." : "Salvar evento"}
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showMapModal && selected && (
+        <div className="fixed inset-0 z-[70] bg-black/55 backdrop-blur-[1px] flex items-center justify-center p-3">
+          <div className="w-full max-w-6xl rounded-2xl bg-white border border-slate-200 shadow-2xl overflow-hidden">
+            <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+              <div className="min-w-0">
+                <h3 className="text-sm font-bold text-slate-900 truncate">
+                  Mapa operacional — {selected.item.CTE}/{selected.item.SERIE}
+                </h3>
+                <p className="text-[11px] text-slate-500 truncate">
+                  Veículo: {selected.item.VEHICLE_ID || "—"} | Placa: {selected.item.PLATE || "—"} | MDF-e:{" "}
+                  {selected.item.MDF || "—"}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowMapModal(false)}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
+              >
+                Fechar mapa
+              </button>
+            </div>
+            <div className="p-3">
+              <div className="rounded-xl overflow-hidden border border-slate-200">
+                <div style={{ minHeight: 520 }}>
+                  <OperationalMap
+                    trail={selected.trail || []}
+                    fallbackPoint={
+                      selected.item.LAST_LAT != null && selected.item.LAST_LNG != null
+                        ? {
+                            lat: Number(selected.item.LAST_LAT),
+                            lng: Number(selected.item.LAST_LNG),
+                            label: selected.item.LAST_POSITION_AT || "Última posição",
+                          }
+                        : null
+                    }
+                  />
+                </div>
               </div>
             </div>
           </div>
