@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "crypto";
 import { NextResponse } from "next/server";
 import { can, getSessionContext, type SessionContext } from "./authorization";
 
@@ -17,4 +18,17 @@ export async function requireApiPermissions(
     return { session, denied: NextResponse.json({ error: "Sem permissão" }, { status: 403 }) };
   }
   return { session, denied: null };
+}
+
+/** POST de manutenção (cron): exige CRON_SECRET e header `x-cron-secret` idêntico. */
+export function verifyCronSecret(req: Request): boolean {
+  const secret = String(process.env.CRON_SECRET || "").trim();
+  if (!secret) return false;
+  const header = String(req.headers.get("x-cron-secret") || "").trim();
+  if (!header || header.length !== secret.length) return false;
+  try {
+    return timingSafeEqual(Buffer.from(header, "utf8"), Buffer.from(secret, "utf8"));
+  } catch {
+    return false;
+  }
 }
