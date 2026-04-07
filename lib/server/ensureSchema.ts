@@ -680,6 +680,9 @@ export async function ensureOperationalTrackingTables() {
       created_at timestamptz NOT NULL DEFAULT NOW()
     )
   `);
+  // Bancos antigos podem já ter a tabela sem colunas geográficas.
+  await pool.query(`ALTER TABLE pendencias.operacional_tracking_events ADD COLUMN IF NOT EXISTS latitude double precision`);
+  await pool.query(`ALTER TABLE pendencias.operacional_tracking_events ADD COLUMN IF NOT EXISTS longitude double precision`);
 
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_operacional_tracking_events_cte_serie_time
