@@ -809,18 +809,136 @@ export async function ensureOperationalTrackingTables() {
   `);
 
   await pool.query(`
-    CREATE TABLE IF NOT EXISTS pendencias.operational_route_od_polyline (
+    CREATE TABLE IF NOT EXISTS pendencias.operational_route_od_variant (
       origin_key text NOT NULL,
       dest_key text NOT NULL,
-      seq smallint NOT NULL,
-      lat double precision NOT NULL,
-      lng double precision NOT NULL,
-      PRIMARY KEY (origin_key, dest_key, seq)
+      variant_id smallint NOT NULL,
+      trip_count int NOT NULL DEFAULT 0,
+      duration_p50_minutes int NOT NULL DEFAULT 0,
+      duration_p90_minutes int NOT NULL DEFAULT 0,
+      last_sample_days int NOT NULL DEFAULT 7,
+      computed_at timestamptz NOT NULL DEFAULT NOW(),
+      is_primary boolean NOT NULL DEFAULT false,
+      top_plates_json jsonb NOT NULL DEFAULT '[]'::jsonb,
+      PRIMARY KEY (origin_key, dest_key, variant_id)
     )
   `);
   await pool.query(`
-    CREATE INDEX IF NOT EXISTS idx_operational_route_poly_od
-    ON pendencias.operational_route_od_polyline (origin_key, dest_key)
+    CREATE INDEX IF NOT EXISTS idx_operational_route_od_variant_od
+    ON pendencias.operational_route_od_variant (origin_key, dest_key)
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS pendencias.operational_route_od_polyline (
+      origin_key text NOT NULL,
+      dest_key text NOT NULL,
+      variant_id smallint NOT NULL DEFAULT 0,
+      seq smallint NOT NULL,
+      lat double precision NOT NULL,
+      lng double precision NOT NULL,
+      PRIMARY KEY (origin_key, dest_key, variant_id, seq)
+    )
+  `);
+  await pool.query(`
+    ALTER TABLE pendencias.operational_route_od_polyline
+    ADD COLUMN IF NOT EXISTS variant_id smallint NOT NULL DEFAULT 0
+  `);
+  await pool.query(`
+    ALTER TABLE pendencias.operational_route_od_polyline
+    DROP CONSTRAINT IF EXISTS operational_route_od_polyline_pkey
+  `);
+  await pool.query(`
+    ALTER TABLE pendencias.operational_route_od_polyline
+    ADD PRIMARY KEY (origin_key, dest_key, variant_id, seq)
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_operational_route_poly_od_v
+    ON pendencias.operational_route_od_polyline (origin_key, dest_key, variant_id)
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS pendencias.operational_route_od_waypoint (
+      origin_key text NOT NULL,
+      dest_key text NOT NULL,
+      variant_id smallint NOT NULL,
+      seq smallint NOT NULL,
+      kind text NOT NULL DEFAULT 'CLUSTER',
+      stop_key text,
+      label text,
+      lat double precision NOT NULL,
+      lng double precision NOT NULL,
+      PRIMARY KEY (origin_key, dest_key, variant_id, seq)
+    )
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_operational_route_waypoint_odv
+    ON pendencias.operational_route_od_waypoint (origin_key, dest_key, variant_id)
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS pendencias.operational_route_trip_leg (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      cte text NOT NULL,
+      serie text NOT NULL,
+      leg_index int NOT NULL DEFAULT 0,
+      origin_key text,
+      dest_key text,
+      variant_id smallint,
+      load_link_id uuid REFERENCES pendencias.operational_load_links(id) ON DELETE CASCADE,
+      starts_at timestamptz NOT NULL,
+      ends_at timestamptz,
+      updated_at timestamptz NOT NULL DEFAULT NOW(),
+      UNIQUE (load_link_id)
+    )
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_operational_route_trip_leg_cs
+    ON pendencias.operational_route_trip_leg (cte, serie, leg_index)
+  `);
+
+  await pool.query(`
+    INSERT INTO pendencias.operational_route_od_variant (
+      origin_key, dest_key, variant_id, trip_count, duration_p50_minutes, duration_p90_minutes,
+      last_sample_days, computed_at, is_primary, top_plates_json
+    )
+    SELECT
+      s.origin_key,
+      s.dest_key,
+      0,
+      s.trip_count,
+      s.duration_p50_minutes,
+      s.duration_p90_minutes,
+      s.last_sample_days,
+      s.computed_at,
+      true,
+      '[]'::jsonb
+    FROM pendencias.operational_route_od_stats s
+    WHERE NOT EXISTS (
+      SELECT 1 FROM pendencias.operational_route_od_variant v
+      WHERE v.origin_key = s.origin_key AND v.dest_key = s.dest_key AND v.variant_id = 0
+    )
+  `);
+
+  await pool.query(`
+    INSERT INTO pendencias.operational_route_trip_leg (
+      cte, serie, leg_index, load_link_id, starts_at, ends_at, origin_key, dest_key
+    )
+    SELECT
+      l.cte,
+      l.serie,
+      (ROW_NUMBER() OVER (PARTITION BY l.cte, l.serie ORDER BY l.starts_at ASC))::int - 1,
+      l.id,
+      l.starts_at,
+      l.ends_at,
+      NULL,
+      NULL
+    FROM pendencias.operational_load_links l
+    ON CONFLICT (load_link_id) DO UPDATE SET
+      starts_at = EXCLUDED.starts_at,
+      ends_at = EXCLUDED.ends_at,
+      leg_index = EXCLUDED.leg_index,
+      updated_at = NOW()
   `);
 
   await pool.query(`

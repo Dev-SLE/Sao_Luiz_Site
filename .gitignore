@@ -24,6 +24,15 @@ lerna-debug.log*
 
 # Local artifacts
 *.tsbuildinfo
+tsconfig.tsbuildinfo
+
+# Cursor / IDE (planos e estado local)
+.cursor/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
 
 # Editors and OS
 .vscode/*

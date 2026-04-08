@@ -64,14 +64,27 @@ type VeiculoHistRow = {
   veiculo?: string | number;
 };
 
+type RoutePatternVariant = {
+  variant_id: number;
+  trip_count: number;
+  duration_p50_minutes: number;
+  duration_p90_minutes: number;
+  is_primary: boolean;
+  top_plates?: Array<{ plate: string; count: number }>;
+};
+
 type RoutePatternPreview = {
   polyline: Array<{ lat: number; lng: number }>;
+  waypoints: Array<{ lat: number; lng: number; label: string; kind: string }>;
   stats: {
     trip_count: number;
     duration_p50_minutes: number;
     duration_p90_minutes: number;
     computed_at: string;
+    variant_id?: number;
   } | null;
+  variants: RoutePatternVariant[];
+  selectedVariantId: number | null;
 };
 
 type TrackingDetail = {
@@ -102,6 +115,23 @@ type TrackingDetail = {
     vehicle_id?: string | null;
     plate?: string | null;
     odometer_km?: number | null;
+  }>;
+  routeProgress?: {
+    variant_id: number;
+    fraction_along: number;
+    eta_minutes_p50: number | null;
+    bearing_route_deg: number | null;
+    bearing_trail_deg: number | null;
+    cumulative_km: number;
+    total_km: number;
+    projected_lat: number;
+    projected_lng: number;
+  } | null;
+  tripLegs?: Array<{
+    leg_index: number;
+    starts_at: string;
+    ends_at: string | null;
+    load_link_id: string | null;
   }>;
 };
 
@@ -264,6 +294,8 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
   const [isLinking, setIsLinking] = useState(false);
   const [showMapModal, setShowMapModal] = useState(false);
   const [routePattern, setRoutePattern] = useState<RoutePatternPreview | null>(null);
+  /** null = API usa variante primária */
+  const [routePatternVariantId, setRoutePatternVariantId] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const unitOptions = useMemo(() => {
@@ -397,6 +429,10 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
   }, [selected?.item?.CTE, selected?.item?.SERIE]);
 
   useEffect(() => {
+    setRoutePatternVariantId(null);
+  }, [selected?.item?.CTE, selected?.item?.SERIE]);
+
+  useEffect(() => {
     let cancelled = false;
     const run = async () => {
       if (!selected?.item) {
@@ -413,6 +449,7 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
         const usp = new URLSearchParams();
         usp.set("origin_key", ok);
         usp.set("dest_key", dk);
+        if (routePatternVariantId != null) usp.set("variant_id", String(routePatternVariantId));
         const resp = await fetch(`/api/operational_tracking/route_pattern?${usp.toString()}`);
         if (!resp.ok) {
           if (!cancelled) setRoutePattern(null);
@@ -426,14 +463,36 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
               lng: Number(p.lng),
             }))
           : [];
+        const wps = Array.isArray(data.waypoints)
+          ? data.waypoints.map((w: { lat: number; lng: number; label?: string; kind?: string }) => ({
+              lat: Number(w.lat),
+              lng: Number(w.lng),
+              label: String(w.label || w.stop_key || ""),
+              kind: String(w.kind || ""),
+            }))
+          : [];
+        const variants: RoutePatternVariant[] = Array.isArray(data.variants)
+          ? data.variants.map((v: Record<string, unknown>) => ({
+              variant_id: Number(v.variant_id),
+              trip_count: Number(v.trip_count),
+              duration_p50_minutes: Number(v.duration_p50_minutes),
+              duration_p90_minutes: Number(v.duration_p90_minutes),
+              is_primary: Boolean(v.is_primary),
+              top_plates: Array.isArray(v.top_plates) ? (v.top_plates as RoutePatternVariant["top_plates"]) : [],
+            }))
+          : [];
         setRoutePattern({
           polyline: poly,
+          waypoints: wps,
+          variants,
+          selectedVariantId: data.variant_id != null ? Number(data.variant_id) : null,
           stats: data.stats
             ? {
                 trip_count: Number(data.stats.trip_count),
                 duration_p50_minutes: Number(data.stats.duration_p50_minutes),
                 duration_p90_minutes: Number(data.stats.duration_p90_minutes),
                 computed_at: String(data.stats.computed_at || ""),
+                variant_id: data.stats.variant_id != null ? Number(data.stats.variant_id) : undefined,
               }
             : null,
         });
@@ -445,7 +504,7 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
     return () => {
       cancelled = true;
     };
-  }, [selected?.item?.CTE, selected?.item?.SERIE, selected?.item?.COLETA, selected?.item?.ENTREGA]);
+  }, [selected?.item?.CTE, selected?.item?.SERIE, selected?.item?.COLETA, selected?.item?.ENTREGA, routePatternVariantId]);
 
   useEffect(() => {
     if (!selected?.activeLink) {
@@ -1089,15 +1148,46 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
                   <div className="text-xs font-semibold text-slate-900 mt-1">
                     {ok} → {dk}
                   </div>
+                  {routePattern && routePattern.variants.length > 1 ? (
+                    <div className="mt-2">
+                      <label className="text-[10px] text-slate-500 uppercase block mb-0.5">Itinerário (variante)</label>
+                      <select
+                        className="w-full rounded-lg bg-white border border-slate-200 px-2 py-1.5 text-xs"
+                        value={
+                          routePatternVariantId ??
+                          routePattern.selectedVariantId ??
+                          routePattern.variants[0]?.variant_id ??
+                          ""
+                        }
+                        onChange={(e) => setRoutePatternVariantId(Number(e.target.value))}
+                      >
+                        {routePattern.variants.map((v) => (
+                          <option key={v.variant_id} value={v.variant_id}>
+                            Variante {v.variant_id} — {v.trip_count} viagem(ns)
+                            {v.is_primary ? " · principal" : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : null}
                   {routePattern?.stats ? (
                     <div className="text-[11px] text-slate-600 mt-2 space-y-0.5">
-                      <div>{routePattern.stats.trip_count} trecho(s) na última agregação</div>
+                      <div>{routePattern.stats.trip_count} trecho(s) na variante seleccionada</div>
                       <div>
                         Tempo típico: ~{routePattern.stats.duration_p50_minutes} min (p90:{" "}
                         {routePattern.stats.duration_p90_minutes} min)
                       </div>
                       {routePattern.stats.computed_at ? (
                         <div className="text-slate-500">Calculado: {routePattern.stats.computed_at}</div>
+                      ) : null}
+                      {routePattern.variants.length === 1 && routePattern.variants[0]?.top_plates?.length ? (
+                        <div className="text-slate-600 pt-1">
+                          Placas frequentes:{" "}
+                          {routePattern.variants[0].top_plates
+                            .slice(0, 4)
+                            .map((x) => `${x.plate} (${x.count})`)
+                            .join(", ")}
+                        </div>
                       ) : null}
                     </div>
                   ) : routePattern && routePattern.polyline.length >= 2 ? (
@@ -1111,9 +1201,41 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
                       com <code className="text-[10px]">DATABASE_URL</code> no ambiente.
                     </div>
                   )}
+                  {selected.routeProgress ? (
+                    <div className="text-[11px] text-emerald-800 mt-2 space-y-0.5">
+                      <div>
+                        Progresso na rota típica: {Math.round(selected.routeProgress.fraction_along * 100)}%
+                        {selected.routeProgress.eta_minutes_p50 != null
+                          ? ` · ETA ~${selected.routeProgress.eta_minutes_p50} min (p50 nesta variante)`
+                          : null}
+                      </div>
+                      <div className="text-emerald-700/90">
+                        {selected.routeProgress.total_km > 0
+                          ? `~${selected.routeProgress.cumulative_km.toFixed(0)} / ${selected.routeProgress.total_km.toFixed(0)} km ao longo do traçado típico`
+                          : null}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               );
             })()}
+
+            {selected.tripLegs && selected.tripLegs.length > 1 ? (
+              <div className="border border-slate-200 rounded-xl p-3 bg-amber-50/40">
+                <div className="text-[11px] font-bold text-slate-600 uppercase tracking-wide mb-2">
+                  Pernas / baldeação (histórico de vínculos)
+                </div>
+                <ul className="space-y-1 text-[11px] text-slate-700">
+                  {selected.tripLegs.map((leg) => (
+                    <li key={`${leg.leg_index}-${leg.starts_at}`} className="flex flex-wrap gap-x-2">
+                      <span className="font-mono font-semibold">Perna {leg.leg_index + 1}</span>
+                      <span>— início {leg.starts_at}</span>
+                      {leg.ends_at ? <span className="text-slate-500">fim {leg.ends_at}</span> : <span className="text-emerald-700 font-medium">em curso</span>}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
 
             <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2">
               <div className="flex items-center gap-2 flex-wrap justify-between">
@@ -1160,7 +1282,27 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
                 extraMarkers={mapExtraMarkers}
                 heightPx={220}
                 referencePolyline={routePattern?.polyline?.length ? routePattern.polyline : null}
+                bearingDeg={
+                  selected.routeProgress?.bearing_trail_deg ?? selected.routeProgress?.bearing_route_deg ?? null
+                }
+                progressPoint={
+                  selected.routeProgress &&
+                  Number.isFinite(selected.routeProgress.projected_lat) &&
+                  Number.isFinite(selected.routeProgress.projected_lng)
+                    ? {
+                        lat: selected.routeProgress.projected_lat,
+                        lng: selected.routeProgress.projected_lng,
+                      }
+                    : null
+                }
+                waypoints={routePattern?.waypoints?.length ? routePattern.waypoints : null}
               />
+              <div className="text-[10px] text-slate-500 mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 px-0.5">
+                <span>Tracejado cinza: itinerário típico</span>
+                <span className="text-[#2c348c]">Linha azul: trilha GPS</span>
+                <span className="text-amber-700">Ponto âmbar: progresso na rota típica</span>
+                <span className="text-blue-700">Azul claro: paragens O/D</span>
+              </div>
             </div>
 
             {canManage && (
@@ -1623,6 +1765,20 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
                     extraMarkers={mapExtraMarkers}
                     heightPx={500}
                     referencePolyline={routePattern?.polyline?.length ? routePattern.polyline : null}
+                    bearingDeg={
+                      selected.routeProgress?.bearing_trail_deg ?? selected.routeProgress?.bearing_route_deg ?? null
+                    }
+                    progressPoint={
+                      selected.routeProgress &&
+                      Number.isFinite(selected.routeProgress.projected_lat) &&
+                      Number.isFinite(selected.routeProgress.projected_lng)
+                        ? {
+                            lat: selected.routeProgress.projected_lat,
+                            lng: selected.routeProgress.projected_lng,
+                          }
+                        : null
+                    }
+                    waypoints={routePattern?.waypoints?.length ? routePattern.waypoints : null}
                   />
                 </div>
               </div>

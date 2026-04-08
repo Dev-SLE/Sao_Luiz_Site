@@ -4,6 +4,8 @@ import { getPool } from "../../../../lib/server/db";
 import { ensureOperationalTrackingTables } from "../../../../lib/server/ensureSchema";
 import { formatDateOnlyBr, formatDateTime } from "../../../../lib/server/datetime";
 import { parseLinhaTempoSigai, parseVeiculosHistorico } from "../../../../lib/server/ctesTrackingJson";
+import { matchAgencyStopKey } from "../../../../lib/cteLocationKeys";
+import { bearingFromTrail, computeRouteProgress } from "../../../../lib/server/routePatternProgress";
 
 export const runtime = "nodejs";
 
@@ -247,6 +249,18 @@ export async function GET(req: Request) {
       [cte, serie]
     );
     const activeLink = (linksRes.rows || []).find((x: any) => !x.ends_at) || null;
+
+    const tripLegsRes = await pool.query(
+      `
+        SELECT leg_index, starts_at, ends_at, load_link_id
+        FROM pendencias.operational_route_trip_leg
+        WHERE cte = $1
+          AND (serie = $2 OR ltrim(serie, '0') = ltrim($2, '0'))
+        ORDER BY leg_index ASC, starts_at ASC
+      `,
+      [cte, serie]
+    );
+
     const trailRes = await pool.query(
       `
         WITH active AS (
@@ -297,6 +311,92 @@ export async function GET(req: Request) {
     const sigaiLinhaTempo = parseLinhaTempoSigai(itemRow.linha_tempo_json);
     const veiculosHistorico = parseVeiculosHistorico(itemRow.veiculos_json);
 
+    const trail = (trailRes.rows || []).map((r: any) => ({
+      lat: Number(r.lat),
+      lng: Number(r.lng),
+      at: formatDateTime(r.position_at),
+      position_at: r.position_at,
+      vehicle_id: r.vehicle_id || null,
+      plate: r.plate || null,
+      odometer_km: r.odometer_km != null ? Number(r.odometer_km) : null,
+    }));
+
+    let routeProgress: {
+      variant_id: number;
+      fraction_along: number;
+      nearest_seg_index: number;
+      eta_minutes_p50: number | null;
+      bearing_route_deg: number | null;
+      bearing_trail_deg: number | null;
+      cumulative_km: number;
+      total_km: number;
+      projected_lat: number;
+      projected_lng: number;
+    } | null = null;
+
+    const okStop = matchAgencyStopKey(itemRow.coleta);
+    const dkStop = matchAgencyStopKey(itemRow.entrega);
+    if (okStop && dkStop && trail.length >= 1) {
+      const vRes = await pool.query(
+        `
+          SELECT variant_id, duration_p50_minutes
+          FROM pendencias.operational_route_od_variant
+          WHERE origin_key = $1 AND dest_key = $2
+          ORDER BY is_primary DESC, trip_count DESC, variant_id ASC
+          LIMIT 1
+        `,
+        [okStop, dkStop]
+      );
+      const vidRow = vRes.rows?.[0];
+      const vid = vidRow?.variant_id != null ? Number(vidRow.variant_id) : 0;
+      const d50 =
+        vidRow?.duration_p50_minutes != null
+          ? Number(vidRow.duration_p50_minutes)
+          : null;
+      const polyRes = await pool.query(
+        `
+          SELECT lat, lng
+          FROM pendencias.operational_route_od_polyline
+          WHERE origin_key = $1 AND dest_key = $2 AND variant_id = $3
+          ORDER BY seq ASC
+        `,
+        [okStop, dkStop, vid]
+      );
+      let polyRows = polyRes.rows || [];
+      if (polyRows.length < 2) {
+        const leg = await pool.query(
+          `
+            SELECT lat, lng
+            FROM pendencias.operational_route_od_polyline
+            WHERE origin_key = $1 AND dest_key = $2
+            ORDER BY variant_id ASC, seq ASC
+          `,
+          [okStop, dkStop]
+        );
+        polyRows = leg.rows || [];
+      }
+      if (polyRows.length >= 2) {
+        const polyline = polyRows.map((r: any) => ({ lat: Number(r.lat), lng: Number(r.lng) }));
+        const latest = { lat: trail[0].lat, lng: trail[0].lng };
+        const prog = computeRouteProgress(polyline, latest, d50);
+        const trailLl = trail.slice(0, 16).map((t) => ({ lat: t.lat, lng: t.lng }));
+        if (prog) {
+          routeProgress = {
+            variant_id: vid,
+            fraction_along: prog.fractionAlong,
+            nearest_seg_index: prog.nearestSegIndex,
+            eta_minutes_p50: prog.etaMinutesP50,
+            bearing_route_deg: prog.bearingDeg,
+            bearing_trail_deg: bearingFromTrail(trailLl),
+            cumulative_km: prog.cumulativeKm,
+            total_km: prog.totalKm,
+            projected_lat: prog.projected.lat,
+            projected_lng: prog.projected.lng,
+          };
+        }
+      }
+    }
+
     return NextResponse.json({
       item,
       sigaiLinhaTempo,
@@ -305,14 +405,13 @@ export async function GET(req: Request) {
       stops,
       activeLink,
       links: linksRes.rows || [],
-      trail: (trailRes.rows || []).map((r: any) => ({
-        lat: Number(r.lat),
-        lng: Number(r.lng),
-        at: formatDateTime(r.position_at),
-        position_at: r.position_at,
-        vehicle_id: r.vehicle_id || null,
-        plate: r.plate || null,
-        odometer_km: r.odometer_km != null ? Number(r.odometer_km) : null,
+      trail,
+      routeProgress,
+      tripLegs: (tripLegsRes.rows || []).map((r: any) => ({
+        leg_index: Number(r.leg_index),
+        starts_at: r.starts_at ? formatDateTime(r.starts_at) : "",
+        ends_at: r.ends_at ? formatDateTime(r.ends_at) : null,
+        load_link_id: r.load_link_id ? String(r.load_link_id) : null,
       })),
     });
   } catch (error) {
