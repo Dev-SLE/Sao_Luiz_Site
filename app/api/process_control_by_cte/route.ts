@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getSessionContext } from "../../../lib/server/authorization";
 import { getPool } from "../../../lib/server/db";
 import { formatDateTime } from "../../../lib/server/datetime";
 
@@ -6,6 +7,11 @@ export const runtime = "nodejs";
 
 export async function GET(req: Request) {
   try {
+    const session = await getSessionContext(req);
+    if (!session) {
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(req.url);
     const cte = String(searchParams.get("cte") || "").trim();
     const serie = String(searchParams.get("serie") || "").trim();

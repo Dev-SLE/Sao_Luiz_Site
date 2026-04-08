@@ -272,8 +272,8 @@ const AppContent: React.FC = () => {
         return (
           <div className="max-w-6xl space-y-4">
             <p className="text-xs text-slate-600">
-              As mesmas opções ficam em{' '}
-              <strong>Configurações → Operação CRM</strong>; esta página expõe o console para o dia a dia.
+              Times, caixas WhatsApp (Evolution), triagem de contatos, roteamento, SLA, cadências e campanhas. A
+              privacidade e trilha de consentimento ficam em <strong>Privacidade CRM</strong> no menu.
             </p>
             <CrmOpsAdmin />
           </div>
@@ -306,7 +306,7 @@ const AppContent: React.FC = () => {
         if (!hasPermission('MANAGE_SETTINGS')) {
           return noAccess('Seu perfil não possui acesso a Configurações.');
         }
-        return <Settings />;
+        return <Settings onNavigateToPage={setCurrentPage} />;
       case Page.SOFIA_CONFIG:
         if (!hasPermission('MANAGE_SETTINGS') || !hasPermission('MANAGE_SOFIA')) {
           return noAccess('Seu perfil não possui acesso às Configurações da Sofia.');

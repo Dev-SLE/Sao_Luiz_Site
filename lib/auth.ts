@@ -108,7 +108,7 @@ export class NeonDataClient {
         if (params.limit) usp.append('limit', params.limit.toString());
         url += `?${usp.toString()}`;
       }
-      const response = await fetch(url);
+      const response = await fetch(url, { credentials: "include" });
       if (!response.ok) {
         throw await this.buildHttpError('Erro na API', response);
       }
@@ -364,12 +364,6 @@ export class NeonDataClient {
 
   async changePassword(payload: { username: string; currentPassword: string; newPassword: string }): Promise<any> {
     return this.postJson('/changePassword', payload);
-  }
-
-  async updateCte(cteId: string, updates: any): Promise<any> {
-    // TODO: Implementar update via servidor local
-    console.log('Update CTE não implementado ainda:', cteId, updates);
-    return Promise.resolve();
   }
 
   // ----------------------------

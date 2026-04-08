@@ -12,23 +12,40 @@ type TrailPoint = {
   vehicle_id?: string | null;
 };
 
+export type MapExtraMarker = {
+  lat: number;
+  lng: number;
+  label: string;
+  detail?: string;
+};
+
 type Props = {
   trail: TrailPoint[];
   fallbackPoint?: { lat: number; lng: number; label?: string } | null;
+  /** Eventos manuais com GPS (ordem livre). */
+  extraMarkers?: MapExtraMarker[];
+  /** Altura do mapa em px (drawer vs modal). */
+  heightPx?: number;
 };
 
-const OperationalMap: React.FC<Props> = ({ trail, fallbackPoint }) => {
+const OperationalMap: React.FC<Props> = ({
+  trail,
+  fallbackPoint,
+  extraMarkers = [],
+  heightPx = 240,
+}) => {
   const hasTrail = Array.isArray(trail) && trail.length > 0;
   if (!hasTrail && !fallbackPoint) {
     return <div className="text-xs text-slate-600 p-3">Sem pontos de rastreio ainda para este vínculo.</div>;
   }
   const latest = hasTrail ? trail[0] : null;
   const center = latest ? [latest.lat, latest.lng] : [fallbackPoint!.lat, fallbackPoint!.lng];
+  const trailChrono = hasTrail ? [...trail].reverse() : [];
   return (
     <MapContainer
       center={center as [number, number]}
       zoom={6}
-      style={{ height: 240, width: "100%", borderRadius: 10 }}
+      style={{ height: heightPx, width: "100%", borderRadius: 10 }}
       scrollWheelZoom={true}
     >
       <TileLayer
@@ -37,7 +54,7 @@ const OperationalMap: React.FC<Props> = ({ trail, fallbackPoint }) => {
       />
       {hasTrail ? (
         <>
-          <Polyline positions={trail.map((p) => [p.lat, p.lng])} pathOptions={{ color: "#2c348c", weight: 4 }} />
+          <Polyline positions={trailChrono.map((p) => [p.lat, p.lng])} pathOptions={{ color: "#2c348c", weight: 4 }} />
           <CircleMarker center={[latest!.lat, latest!.lng]} radius={8} pathOptions={{ color: "#e42424" }}>
             <Popup>
               Última posição<br />
@@ -51,6 +68,24 @@ const OperationalMap: React.FC<Props> = ({ trail, fallbackPoint }) => {
           <Popup>{fallbackPoint?.label || "Última posição"}</Popup>
         </CircleMarker>
       )}
+      {(extraMarkers || []).map((m, i) => (
+        <CircleMarker
+          key={`ex-${i}-${m.lat}-${m.lng}`}
+          center={[m.lat, m.lng]}
+          radius={6}
+          pathOptions={{ color: "#16a34a", fillColor: "#22c55e", fillOpacity: 0.85 }}
+        >
+          <Popup>
+            {m.label}
+            {m.detail ? (
+              <>
+                <br />
+                {m.detail}
+              </>
+            ) : null}
+          </Popup>
+        </CircleMarker>
+      ))}
     </MapContainer>
   );
 };

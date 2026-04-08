@@ -1,11 +1,25 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
-import { UserData, ProfileData } from '../types';
-import { Trash2, UserPlus, Save, Copy, Shield, Users, CheckSquare, Square, X, Activity, Search, Pencil } from 'lucide-react';
+import { UserData, ProfileData, Page } from '../types';
+import {
+  Trash2,
+  UserPlus,
+  Save,
+  Copy,
+  Shield,
+  Users,
+  CheckSquare,
+  Square,
+  X,
+  Activity,
+  Search,
+  Pencil,
+  SlidersHorizontal,
+  ExternalLink,
+} from 'lucide-react';
 import clsx from 'clsx';
 import { authClient } from '../lib/auth';
-import CrmOpsAdmin from './CrmOpsAdmin';
 import { AppConfirmModal, AppMessageModal, type AppMessageVariant } from './AppOverlays';
 import * as XLSX from 'xlsx';
 import {
@@ -94,8 +108,9 @@ const EXTRA_PROFILE_PERMISSIONS: ProfilePermissionRow[] = [
   {
     key: 'MANAGE_CRM_OPS',
     section: 'sistema',
-    label: 'Operação CRM (times e roteamento)',
-    description: 'Gerenciar times, membros e roteamento do CRM.',
+    label: 'Operação CRM (console técnico)',
+    description:
+      'Acesso ao menu Atendimento CRM → Operação CRM (times, WhatsApp, triagem, roteamento, SLA, automações).',
   },
 ];
 
@@ -121,10 +136,15 @@ function groupProfilePermissions(rows: ProfilePermissionRow[]): Record<Permissio
 
 const PROFILE_PERMISSIONS_BY_SECTION = groupProfilePermissions(PROFILE_PERMISSION_ROWS);
 
-const Settings: React.FC = () => {
+type SettingsProps = {
+  /** Navegação para telas dedicadas (ex.: Operação CRM) sem duplicar conteúdo nesta tela. */
+  onNavigateToPage?: (page: Page) => void;
+};
+
+const Settings: React.FC<SettingsProps> = ({ onNavigateToPage }) => {
   const { user } = useAuth();
   const { users, profiles, baseData, addUser, deleteUser, saveProfile, deleteProfile, hasPermission } = useData();
-  const [activeTab, setActiveTab] = useState<'USERS' | 'PROFILES' | 'LOGS' | 'CRM_OPS'>('USERS');
+  const [activeTab, setActiveTab] = useState<'USERS' | 'PROFILES' | 'LOGS'>('USERS');
 
   // --- Logs Tab State ---
   const [logs, setLogs] = useState<any[]>([]);
@@ -350,18 +370,49 @@ const Settings: React.FC = () => {
           >
             <Activity size={18} /> Logs do Sistema
           </button>
-          <button
-            onClick={() => setActiveTab('CRM_OPS')}
-            className={clsx(
-              "pressable-3d rounded-xl py-2.5 px-4 font-bold text-sm border border-transparent transition-all flex items-center gap-2",
-              activeTab === 'CRM_OPS'
-                ? "border-[#2c348c] text-[#2c348c]"
-                : "border-transparent text-slate-500 hover:text-slate-800"
-            )}
-          >
-            <Shield size={18} /> Operação CRM
-          </button>
       </div>
+
+      {(hasPermission('MANAGE_CRM_OPS') || hasPermission('MANAGE_SETTINGS')) && (
+        <div className="surface-card border border-[#2c348c]/20 bg-gradient-to-r from-[#f8faff] to-white p-4 text-sm text-slate-700">
+          <p className="font-bold text-slate-900">CRM fora desta tela</p>
+          <p className="mt-1 text-xs text-slate-600">
+            Operação técnica do CRM (times, Evolution, triagem, roteamento, SLA, cadências) e privacidade/consentimento
+            têm páginas próprias no menu <strong>Atendimento CRM</strong>, para não duplicar com Configurações.
+          </p>
+          {onNavigateToPage && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => onNavigateToPage(Page.CRM_OPS)}
+                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-[#2c348c] shadow-sm hover:border-[#2c348c]/40"
+              >
+                <SlidersHorizontal size={16} />
+                Abrir Operação CRM
+                <ExternalLink size={12} className="opacity-60" />
+              </button>
+              <button
+                type="button"
+                onClick={() => onNavigateToPage(Page.CRM_PRIVACY)}
+                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-[#2c348c] shadow-sm hover:border-[#2c348c]/40"
+              >
+                <Shield size={16} />
+                Abrir Privacidade CRM
+                <ExternalLink size={12} className="opacity-60" />
+              </button>
+              {hasPermission('MANAGE_SOFIA') && (
+                <button
+                  type="button"
+                  onClick={() => onNavigateToPage(Page.SOFIA_CONFIG)}
+                  className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm hover:border-[#2c348c]/40"
+                >
+                  Configurações da Sofia
+                  <ExternalLink size={12} className="opacity-60" />
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* --- USERS TAB --- */}
       {activeTab === 'USERS' && (
@@ -840,21 +891,6 @@ const Settings: React.FC = () => {
                 </div>
               </div>
             </>
-          )}
-        </div>
-      )}
-
-      {activeTab === 'CRM_OPS' && (
-        <div className="space-y-4">
-          {!hasPermission('MANAGE_CRM_OPS') && !hasPermission('MANAGE_SETTINGS') ? (
-            <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
-              <h3 className="text-lg font-bold text-slate-900">Sem permissão</h3>
-              <p className="text-sm text-slate-500 mt-1">
-                Seu perfil não possui acesso à operação avançada do CRM.
-              </p>
-            </div>
-          ) : (
-            <CrmOpsAdmin />
           )}
         </div>
       )}

@@ -3,6 +3,7 @@ import { requireApiPermissions } from "../../../../lib/server/apiAuth";
 import { getPool } from "../../../../lib/server/db";
 import { ensureOperationalTrackingTables } from "../../../../lib/server/ensureSchema";
 import { formatDateTime } from "../../../../lib/server/datetime";
+import { parseLinhaTempoSigai, parseVeiculosHistorico } from "../../../../lib/server/ctesTrackingJson";
 
 export const runtime = "nodejs";
 
@@ -59,6 +60,15 @@ export async function GET(req: Request) {
           c.destinatario::text AS destinatario,
           c.frete_pago::text AS frete_pago,
           c.valor_cte::numeric AS valor_cte,
+          c.status::text AS status_logistica,
+          c.data_emissao AS data_emissao,
+          c.codigo::text AS codigo,
+          c.mdfe_numero::text AS mdfe_numero,
+          c.mdfe_serie::text AS mdfe_serie,
+          c.mdfe_chave::text AS mdfe_chave,
+          c.linha_tempo_json AS linha_tempo_json,
+          c.veiculos_json AS veiculos_json,
+          c.updated_at AS ctes_updated_at,
           i.status_calculado AS status_calculado,
           lnk.vehicle_id AS vehicle_id,
           lnk.plate AS plate,
@@ -260,6 +270,14 @@ export async function GET(req: Request) {
       [cte, serie]
     );
 
+    const formatEmissao = (d: any) => {
+      if (!d) return "";
+      const x = new Date(d);
+      if (Number.isNaN(x.getTime())) return String(d);
+      const pad = (n: number) => n.toString().padStart(2, "0");
+      return `${pad(x.getDate())}/${pad(x.getMonth() + 1)}/${x.getFullYear()}`;
+    };
+
     const item = {
       CTE: itemRow.cte,
       SERIE: itemRow.serie,
@@ -269,6 +287,13 @@ export async function GET(req: Request) {
       FRETE_PAGO: itemRow.frete_pago || "",
       VALOR_CTE: itemRow.valor_cte != null ? String(itemRow.valor_cte) : "",
       STATUS_CALCULADO: itemRow.status_calculado || "",
+      STATUS_LOGISTICA: itemRow.status_logistica ? String(itemRow.status_logistica) : "",
+      DATA_EMISSAO: formatEmissao(itemRow.data_emissao),
+      CODIGO: itemRow.codigo ? String(itemRow.codigo) : "",
+      MDFE_NUMERO: itemRow.mdfe_numero != null ? String(itemRow.mdfe_numero) : "",
+      MDFE_SERIE: itemRow.mdfe_serie != null ? String(itemRow.mdfe_serie) : "",
+      MDFE_CHAVE: itemRow.mdfe_chave != null ? String(itemRow.mdfe_chave) : "",
+      CTES_UPDATED_AT: itemRow.ctes_updated_at ? formatDateTime(itemRow.ctes_updated_at) : "",
       VEHICLE_ID: itemRow.vehicle_id || "",
       PLATE: itemRow.plate || "",
       MDF: itemRow.mdf || "",
@@ -276,8 +301,14 @@ export async function GET(req: Request) {
       LAST_LNG: itemRow.last_lng != null ? Number(itemRow.last_lng) : null,
       LAST_POSITION_AT: itemRow.last_position_at ? formatDateTime(itemRow.last_position_at) : "",
     };
+
+    const sigaiLinhaTempo = parseLinhaTempoSigai(itemRow.linha_tempo_json);
+    const veiculosHistorico = parseVeiculosHistorico(itemRow.veiculos_json);
+
     return NextResponse.json({
       item,
+      sigaiLinhaTempo,
+      veiculosHistorico,
       timeline: timelineOut,
       stops,
       activeLink,

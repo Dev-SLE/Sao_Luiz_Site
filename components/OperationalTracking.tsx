@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { MapPin, Search, Plus, Camera, Loader2, RefreshCw } from "lucide-react";
+import { MapPin, Search, Plus, Camera, Loader2, RefreshCw, AlertTriangle, Truck } from "lucide-react";
 import clsx from "clsx";
 import dynamic from "next/dynamic";
 import { useAuth } from "../context/AuthContext";
@@ -19,6 +19,13 @@ type TrackingItem = {
   FRETE_PAGO: string;
   VALOR_CTE: string;
   STATUS_CALCULADO: string;
+  STATUS_LOGISTICA?: string;
+  DATA_EMISSAO?: string;
+  CODIGO?: string;
+  MDFE_NUMERO?: string;
+  MDFE_SERIE?: string;
+  MDFE_CHAVE?: string;
+  CTES_UPDATED_AT?: string;
   LAST_UPDATE_AT: string;
   VEHICLE_ID?: string;
   PLATE?: string;
@@ -40,12 +47,27 @@ type TimelineEntry = {
   bus_name?: string | null;
   stop_name?: string | null;
   location_text?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   photos?: string[];
+};
+
+type SigaiLinhaRow = { data_evento: string; evento: string; operador: string };
+type VeiculoHistRow = {
+  data_v?: string;
+  placa?: string;
+  modelo?: string;
+  tipo?: string;
+  data_viagem?: string;
+  hora_viagem?: string;
+  veiculo?: string | number;
 };
 
 type TrackingDetail = {
   item: TrackingItem;
   timeline: TimelineEntry[];
+  sigaiLinhaTempo?: SigaiLinhaRow[];
+  veiculosHistorico?: VeiculoHistRow[];
   stops: Array<{
     stop_name: string;
     bus_name: string | null;
@@ -166,6 +188,23 @@ const getMapsUrlForDestination = (name?: string | null) => {
 
 const isGoogleDriveUrl = (url: string) => !!getFileIdFromUrl(url);
 
+const normLogisticsStatus = (s: string) =>
+  String(s || "")
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+function logisticsStatusHeaderClass(statusRaw: string) {
+  const s = normLogisticsStatus(statusRaw);
+  if (s.includes("CANCELADO")) return "bg-red-600 text-white border-red-700 shadow-sm";
+  if (s.includes("CRITICO") || s.includes("FORA DO PRAZO") || s.includes("PRIORIDADE") || s.includes("VENCE AMANHA"))
+    return "bg-orange-600 text-white border-orange-700 shadow-sm";
+  if (s.includes("NO PRAZO")) return "bg-emerald-600 text-white border-emerald-700 shadow-sm";
+  if (s.includes("CONCLUIDO NO PRAZO")) return "bg-emerald-700 text-white border-emerald-800 shadow-sm";
+  if (s.includes("CONCLUIDO")) return "bg-slate-600 text-white border-slate-700 shadow-sm";
+  return "bg-slate-100 text-slate-900 border-slate-200";
+}
+
 interface Props {
   initialCte?: string | null;
   initialSerie?: string | null;
@@ -177,6 +216,7 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
 
   const [loadingItems, setLoadingItems] = useState(false);
   const [isSyncingLife, setIsSyncingLife] = useState(false);
+  const [isSyncingCtes, setIsSyncingCtes] = useState(false);
   const [items, setItems] = useState<TrackingItem[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -259,6 +299,25 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
     }
   };
 
+  const runCtesVehicleSync = async () => {
+    if (!canManage) return;
+    if (isSyncingCtes) return;
+    setIsSyncingCtes(true);
+    try {
+      const resp = await fetch("/api/operational_tracking/sync_vehicle_from_ctes", { method: "POST" });
+      if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}));
+        throw new Error(data?.error || `HTTP ${resp.status}`);
+      }
+      await fetchItems();
+      if (selected?.item?.CTE) {
+        await fetchDetail(selected.item.CTE, selected.item.SERIE);
+      }
+    } finally {
+      setIsSyncingCtes(false);
+    }
+  };
+
   useEffect(() => {
     const t = setTimeout(() => {
       fetchItems();
@@ -270,8 +329,10 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
   useEffect(() => {
     if (!canManage) return;
     runLifeSync();
+    runCtesVehicleSync();
     const id = setInterval(() => {
       runLifeSync();
+      runCtesVehicleSync();
     }, 60000);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -521,6 +582,30 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
 
   const timelineEmpty = !selected?.timeline?.length;
 
+  const mapExtraMarkers = useMemo(() => {
+    if (!selected?.timeline?.length) return [];
+    const out: { lat: number; lng: number; label: string; detail?: string }[] = [];
+    for (const t of selected.timeline) {
+      const lat = t.latitude != null ? Number(t.latitude) : NaN;
+      const lng = t.longitude != null ? Number(t.longitude) : NaN;
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+      out.push({
+        lat,
+        lng,
+        label:
+          t.source === "EVENTO_MANUAL"
+            ? t.option || t.kind || "Evento manual"
+            : t.source === "NOTA"
+              ? "Nota"
+              : "Processo",
+        detail: [t.time, t.user || "", t.observation ? String(t.observation).slice(0, 100) : ""]
+          .filter(Boolean)
+          .join(" · "),
+      });
+    }
+    return out;
+  }, [selected?.timeline]);
+
   return (
     <div className="space-y-4 animate-in fade-in duration-500 text-slate-900">
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
@@ -530,21 +615,35 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
           </div>
           <div>
             <h1 className="text-xl md:text-2xl font-black">Rastreio Operacional</h1>
-            <p className="text-xs text-slate-600">Acompanhamento estilo “Em Busca” com timeline e atualização manual.</p>
+            <p className="text-xs text-slate-600">
+              Dados fiscais e roteiro vêm do CT-e no Neon; telemetria Life e vínculo de placa podem sincronizar em segundo plano.
+            </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {canManage && (
-            <button
-              type="button"
-              onClick={runLifeSync}
-              className="inline-flex items-center gap-2 rounded-xl bg-slate-800 px-4 py-2 text-xs font-semibold text-white shadow-md transition-all hover:bg-slate-700"
-              disabled={isSyncingLife}
-              title="Sincroniza telemetria da Life API (janela recomendada: 60s)"
-            >
-              {isSyncingLife ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-              {isSyncingLife ? "Sincronizando Life..." : "Sincronizar Life"}
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={runLifeSync}
+                className="inline-flex items-center gap-2 rounded-xl bg-slate-800 px-4 py-2 text-xs font-semibold text-white shadow-md transition-all hover:bg-slate-700"
+                disabled={isSyncingLife}
+                title="Sincroniza telemetria da Life API (janela recomendada: 60s)"
+              >
+                {isSyncingLife ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                {isSyncingLife ? "Sincronizando Life..." : "Sincronizar Life"}
+              </button>
+              <button
+                type="button"
+                onClick={runCtesVehicleSync}
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-800 shadow-sm transition-all hover:bg-slate-50"
+                disabled={isSyncingCtes}
+                title="Atualiza vínculos veículo/placa a partir de veiculos_json (SIGAI → Neon)"
+              >
+                {isSyncingCtes ? <Loader2 size={14} className="animate-spin" /> : <Truck size={14} />}
+                {isSyncingCtes ? "Sincronizando CT-es..." : "Vínculos CT-e"}
+              </button>
+            </>
           )}
           <button
             type="button"
@@ -637,9 +736,30 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
                       {i.STATUS_CALCULADO}
                     </span>
                   )}
+                  {i.STATUS_LOGISTICA ? (
+                    <span
+                      className={clsx(
+                        "text-[10px] px-2 py-0.5 rounded-full border font-semibold",
+                        logisticsStatusHeaderClass(i.STATUS_LOGISTICA)
+                      )}
+                    >
+                      {i.STATUS_LOGISTICA}
+                    </span>
+                  ) : null}
                 </div>
 
                 <div className="mt-2 text-xs text-slate-600 space-y-1">
+                  {i.MDFE_NUMERO ? (
+                    <div className="flex items-start gap-1">
+                      {String(i.MDFE_NUMERO).toLowerCase().includes("aguardando") ? (
+                        <AlertTriangle className="text-amber-500 shrink-0 mt-0.5" size={14} />
+                      ) : null}
+                      <div>
+                        <span className="text-slate-500">MDF-e:</span>{" "}
+                        <span className="font-semibold">{i.MDFE_NUMERO}</span>
+                      </div>
+                    </div>
+                  ) : null}
                   <div>
                     <span className="text-slate-500">Coleta:</span> <span className="font-semibold">{i.COLETA || "—"}</span>
                   </div>
@@ -729,7 +849,7 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
 
       {/* Drawer de detalhes */}
       {selected && (
-        <div className="fixed inset-y-0 right-0 z-40 w-full sm:w-[380px] md:w-[450px] bg-white border-l border-slate-200 shadow-[-12px_0_30px_rgba(15,23,42,0.18)] flex flex-col">
+        <div className="fixed inset-y-0 right-0 z-40 w-full sm:w-[min(100%,420px)] md:w-[min(560px,96vw)] bg-white border-l border-slate-200 shadow-[-12px_0_30px_rgba(15,23,42,0.18)] flex flex-col">
           <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
             <div className="min-w-0">
               <h2 className="text-sm font-bold text-slate-900 truncate">
@@ -749,24 +869,163 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-4 flex flex-col">
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-1">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Mapa</span>
+            <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-base font-black text-slate-900">
+                  CT-e {selected.item.CTE} / {selected.item.SERIE}
+                </span>
+                {selected.item.STATUS_LOGISTICA ? (
+                  <span
+                    className={clsx(
+                      "text-[10px] px-2 py-1 rounded-full border font-bold",
+                      logisticsStatusHeaderClass(selected.item.STATUS_LOGISTICA)
+                    )}
+                  >
+                    {selected.item.STATUS_LOGISTICA}
+                  </span>
+                ) : null}
+                {selected.item.STATUS_CALCULADO ? (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 border border-slate-200 text-slate-700">
+                    {selected.item.STATUS_CALCULADO}
+                  </span>
+                ) : null}
+              </div>
+              <div className="text-xs text-slate-700">
+                <span className="text-slate-500">Destinatário:</span>{" "}
+                <span className="font-semibold">{selected.item.DESTINATARIO || "—"}</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-600">
+                <div>
+                  <span className="text-slate-500">Emissão:</span>{" "}
+                  <span className="font-semibold">{selected.item.DATA_EMISSAO || "—"}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500">Valor CT-e:</span>{" "}
+                  <span className="font-semibold">
+                    {selected.item.VALOR_CTE ? `R$ ${selected.item.VALOR_CTE}` : "—"}
+                  </span>
+                </div>
+              </div>
+              {selected.item.CTES_UPDATED_AT ? (
+                <div className="text-[10px] text-slate-500">Dados CT-e no Neon: {selected.item.CTES_UPDATED_AT}</div>
+              ) : null}
+            </div>
+
+            {(() => {
+              const mdfe = String(selected.item.MDFE_NUMERO || "").trim();
+              const aguardando = mdfe.toLowerCase().includes("aguardando");
+              const semManifesto = !mdfe || mdfe.toLowerCase().includes("sem mdf");
+              return (
+                <div
+                  className={clsx(
+                    "rounded-xl border p-3",
+                    aguardando || semManifesto
+                      ? "border-amber-300 bg-amber-50/90"
+                      : "border-slate-200 bg-slate-50"
+                  )}
+                >
+                  <div className="flex items-start gap-2">
+                    {aguardando || semManifesto ? (
+                      <AlertTriangle className="text-amber-600 shrink-0 mt-0.5" size={18} />
+                    ) : null}
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">MDF-e (ERP)</div>
+                      <div className="text-sm font-bold text-slate-900 break-words">
+                        {mdfe || (semManifesto ? "Aguardando manifesto" : "—")}
+                      </div>
+                      <div className="mt-1 text-[11px] text-slate-600 space-y-0.5">
+                        {selected.item.MDFE_SERIE ? (
+                          <div>
+                            <span className="text-slate-500">Série:</span> {selected.item.MDFE_SERIE}
+                          </div>
+                        ) : null}
+                        {selected.item.MDFE_CHAVE ? (
+                          <div className="truncate" title={selected.item.MDFE_CHAVE}>
+                            <span className="text-slate-500">Chave:</span> {selected.item.MDFE_CHAVE}
+                          </div>
+                        ) : null}
+                        {selected.activeLink?.mdf ? (
+                          <div>
+                            <span className="text-slate-500">Vínculo Life (atual):</span>{" "}
+                            <span className="font-semibold">{selected.activeLink.mdf}</span>
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {selected.sigaiLinhaTempo && selected.sigaiLinhaTempo.length > 0 ? (
+              <div className="border border-slate-200 rounded-xl p-3 bg-white">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">
+                    Linha do tempo (roteamento SIGAI)
+                  </span>
+                  <span className="text-[10px] text-slate-500">{selected.sigaiLinhaTempo.length}</span>
+                </div>
+                <div className="relative border-l-2 border-[#2c348c]/35 ml-2 pl-4 space-y-4 pb-1">
+                  {selected.sigaiLinhaTempo.map((row, idx) => (
+                    <div key={`${row.data_evento}-${idx}`} className="relative">
+                      <span className="absolute -left-[calc(0.5rem+5px)] top-1.5 w-2.5 h-2.5 rounded-full bg-[#2c348c] ring-2 ring-white border border-white shadow" />
+                      <div className="text-[10px] text-slate-500 font-mono">{row.data_evento}</div>
+                      <div className="text-xs font-semibold text-slate-900 leading-snug">{row.evento}</div>
+                      <div className="text-[11px] text-slate-600">{row.operador || "—"}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {selected.veiculosHistorico && selected.veiculosHistorico.length > 0 ? (
+              <div className="border border-slate-200 rounded-xl p-3 bg-slate-50/80">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">
+                    Veículos / transbordo (histórico)
+                  </span>
+                  <Truck size={14} className="text-slate-400" />
+                </div>
+                <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+                  <table className="w-full text-[11px] text-left">
+                    <thead className="bg-slate-100 text-slate-600">
+                      <tr>
+                        <th className="px-2 py-1.5 font-semibold">Data</th>
+                        <th className="px-2 py-1.5 font-semibold">Placa</th>
+                        <th className="px-2 py-1.5 font-semibold">Tipo</th>
+                        <th className="px-2 py-1.5 font-semibold hidden sm:table-cell">Modelo</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selected.veiculosHistorico.map((v, idx) => (
+                        <tr key={idx} className="border-t border-slate-100">
+                          <td className="px-2 py-1.5 whitespace-nowrap">
+                            {v.data_v || v.data_viagem || "—"}
+                            {v.hora_viagem ? ` ${v.hora_viagem}` : ""}
+                          </td>
+                          <td className="px-2 py-1.5 font-bold text-slate-900">{v.placa || "—"}</td>
+                          <td className="px-2 py-1.5">{v.tipo || "—"}</td>
+                          <td className="px-2 py-1.5 hidden sm:table-cell text-slate-600">{v.modelo || "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : null}
+
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2">
+              <div className="flex items-center gap-2 flex-wrap justify-between">
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Mapa Life</span>
                 <button
                   type="button"
                   onClick={() => setShowMapModal(true)}
                   className="rounded-lg bg-[#2c348c] px-3 py-1.5 text-[11px] text-white hover:bg-[#243a7a]"
                 >
-                  Abrir mapa
+                  Abrir mapa ampliado
                 </button>
               </div>
-              <div className="mt-1 text-xs text-slate-600">
-                <div>
-                  <span className="text-slate-500">Cliente:</span> <span className="font-semibold">{selected.item.DESTINATARIO || "—"}</span>
-                </div>
-                <div>
-                  <span className="text-slate-500">Status:</span> <span className="font-semibold">{selected.item.STATUS_CALCULADO || "—"}</span>
-                </div>
+              <div className="text-[11px] text-slate-600 space-y-1">
                 <div>
                   <span className="text-slate-500">Veículo:</span>{" "}
                   <span className="font-semibold">
@@ -777,10 +1036,11 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
                   <span className="text-slate-500">Placa:</span>{" "}
                   <span className="font-semibold">{selected.activeLink?.plate || selected.item.PLATE || "—"}</span>
                 </div>
-                <div>
-                  <span className="text-slate-500">MDF-e:</span>{" "}
-                  <span className="font-semibold">{selected.activeLink?.mdf || "—"}</span>
-                </div>
+                {mapExtraMarkers.length ? (
+                  <div className="text-emerald-700 font-medium">
+                    {mapExtraMarkers.length} ponto(s) com GPS na timeline (verdes no mapa).
+                  </div>
+                ) : null}
               </div>
             </div>
 
@@ -796,6 +1056,8 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
                       }
                     : null
                 }
+                extraMarkers={mapExtraMarkers}
+                heightPx={220}
               />
             </div>
 
@@ -1256,6 +1518,8 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
                           }
                         : null
                     }
+                    extraMarkers={mapExtraMarkers}
+                    heightPx={500}
                   />
                 </div>
               </div>

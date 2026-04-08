@@ -2,7 +2,11 @@ import { NextResponse } from "next/server";
 import { getPool } from "../../../lib/server/db";
 import bcrypt from "../../../bcrypt.js";
 import { serverLog } from "../../../lib/server/appLog";
-import { encodeSession, SESSION_COOKIE_NAME } from "../../../lib/server/session";
+import {
+  authSessionSecretMissingInProduction,
+  encodeSession,
+  SESSION_COOKIE_NAME,
+} from "../../../lib/server/session";
 
 export const runtime = "nodejs";
 
@@ -16,6 +20,22 @@ export async function POST(req: Request) {
     const { username, password } = await req.json();
     if (!username || !password) {
       return NextResponse.json({ success: false, message: "Credenciais inválidas" }, { status: 400 });
+    }
+
+    if (authSessionSecretMissingInProduction()) {
+      await serverLog({
+        level: "ERROR",
+        event: "API_LOGIN_MISCONFIG",
+        username: String(username),
+        data: { reason: "AUTH_SESSION_SECRET ausente em produção" },
+      });
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Servidor mal configurado: defina AUTH_SESSION_SECRET no ambiente de produção.",
+        },
+        { status: 503 }
+      );
     }
 
     const pool = getPool();

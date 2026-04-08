@@ -71,17 +71,20 @@ export async function GET(req: Request) {
             c.destinatario::text AS destinatario,
             c.frete_pago::text AS frete_pago,
             c.valor_cte::numeric AS valor_cte,
+            c.status::text AS status_logistica,
+            c.mdfe_numero::text AS mdfe_numero,
             i.status_calculado AS status_calculado,
             lnk.vehicle_id,
             lnk.plate,
             pos.lat AS last_lat,
             pos.lng AS last_lng,
             pos.position_at AS last_position_at,
-            -- última atualização via notas ou eventos manuais
+            -- última atualização: notas, eventos, telemetria ou sync CT-e (Neon)
             GREATEST(
               COALESCE((SELECT MAX(n.data) FROM pendencias.notes n WHERE n.cte = c.cte AND n.serie = c.serie), '1970-01-01'::timestamptz),
               COALESCE((SELECT MAX(e.event_time) FROM pendencias.operacional_tracking_events e WHERE e.cte = c.cte AND e.serie = c.serie), '1970-01-01'::timestamptz),
-              COALESCE(pos.position_at, '1970-01-01'::timestamptz)
+              COALESCE(pos.position_at, '1970-01-01'::timestamptz),
+              COALESCE(c.updated_at::timestamptz, '1970-01-01'::timestamptz)
             ) AS last_update_at
           FROM pendencias.cte_view_index i
           JOIN pendencias.ctes c ON c.cte = i.cte AND c.serie = i.serie
@@ -147,6 +150,8 @@ export async function GET(req: Request) {
       FRETE_PAGO: row.frete_pago || "",
       VALOR_CTE: row.valor_cte != null ? String(row.valor_cte) : "",
       STATUS_CALCULADO: row.status_calculado || "",
+      STATUS_LOGISTICA: row.status_logistica ? String(row.status_logistica) : "",
+      MDFE_NUMERO: row.mdfe_numero != null ? String(row.mdfe_numero) : "",
       LAST_UPDATE_AT: formatDateTime(row.last_update_at),
       VEHICLE_ID: row.vehicle_id || "",
       PLATE: row.plate || "",

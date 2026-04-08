@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getSessionContext } from "../../../lib/server/authorization";
 import { getPool } from "../../../lib/server/db";
 import { refreshCteViewIndexOne } from "../../../lib/server/cteIndex";
 
@@ -6,15 +7,20 @@ export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   try {
+    const session = await getSessionContext(req);
+    if (!session) {
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+    }
+
     const body = await req.json();
     const cte = String(body?.cte || "").trim();
     const serie = String(body?.serie || "").trim();
-    const user = String(body?.user || body?.user_name || "").trim();
+    const user = String(session.username || "").trim();
     const description = String(body?.description || "").trim();
     const link = String(body?.link || body?.linkImagem || "").trim();
     const status = String(body?.status || "").trim();
     if (!cte || !serie || !user || !status) {
-      return NextResponse.json({ error: "cte/serie/user/status obrigatórios" }, { status: 400 });
+      return NextResponse.json({ error: "cte/serie/status obrigatórios" }, { status: 400 });
     }
 
     const pool = getPool();

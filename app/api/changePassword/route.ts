@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getSessionContext } from "../../../lib/server/authorization";
 import { getPool } from "../../../lib/server/db";
 import bcrypt from "../../../bcrypt.js";
 import { serverLog } from "../../../lib/server/appLog";
@@ -7,12 +8,21 @@ export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   try {
+    const session = await getSessionContext(req);
+    if (!session) {
+      return NextResponse.json({ success: false, error: "Não autorizado" }, { status: 401 });
+    }
+
     const body = await req.json();
     const username = String(body?.username || "").trim();
     const currentPassword = String(body?.currentPassword || "").trim();
     const newPassword = String(body?.newPassword || "").trim();
     if (!username || !currentPassword || !newPassword) {
       return NextResponse.json({ success: false, error: "campos obrigatórios" }, { status: 400 });
+    }
+
+    if (String(session.username).toLowerCase() !== username.toLowerCase()) {
+      return NextResponse.json({ success: false, error: "Operação não permitida" }, { status: 403 });
     }
 
     const pool = getPool();

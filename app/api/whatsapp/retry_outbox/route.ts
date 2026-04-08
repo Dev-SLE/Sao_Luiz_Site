@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireApiPermissions, verifyCronSecret } from "../../../../lib/server/apiAuth";
 import { getPool } from "../../../../lib/server/db";
 import { ensureCrmSchemaTables } from "../../../../lib/server/ensureSchema";
 
@@ -55,8 +56,13 @@ async function sendWhatsAppText(args: { toE164: string; body: string }) {
   }
 }
 
-export async function POST() {
+export async function POST(req: Request) {
   try {
+    if (!verifyCronSecret(req)) {
+      const guard = await requireApiPermissions(req, ["MANAGE_CRM_OPS", "MANAGE_SETTINGS"]);
+      if (guard.denied) return guard.denied;
+    }
+
     await ensureCrmSchemaTables();
     const pool = getPool();
 
