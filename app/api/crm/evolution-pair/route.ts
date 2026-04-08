@@ -10,6 +10,7 @@ import {
   normalizeEvolutionServerUrl,
 } from "../../../../lib/server/evolutionUrl";
 import { syncEvolutionInstanceWebhook } from "../../../../lib/server/evolutionWebhookSync";
+import { requireApiPermissions } from "../../../../lib/server/apiAuth";
 
 export const runtime = "nodejs";
 
@@ -36,6 +37,8 @@ async function loadInbox(pool: any, inboxId: string) {
 /** POST: gerar QR / reconectar; opcional sync webhook. */
 export async function POST(req: Request) {
   try {
+    const guard = await requireApiPermissions(req, ["MANAGE_SETTINGS", "MANAGE_CRM_OPS"]);
+    if (guard.denied) return guard.denied;
     await ensureCrmSchemaTables();
     const pool = getPool();
     const body = await req.json().catch(() => ({}));
@@ -103,6 +106,8 @@ export async function POST(req: Request) {
 /** GET ?inboxId=&mode=status|qr */
 export async function GET(req: Request) {
   try {
+    const guard = await requireApiPermissions(req, ["module.crm.view", "tab.crm.chat.view", "MANAGE_CRM_OPS"]);
+    if (guard.denied) return guard.denied;
     await ensureCrmSchemaTables();
     const pool = getPool();
     const { searchParams } = new URL(req.url);

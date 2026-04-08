@@ -88,6 +88,18 @@ const EXTRA_PROFILE_PERMISSIONS: ProfilePermissionRow[] = [
     description: 'Exportar CSV/Excel na aba Logs.',
   },
   {
+    key: 'VIEW_SETTINGS',
+    section: 'sistema',
+    label: 'Visualizar configurações',
+    description: 'Acesso de leitura à tela de configurações e perfis.',
+  },
+  {
+    key: 'VIEW_USERS',
+    section: 'sistema',
+    label: 'Visualizar usuários',
+    description: 'Consultar lista de usuários sem alterar cadastro.',
+  },
+  {
     key: 'MANAGE_SETTINGS',
     section: 'sistema',
     label: 'Configurações e logs',

@@ -303,7 +303,7 @@ const AppContent: React.FC = () => {
         }
         return <CrmPrivacyHub />;
       case Page.CONFIGURACOES:
-        if (!hasPermission('MANAGE_SETTINGS')) {
+        if (!hasPermission('MANAGE_SETTINGS') && !hasPermission('VIEW_SETTINGS')) {
           return noAccess('Seu perfil não possui acesso a Configurações.');
         }
         return <Settings onNavigateToPage={setCurrentPage} />;

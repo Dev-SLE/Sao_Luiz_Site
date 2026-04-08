@@ -1511,14 +1511,12 @@ export async function POST(req: Request) {
           `
             SELECT id
             FROM pendencias.crm_messages
-            WHERE conversation_id = $1
-              AND (
-                metadata->>'message_id' = $2
-                OR metadata#>>'{outbound_whatsapp,message_id}' = $2
-              )
+            WHERE (provider = 'EVOLUTION' AND provider_message_id = $1)
+               OR metadata->>'message_id' = $1
+               OR metadata#>>'{outbound_whatsapp,message_id}' = $1
             LIMIT 1
           `,
-          [conversationId, msgId]
+          [msgId]
         );
         if (dup.rows?.[0]?.id) {
           logUpsertSkip("duplicate_evolution_message_id", {
@@ -1533,13 +1531,14 @@ export async function POST(req: Request) {
       await pool.query(
         `
           INSERT INTO pendencias.crm_messages (
-            conversation_id, sender_type, body, has_attachments, metadata, created_at
+            conversation_id, sender_type, provider, provider_message_id, body, has_attachments, metadata, created_at
           )
-          VALUES ($1, $2, $3, $4, $5::jsonb, NOW())
+          VALUES ($1, $2, 'EVOLUTION', $3, $4, $5, $6::jsonb, NOW())
         `,
         [
           conversationId,
           isFromMe ? "AGENT" : "CLIENT",
+          msgId || null,
           text,
           hasMedia,
           JSON.stringify({

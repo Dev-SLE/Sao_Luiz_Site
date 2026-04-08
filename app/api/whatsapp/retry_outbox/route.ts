@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { requireApiPermissions, verifyCronSecret } from "../../../../lib/server/apiAuth";
 import { getPool } from "../../../../lib/server/db";
 import { ensureCrmSchemaTables } from "../../../../lib/server/ensureSchema";
+import { evolutionSendText } from "../../../../lib/server/evolutionClient";
+import { runWebhookSofiaAutoReply } from "../webhook/route";
 
 export const runtime = "nodejs";
 
@@ -66,16 +68,32 @@ export async function POST(req: Request) {
     await ensureCrmSchemaTables();
     const pool = getPool();
 
+    const lockOwner = `retry-worker:${process.pid}:${Date.now()}`;
+    await pool.query("BEGIN");
     const jobsRes = await pool.query(
       `
-        SELECT id, message_id, conversation_id, payload, attempts
-        FROM pendencias.crm_outbox
-        WHERE status = 'PENDING'
-          AND next_attempt_at <= NOW()
-        ORDER BY created_at ASC
-        LIMIT 25
-      `
+        WITH picked AS (
+          SELECT id
+          FROM pendencias.crm_outbox
+          WHERE status = 'PENDING'
+            AND next_attempt_at <= NOW()
+          ORDER BY created_at ASC
+          LIMIT 25
+          FOR UPDATE SKIP LOCKED
+        )
+        UPDATE pendencias.crm_outbox o
+        SET
+          status = 'PROCESSING',
+          lock_owner = $1,
+          processing_started_at = NOW(),
+          updated_at = NOW()
+        FROM picked
+        WHERE o.id = picked.id
+        RETURNING o.id, o.message_id, o.conversation_id, o.payload, o.attempts, o.channel
+      `,
+      [lockOwner]
     );
+    await pool.query("COMMIT");
     const jobs = jobsRes.rows || [];
 
     let processed = 0;
@@ -88,6 +106,7 @@ export async function POST(req: Request) {
       const body = String(payload?.body || "");
       const conversationId = String(job.conversation_id || "");
       const attempts = Number(job.attempts || 0);
+      const channel = String(job.channel || "WHATSAPP").toUpperCase();
 
       const leadRes = await pool.query(
         `
@@ -101,30 +120,50 @@ export async function POST(req: Request) {
       );
       const toE164 = normalizePhoneToE164(leadRes.rows?.[0]?.contact_phone);
 
-      if (!toE164 || !body) {
+      if (channel !== "SOFIA_AUTO_REPLY" && (!toE164 || !body)) {
         failed += 1;
         await pool.query(
           `
             UPDATE pendencias.crm_outbox
-            SET status = 'FAILED', last_error = 'Payload inválido para retry', updated_at = NOW()
-            WHERE id = $1
+            SET status = 'FAILED', last_error = 'Payload inválido para retry', lock_owner = NULL, processing_started_at = NULL, updated_at = NOW()
+            WHERE id = $1 AND lock_owner = $2
           `,
-          [job.id]
+          [job.id, lockOwner]
         );
         continue;
       }
 
-      const send = await sendWhatsAppText({ toE164, body });
+      const send =
+        channel === "SOFIA_AUTO_REPLY"
+          ? await (async () => {
+              await runWebhookSofiaAutoReply(pool, {
+                conversationId,
+                leadId: String(payload?.leadId || ""),
+                from: String(payload?.from || ""),
+                text: String(payload?.text || ""),
+              });
+              return { ok: true, error: null as string | null, response: null as any };
+            })()
+          : channel === "WHATSAPP_EVOLUTION"
+          ? await evolutionSendText({
+              serverUrl: String(payload?.evolution?.serverUrl || ""),
+              apiKey: String(payload?.evolution?.apiKey || ""),
+              instanceName: String(payload?.evolution?.instanceName || ""),
+              numberDigits: String(payload?.toE164 || toE164 || ""),
+              text: body,
+              quotedMessageId: payload?.replyToWhatsappMessageId ? String(payload.replyToWhatsappMessageId) : null,
+            })
+          : await sendWhatsAppText({ toE164: String(toE164 || ""), body });
       if (send.ok) {
         succeeded += 1;
         const waMessageId = send.response?.messages?.[0]?.id || null;
         await pool.query(
           `
             UPDATE pendencias.crm_outbox
-            SET status = 'SENT', last_error = NULL, updated_at = NOW()
-            WHERE id = $1
+            SET status = 'SENT', last_error = NULL, lock_owner = NULL, processing_started_at = NULL, updated_at = NOW()
+            WHERE id = $1 AND lock_owner = $2
           `,
-          [job.id]
+          [job.id, lockOwner]
         );
 
         if (job.message_id) {
@@ -160,10 +199,12 @@ export async function POST(req: Request) {
               last_error = $3,
               status = CASE WHEN $2 >= 8 THEN 'FAILED' ELSE 'PENDING' END,
               next_attempt_at = NOW() + ($4::text || ' seconds')::interval,
+              lock_owner = NULL,
+              processing_started_at = NULL,
               updated_at = NOW()
-            WHERE id = $1
+            WHERE id = $1 AND lock_owner = $5
           `,
-          [job.id, nextAttempts, send.error || "Falha retry", String(delaySec)]
+          [job.id, nextAttempts, send.error || "Falha retry", String(delaySec), lockOwner]
         );
       }
     }

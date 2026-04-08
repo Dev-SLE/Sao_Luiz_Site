@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getPool } from "../../../../lib/server/db";
 import { ensureCrmSchemaTables } from "../../../../lib/server/ensureSchema";
+import { requireApiPermissions } from "../../../../lib/server/apiAuth";
 
 export const runtime = "nodejs";
 
@@ -20,8 +21,10 @@ function parsePermissions(value: any): string[] {
   return [];
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
+    const guard = await requireApiPermissions(req, ["tab.crm.chat.view", "module.crm.view"]);
+    if (guard.denied) return guard.denied;
     await ensureCrmSchemaTables();
     const pool = getPool();
 

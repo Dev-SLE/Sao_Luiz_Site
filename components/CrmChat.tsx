@@ -17,6 +17,7 @@ import {
   Ban,
 } from 'lucide-react';
 import clsx from 'clsx';
+import dynamic from 'next/dynamic';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { authClient } from '../lib/auth';
@@ -276,6 +277,61 @@ interface Props {
   onOpenTracking?: (cte: string, serie?: string) => void;
 }
 
+const OperationalMap = dynamic(() => import('./OperationalMap'), { ssr: false });
+
+type CrmOperationalSnapshot = {
+  found: boolean;
+  cte?: string | null;
+  serie?: string | null;
+  activeLink?: { mdf?: string | null; vehicle_id?: string | null; plate?: string | null } | null;
+  operational?: {
+    status_calculado?: string | null;
+    idx_view?: string | null;
+    coleta?: string;
+    entrega?: string;
+    origin_key?: string | null;
+    dest_key?: string | null;
+  } | null;
+  routePattern?: {
+    variant_id?: number | null;
+    variants?: Array<{
+      variant_id: number;
+      trip_count: number;
+      duration_p50_minutes: number;
+      duration_p90_minutes: number;
+      is_primary: boolean;
+    }>;
+    stats?: {
+      trip_count: number;
+      duration_p50_minutes: number;
+      duration_p90_minutes: number;
+      computed_at?: string;
+    } | null;
+    polyline?: Array<{ seq: number; lat: number; lng: number }>;
+    waypoints?: Array<{ seq: number; kind: string; stop_key?: string | null; label: string; lat: number; lng: number }>;
+  } | null;
+  routeProgress?: {
+    fraction_along: number;
+    eta_minutes_p50: number | null;
+    bearing_route_deg: number | null;
+    bearing_trail_deg: number | null;
+    projected_lat: number;
+    projected_lng: number;
+    cumulative_km: number;
+    total_km: number;
+  } | null;
+  trail?: Array<{
+    lat: number;
+    lng: number;
+    at: string;
+    position_at?: string;
+    vehicle_id?: string | null;
+    plate?: string | null;
+    odometer_km?: number | null;
+  }>;
+  tripLegs?: Array<{ leg_index: number; starts_at: string; ends_at: string | null }>;
+};
+
 let crmChatCache: {
   leadId: string | null;
   conversations: ConversationSummary[];
@@ -356,6 +412,9 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messageInputRef = useRef<HTMLTextAreaElement | null>(null);
   const [ultimoRastreio, setUltimoRastreio] = useState<string | null>(null);
+  const [operationalSnapshot, setOperationalSnapshot] = useState<CrmOperationalSnapshot | null>(null);
+  const [operationalLoading, setOperationalLoading] = useState(false);
+  const [operationalVariantId, setOperationalVariantId] = useState<number | null>(null);
   const [sofiaName, setSofiaName] = useState('Sofia');
   const [sofiaWelcome, setSofiaWelcome] = useState(
     'Olá! Sou a Sofia, assistente virtual da São Luiz Express. Como posso te ajudar hoje?'
@@ -872,6 +931,46 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
   }, [messages, selectedConversation?.cte, selectedConversation?.id, pendencias.data, criticos.data]);
 
   useEffect(() => {
+    setOperationalVariantId(null);
+  }, [selectedConversation?.id, selectedConversation?.cte, selectedConversation?.leadId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      const cteRaw = String(selectedConversation?.cte || '').trim();
+      const cteDigits = cteRaw.replace(/\D/g, '');
+      const cteLookup = cteDigits || cteRaw;
+      const lead = String(selectedConversation?.leadId || '').trim();
+      if (!lead && !cteLookup) {
+        setOperationalSnapshot(null);
+        return;
+      }
+      setOperationalLoading(true);
+      try {
+        const usp = new URLSearchParams();
+        if (lead) usp.set('leadId', lead);
+        if (cteLookup) usp.set('cte', cteLookup);
+        if (operationalVariantId != null) usp.set('variant_id', String(operationalVariantId));
+        const resp = await fetch(`/api/crm/operational_snapshot?${usp.toString()}`);
+        if (!resp.ok) {
+          if (!cancelled) setOperationalSnapshot(null);
+          return;
+        }
+        const data = (await resp.json()) as CrmOperationalSnapshot;
+        if (!cancelled) setOperationalSnapshot(data);
+      } catch {
+        if (!cancelled) setOperationalSnapshot(null);
+      } finally {
+        if (!cancelled) setOperationalLoading(false);
+      }
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedConversation?.id, selectedConversation?.cte, selectedConversation?.leadId, operationalVariantId]);
+
+  useEffect(() => {
     if (
       crmChatCache &&
       crmChatCache.leadId === (leadId || null) &&
@@ -1027,12 +1126,11 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
     };
   }, [selectedConversationId]);
 
-  // Polling mais rápido para reduzir delay visual do chat.
+  // Polling adaptativo: foreground rápido, background mais leve.
   useEffect(() => {
     if (!selectedConversationId) return;
 
-    const interval = window.setInterval(async () => {
-      if (document.hidden) return;
+    const tick = async () => {
       try {
         const reqSeq = ++messagesRequestSeq.current;
         const msgsResp = await authClient.getCrmMessages(selectedConversationId);
@@ -1058,7 +1156,11 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
       } finally {
         setMessagesLoading(false);
       }
-    }, 2500);
+    };
+    tick();
+    const interval = window.setInterval(() => {
+      void tick();
+    }, document.hidden ? 12000 : 4000);
 
     return () => window.clearInterval(interval);
   }, [selectedConversationId]);
@@ -1089,7 +1191,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
       } finally {
         conversationsPollInFlight.current = false;
       }
-    }, 20000);
+    }, 30000);
     return () => window.clearInterval(interval);
   }, [leadId, selectedConversationId, user?.username, user?.role]);
 
@@ -2079,20 +2181,109 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                 {savingClientData ? 'Salvando dados...' : 'Salvar dados do cliente'}
               </button>
             </div>
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-1">
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2">
               <p className="text-[11px] text-slate-500 uppercase tracking-wide mb-1">
-                Último rastreio
+                Rastreio operacional (CRM)
               </p>
               <p className="text-xs text-slate-700">
                 {ultimoRastreio || 'Nenhum CTE consultado ainda nesta conversa.'}
               </p>
+              {operationalLoading ? (
+                <div className="text-[11px] text-slate-500">Carregando snapshot operacional...</div>
+              ) : operationalSnapshot?.found ? (
+                <div className="space-y-2">
+                  <div className="text-[11px] text-slate-700">
+                    <div><span className="text-slate-500">CTE/Série:</span> {operationalSnapshot.cte || '—'}/{operationalSnapshot.serie || '—'}</div>
+                    <div><span className="text-slate-500">MDF-e:</span> {operationalSnapshot.activeLink?.mdf || '—'}</div>
+                    <div><span className="text-slate-500">Veículo:</span> {operationalSnapshot.activeLink?.vehicle_id || '—'} • {operationalSnapshot.activeLink?.plate || '—'}</div>
+                    <div>
+                      <span className="text-slate-500">Status:</span>{' '}
+                      {operationalSnapshot.operational?.status_calculado || operationalSnapshot.operational?.idx_view || '—'}
+                    </div>
+                    {operationalSnapshot.routeProgress ? (
+                      <div className="text-emerald-700">
+                        Progresso: {Math.round((operationalSnapshot.routeProgress.fraction_along || 0) * 100)}%
+                        {operationalSnapshot.routeProgress.eta_minutes_p50 != null
+                          ? ` · ETA ~${operationalSnapshot.routeProgress.eta_minutes_p50} min`
+                          : ''}
+                      </div>
+                    ) : null}
+                  </div>
+                  {Array.isArray(operationalSnapshot.routePattern?.variants) &&
+                  operationalSnapshot.routePattern?.variants.length > 1 ? (
+                    <div>
+                      <label className="text-[10px] text-slate-500 uppercase block mb-0.5">Variante da rota</label>
+                      <select
+                        className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px]"
+                        value={
+                          operationalVariantId ??
+                          operationalSnapshot.routePattern?.variant_id ??
+                          operationalSnapshot.routePattern?.variants?.[0]?.variant_id ??
+                          ''
+                        }
+                        onChange={(e) => setOperationalVariantId(Number(e.target.value))}
+                      >
+                        {operationalSnapshot.routePattern?.variants?.map((v) => (
+                          <option key={v.variant_id} value={v.variant_id}>
+                            Variante {v.variant_id} — {v.trip_count} viagem(ns)
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : null}
+                  <div className="rounded-lg overflow-hidden border border-slate-200">
+                    <OperationalMap
+                      trail={operationalSnapshot.trail || []}
+                      fallbackPoint={null}
+                      heightPx={220}
+                      referencePolyline={
+                        Array.isArray(operationalSnapshot.routePattern?.polyline)
+                          ? operationalSnapshot.routePattern?.polyline?.map((p) => ({ lat: Number(p.lat), lng: Number(p.lng) }))
+                          : null
+                      }
+                      bearingDeg={
+                        operationalSnapshot.routeProgress?.bearing_trail_deg ??
+                        operationalSnapshot.routeProgress?.bearing_route_deg ??
+                        null
+                      }
+                      progressPoint={
+                        operationalSnapshot.routeProgress
+                          ? {
+                              lat: operationalSnapshot.routeProgress.projected_lat,
+                              lng: operationalSnapshot.routeProgress.projected_lng,
+                            }
+                          : null
+                      }
+                      waypoints={
+                        Array.isArray(operationalSnapshot.routePattern?.waypoints)
+                          ? operationalSnapshot.routePattern?.waypoints?.map((w) => ({
+                              lat: Number(w.lat),
+                              lng: Number(w.lng),
+                              label: String(w.label || w.stop_key || ''),
+                              kind: String(w.kind || ''),
+                            }))
+                          : null
+                      }
+                    />
+                  </div>
+                  {Array.isArray(operationalSnapshot.tripLegs) && operationalSnapshot.tripLegs.length > 1 ? (
+                    <div className="text-[11px] text-amber-800 rounded border border-amber-200 bg-amber-50 px-2 py-1">
+                      Baldeação: {operationalSnapshot.tripLegs.length} pernas registradas.
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <div className="text-[11px] text-slate-600">
+                  Sem snapshot operacional para este lead/CTE no momento.
+                </div>
+              )}
               {!!selectedConversation?.cte && onOpenTracking && (
                 <button
                   type="button"
-                  onClick={() => onOpenTracking(selectedConversation.cte || '')}
-                  className="mt-2 px-2 py-1 text-[11px] rounded bg-[#2c348c] text-white hover:bg-[#e42424]"
+                  onClick={() => onOpenTracking(selectedConversation.cte || '', undefined)}
+                  className="mt-1 px-2 py-1 text-[11px] rounded bg-[#2c348c] text-white hover:bg-[#e42424]"
                 >
-                  Abrir detalhe do rastreio
+                  Abrir módulo operacional completo
                 </button>
               )}
             </div>

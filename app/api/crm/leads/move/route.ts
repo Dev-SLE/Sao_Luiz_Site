@@ -1,11 +1,15 @@
 import { NextResponse } from "next/server";
 import { getPool } from "../../../../../lib/server/db";
 import { ensureCrmSchemaTables } from "../../../../../lib/server/ensureSchema";
+import { requireApiPermissions } from "../../../../../lib/server/apiAuth";
+import { sessionCanAccessLead } from "../../../../../lib/server/crmAccess";
 
 export const runtime = "nodejs";
 
 export async function PATCH(req: Request) {
   try {
+    const guard = await requireApiPermissions(req, ["crm.leads.edit", "module.crm.manage"]);
+    if (guard.denied) return guard.denied;
     await ensureCrmSchemaTables();
     const pool = getPool();
 
@@ -22,6 +26,9 @@ export async function PATCH(req: Request) {
     const leadRes = await pool.query("SELECT pipeline_id FROM pendencias.crm_leads WHERE id = $1", [leadId]);
     const lead = leadRes.rows?.[0];
     if (!lead) return NextResponse.json({ error: "lead não encontrado" }, { status: 404 });
+    if (guard.session && !(await sessionCanAccessLead(pool, guard.session, leadId))) {
+      return NextResponse.json({ error: "Sem acesso ao lead" }, { status: 403 });
+    }
 
     let stageId = stageIdInput;
     let stageNameForLog = "";

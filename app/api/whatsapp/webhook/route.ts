@@ -467,7 +467,7 @@ function weekdayPt(d = new Date()) {
 }
 
 /** OpenAI + envio WhatsApp — roda fora do caminho crítico do webhook para responder rápido à Meta. */
-async function runWebhookSofiaAutoReply(
+export async function runWebhookSofiaAutoReply(
   pool: any,
   ctx: { conversationId: string; leadId: string; from: string; text: string }
 ) {
@@ -772,6 +772,21 @@ export async function POST(req: Request) {
         if (!messages.length) continue;
 
         for (const message of messages) {
+          const providerMessageId = String(message?.id || "").trim();
+          if (providerMessageId) {
+            const dupRes = await pool.query(
+              `
+                SELECT id
+                FROM pendencias.crm_messages
+                WHERE (provider = 'META' AND provider_message_id = $1)
+                   OR metadata->>'message_id' = $1
+                   OR metadata#>>'{outbound_whatsapp,message_id}' = $1
+                LIMIT 1
+              `,
+              [providerMessageId]
+            );
+            if (dupRes.rows?.[0]?.id) continue;
+          }
           const from = String(message.from || "");
           const text = parseWhatsAppText(message);
           const cteDetected = extractCteFromText(text);
@@ -934,20 +949,24 @@ export async function POST(req: Request) {
               INSERT INTO pendencias.crm_messages (
                 conversation_id,
                 sender_type,
+                provider,
+                provider_message_id,
                 body,
                 has_attachments,
                 metadata,
                 created_at
               )
-              VALUES ($1, 'CLIENT', $2, $3, $4::jsonb, NOW())
+              VALUES ($1, 'CLIENT', 'META', $2, $3, $4, $5::jsonb, NOW())
             `,
             [
               conversationId,
+              providerMessageId || null,
               text || "[Mensagem sem texto]",
               isAttachment,
               JSON.stringify({
                 message_type: message.type,
-                id: message.id,
+                id: providerMessageId || null,
+                message_id: providerMessageId || null,
                 attachments,
                 ...(resolvedReplyTo ? { reply_to: resolvedReplyTo } : {}),
                 // Guarda o payload bruto pra fase 4 (arquivos)
@@ -1036,13 +1055,23 @@ export async function POST(req: Request) {
             console.error("[whatsapp-webhook] applyInboundRouting:", e);
           }
 
-          // 7) Sofia auto (OpenAI + envio WA) em background — webhook responde rápido à Meta
-          void runWebhookSofiaAutoReply(pool, {
-            conversationId,
-            leadId,
-            from,
-            text: text || "[Mensagem sem texto]",
-          });
+          // 7) Sofia auto via fila persistente (worker processa fora do webhook).
+          await pool.query(
+            `
+              INSERT INTO pendencias.crm_outbox (
+                message_id, conversation_id, channel, payload, status, attempts, next_attempt_at, created_at, updated_at
+              )
+              VALUES (NULL, $1, 'SOFIA_AUTO_REPLY', $2::jsonb, 'PENDING', 0, NOW(), NOW(), NOW())
+            `,
+            [
+              conversationId,
+              JSON.stringify({
+                leadId,
+                from,
+                text: text || "[Mensagem sem texto]",
+              }),
+            ]
+          );
         }
       }
     }

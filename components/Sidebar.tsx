@@ -166,7 +166,7 @@ const Sidebar: React.FC<Props> = ({ currentPage, setPage }) => {
     },
   ];
 
-  const adminSection = hasPermission('MANAGE_SETTINGS')
+  const adminSection = hasPermission('MANAGE_SETTINGS') || hasPermission('VIEW_SETTINGS')
     ? {
         id: 'admin',
         label: 'Administração',

@@ -2,11 +2,14 @@ import { NextResponse } from "next/server";
 import { getPool } from "../../../../../lib/server/db";
 import { ensureCrmSchemaTables } from "../../../../../lib/server/ensureSchema";
 import { getSofiaManualTemplate } from "../../../../../lib/server/sofiaManualTemplate";
+import { requireApiPermissions } from "../../../../../lib/server/apiAuth";
 
 export const runtime = "nodejs";
 
-export async function POST() {
+export async function POST(req: Request) {
   try {
+    const guard = await requireApiPermissions(req, ["MANAGE_SETTINGS", "module.crm.manage"]);
+    if (guard.denied) return guard.denied;
     await ensureCrmSchemaTables();
     const pool = getPool();
     const payload = getSofiaManualTemplate();

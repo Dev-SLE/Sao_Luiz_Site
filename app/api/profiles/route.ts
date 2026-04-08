@@ -7,7 +7,8 @@ export const runtime = "nodejs";
 
 export async function GET(req: Request) {
   try {
-    const guard = await requireApiPermissions(req, ["MANAGE_SETTINGS"]);
+    // Necessário para o cliente resolver permissões por perfil após login.
+    const guard = await requireApiPermissions(req, []);
     if (guard.denied) return guard.denied;
     const pool = getPool();
     const result = await pool.query("SELECT * FROM pendencias.profiles ORDER BY name ASC");

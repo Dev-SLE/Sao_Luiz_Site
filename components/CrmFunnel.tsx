@@ -30,6 +30,7 @@ interface LeadCard {
   source: Source;
   priority: Priority;
   currentLocation?: string;
+  trackingActive?: boolean;
   ownerUsername?: string;
   assignedUsername?: string;
   topic?: string;
@@ -963,6 +964,23 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                             Rota: {lead.routeOrigin || '—'} {"->"} {lead.routeDestination || '—'}
                           </div>
                         )}
+                        <div className="flex flex-wrap gap-1 pt-0.5">
+                          {lead.cte ? (
+                            <span className="px-1.5 py-0.5 rounded-full border border-indigo-200 bg-indigo-50 text-[9px] text-indigo-700">
+                              Rota interna
+                            </span>
+                          ) : null}
+                          {lead.trackingActive ? (
+                            <span className="px-1.5 py-0.5 rounded-full border border-emerald-200 bg-emerald-50 text-[9px] text-emerald-700">
+                              Rastreio ativo
+                            </span>
+                          ) : null}
+                          {lead.mdfeDate ? (
+                            <span className="px-1.5 py-0.5 rounded-full border border-sky-200 bg-sky-50 text-[9px] text-sky-700">
+                              MDF-e
+                            </span>
+                          ) : null}
+                        </div>
                         {lead.cte && <div>CTE: {lead.cte}</div>}
                         {lead.serviceType && <div>Tipo: {lead.serviceType}</div>}
                         {lead.cargoStatus && <div>Carga: {lead.cargoStatus}</div>}

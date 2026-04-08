@@ -234,16 +234,25 @@ export async function ensureCrmSchemaTables() {
       conversation_id uuid NOT NULL REFERENCES pendencias.crm_conversations(id) ON DELETE CASCADE,
       sender_type text NOT NULL DEFAULT 'CLIENT',
       sender_username text,
+      provider text,
+      provider_message_id text,
       body text NOT NULL,
       has_attachments boolean NOT NULL DEFAULT false,
       metadata jsonb,
       created_at timestamptz NOT NULL DEFAULT now()
     )
   `);
+  await pool.query(`ALTER TABLE pendencias.crm_messages ADD COLUMN IF NOT EXISTS provider text`);
+  await pool.query(`ALTER TABLE pendencias.crm_messages ADD COLUMN IF NOT EXISTS provider_message_id text`);
 
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_crm_messages_conversation_created
     ON pendencias.crm_messages(conversation_id, created_at)
+  `);
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_crm_messages_provider_msgid
+    ON pendencias.crm_messages(provider, provider_message_id)
+    WHERE provider IS NOT NULL AND provider_message_id IS NOT NULL AND btrim(provider_message_id) <> ''
   `);
 
   // Fila de envio outbound (fallback/retry para WhatsApp)
@@ -253,6 +262,8 @@ export async function ensureCrmSchemaTables() {
       message_id uuid REFERENCES pendencias.crm_messages(id) ON DELETE CASCADE,
       conversation_id uuid REFERENCES pendencias.crm_conversations(id) ON DELETE CASCADE,
       channel text NOT NULL DEFAULT 'WHATSAPP',
+      lock_owner text,
+      processing_started_at timestamptz,
       payload jsonb NOT NULL DEFAULT '{}'::jsonb,
       status text NOT NULL DEFAULT 'PENDING',
       attempts int NOT NULL DEFAULT 0,
@@ -262,6 +273,8 @@ export async function ensureCrmSchemaTables() {
       updated_at timestamptz NOT NULL DEFAULT NOW()
     )
   `);
+  await pool.query(`ALTER TABLE pendencias.crm_outbox ADD COLUMN IF NOT EXISTS lock_owner text`);
+  await pool.query(`ALTER TABLE pendencias.crm_outbox ADD COLUMN IF NOT EXISTS processing_started_at timestamptz`);
 
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_crm_outbox_status_next_attempt

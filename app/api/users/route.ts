@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 
 export async function GET(req: Request) {
   try {
-    const guard = await requireApiPermissions(req, ["MANAGE_USERS", "MANAGE_SETTINGS"]);
+    const guard = await requireApiPermissions(req, ["MANAGE_USERS", "MANAGE_SETTINGS", "VIEW_USERS", "VIEW_SETTINGS"]);
     if (guard.denied) return guard.denied;
     const pool = getPool();
     await pool.query(`ALTER TABLE pendencias.users ADD COLUMN IF NOT EXISTS last_login_at timestamptz`);

@@ -228,7 +228,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         buscaResp,
         ocorrResp,
         conclResp,
-        usersData,
       ] = await Promise.all([
         authClient.getCtesDashboard(1, 10000),
         authClient.getCtesView('pendencias', pendenciasState.page, pendenciasState.limit),
@@ -236,7 +235,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         authClient.getCtesView('em_busca', emBuscaState.page, emBuscaState.limit),
         authClient.getCtesView('ocorrencias', ocorrenciasState.page, ocorrenciasState.limit),
         authClient.getCtesView('concluidos', concluidosState.page, concluidosState.limit),
-        authClient.getUsers(),
       ]);
 
       const dashboardData = normalizeCtes(dashboardResp.data || []);
@@ -247,7 +245,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const ocorrenciasData = normalizeCtes(ocorrResp.data || []);
       const concluidosData = normalizeCtes(conclResp.data || []);
 
-      const normalizedUsers = usersData.map((row: any) => ({
+      const usersData = await authClient.getUsers().catch(() => []);
+      const normalizedUsers = (usersData || []).map((row: any) => ({
         username: row.username || '',
         password: row.password_hash || '',
         role: row.role || '',
@@ -266,7 +265,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setProcessControlData([]);
       setUsers(normalizedUsers);
 
-      const profilesRaw = await authClient.getProfiles();
+      const profilesRaw = await authClient.getProfiles().catch(() => []);
       const normalizedProfiles: ProfileData[] = (profilesRaw || []).map((row: any) => ({
         name: row.name || '',
         description: row.description || '',

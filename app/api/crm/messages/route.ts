@@ -3,6 +3,7 @@ import { getPool } from "../../../../lib/server/db";
 import { ensureCrmSchemaTables } from "../../../../lib/server/ensureSchema";
 import { evolutionDeleteMessageForEveryone, evolutionSendText } from "../../../../lib/server/evolutionClient";
 import { can, getSessionContext } from "../../../../lib/server/authorization";
+import { sessionCanAccessLead } from "../../../../lib/server/crmAccess";
 
 export const runtime = "nodejs";
 
@@ -229,6 +230,9 @@ export async function GET(req: Request) {
       [conversationId]
     );
     const leadId = convInfo.rows?.[0]?.lead_id as string | undefined;
+    if (!leadId || !(await sessionCanAccessLead(pool, session, String(leadId)))) {
+      return NextResponse.json({ error: "Sem acesso a esta conversa" }, { status: 403 });
+    }
 
     let relatedLeadHistory: Array<{
       messageId: string;
@@ -341,6 +345,9 @@ export async function POST(req: Request) {
 
     if (!activeConversationId) {
       if (!leadId) return NextResponse.json({ error: "leadId ou conversationId obrigatório" }, { status: 400 });
+      if (!(await sessionCanAccessLead(pool, session, leadId))) {
+        return NextResponse.json({ error: "Sem acesso ao lead" }, { status: 403 });
+      }
 
       const convInsert = await pool.query(
         `
@@ -354,17 +361,21 @@ export async function POST(req: Request) {
       activeChannel = convInsert.rows?.[0]?.channel as string;
     } else {
       const convRes = await pool.query(
-        "SELECT channel FROM pendencias.crm_conversations WHERE id = $1",
+        "SELECT channel, lead_id FROM pendencias.crm_conversations WHERE id = $1",
         [activeConversationId]
       );
+      const convLeadId = convRes.rows?.[0]?.lead_id ? String(convRes.rows[0].lead_id) : null;
+      if (!convLeadId || !(await sessionCanAccessLead(pool, session, convLeadId))) {
+        return NextResponse.json({ error: "Sem acesso a esta conversa" }, { status: 403 });
+      }
       activeChannel = convRes.rows?.[0]?.channel ? String(convRes.rows[0].channel) : activeChannel;
     }
 
     const dbSender = mapSenderToDb(senderType);
     const messageInsert = await pool.query(
       `
-        INSERT INTO pendencias.crm_messages (conversation_id, sender_type, body, has_attachments, metadata, created_at)
-        VALUES ($1, $2, $3, $4, $5::jsonb, NOW())
+        INSERT INTO pendencias.crm_messages (conversation_id, sender_type, provider, provider_message_id, body, has_attachments, metadata, created_at)
+        VALUES ($1, $2, 'CRM', NULL, $3, $4, $5::jsonb, NOW())
         RETURNING id, created_at
       `,
       [
@@ -540,7 +551,6 @@ export async function POST(req: Request) {
         ]
       );
 
-      // Retry outbox só para Cloud API (Meta). Evolution usa outro transporte.
       if (!outboundWhatsApp.delivered && !useEvolution) {
         await pool.query(
           `
@@ -559,6 +569,33 @@ export async function POST(req: Request) {
               senderType: dbSender,
             }),
             outboundWhatsApp.error || "Falha no envio WhatsApp",
+          ]
+        );
+      }
+      if (!outboundWhatsApp.delivered && useEvolution) {
+        await pool.query(
+          `
+            INSERT INTO pendencias.crm_outbox (
+              message_id, conversation_id, channel, payload, status, attempts, last_error, next_attempt_at, created_at, updated_at
+            )
+            VALUES (
+              $1, $2, 'WHATSAPP_EVOLUTION', $3::jsonb, 'PENDING', 1, $4, NOW() + INTERVAL '20 seconds', NOW(), NOW()
+            )
+          `,
+          [
+            createdMessageId,
+            activeConversationId,
+            JSON.stringify({
+              body: signedText || text,
+              toE164,
+              replyToWhatsappMessageId,
+              evolution: {
+                instanceName: String(row.evolution_instance_name),
+                serverUrl: String(row.evolution_server_url),
+                apiKey: String(row.evolution_api_key),
+              },
+            }),
+            outboundWhatsApp.error || "Falha no envio Evolution",
           ]
         );
       }
@@ -632,6 +669,7 @@ export async function DELETE(req: Request) {
       `
         SELECT
           m.metadata,
+          c.lead_id,
           c.whatsapp_inbox_id,
           i.provider AS inbox_provider,
           i.evolution_instance_name,
@@ -647,6 +685,9 @@ export async function DELETE(req: Request) {
       [messageId, conversationId]
     );
     const row = messageRes.rows?.[0];
+    if (!row?.lead_id || !(await sessionCanAccessLead(pool, session, String(row.lead_id)))) {
+      return NextResponse.json({ error: "Sem acesso a esta conversa" }, { status: 403 });
+    }
     const meta = safeJsonParse(row?.metadata);
     const outbound = safeJsonParse(meta?.outbound_whatsapp);
     const messageWaId = String(outbound?.message_id || meta?.message_id || "").trim();
