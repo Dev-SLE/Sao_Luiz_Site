@@ -464,7 +464,7 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
             }))
           : [];
         const wps = Array.isArray(data.waypoints)
-          ? data.waypoints.map((w: { lat: number; lng: number; label?: string; kind?: string }) => ({
+          ? data.waypoints.map((w: { lat: number; lng: number; label?: string; stop_key?: string; kind?: string }) => ({
               lat: Number(w.lat),
               lng: Number(w.lng),
               label: String(w.label || w.stop_key || ""),
