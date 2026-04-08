@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireApiPermissions } from "../../../../lib/server/apiAuth";
 import { getPool } from "../../../../lib/server/db";
 import { ensureOperationalTrackingTables } from "../../../../lib/server/ensureSchema";
-import { formatDateTime } from "../../../../lib/server/datetime";
+import { formatDateOnlyBr, formatDateTime } from "../../../../lib/server/datetime";
 import { parseLinhaTempoSigai, parseVeiculosHistorico } from "../../../../lib/server/ctesTrackingJson";
 
 export const runtime = "nodejs";
@@ -270,14 +270,6 @@ export async function GET(req: Request) {
       [cte, serie]
     );
 
-    const formatEmissao = (d: any) => {
-      if (!d) return "";
-      const x = new Date(d);
-      if (Number.isNaN(x.getTime())) return String(d);
-      const pad = (n: number) => n.toString().padStart(2, "0");
-      return `${pad(x.getDate())}/${pad(x.getMonth() + 1)}/${x.getFullYear()}`;
-    };
-
     const item = {
       CTE: itemRow.cte,
       SERIE: itemRow.serie,
@@ -288,7 +280,7 @@ export async function GET(req: Request) {
       VALOR_CTE: itemRow.valor_cte != null ? String(itemRow.valor_cte) : "",
       STATUS_CALCULADO: itemRow.status_calculado || "",
       STATUS_LOGISTICA: itemRow.status_logistica ? String(itemRow.status_logistica) : "",
-      DATA_EMISSAO: formatEmissao(itemRow.data_emissao),
+      DATA_EMISSAO: formatDateOnlyBr(itemRow.data_emissao),
       CODIGO: itemRow.codigo ? String(itemRow.codigo) : "",
       MDFE_NUMERO: itemRow.mdfe_numero != null ? String(itemRow.mdfe_numero) : "",
       MDFE_SERIE: itemRow.mdfe_serie != null ? String(itemRow.mdfe_serie) : "",

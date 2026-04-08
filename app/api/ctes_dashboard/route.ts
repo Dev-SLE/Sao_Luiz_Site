@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getPool } from "../../../lib/server/db";
-import { formatDateTime } from "../../../lib/server/datetime";
+import { formatDateOnlyBr } from "../../../lib/server/datetime";
 
 export const runtime = "nodejs";
 
@@ -85,9 +85,9 @@ export async function GET(req: Request) {
     const rows = (result.rows || []).map((row: any) => ({
       ...row,
       status: row.status_exibicao || row.status || "",
-      data_emissao: formatDateTime(row.data_emissao),
-      data_baixa: formatDateTime(row.data_baixa),
-      data_limite_baixa: formatDateTime(row.data_limite_baixa),
+      data_emissao: formatDateOnlyBr(row.data_emissao),
+      data_baixa: formatDateOnlyBr(row.data_baixa),
+      data_limite_baixa: formatDateOnlyBr(row.data_limite_baixa),
     }));
 
     return NextResponse.json({ data: rows, total });
