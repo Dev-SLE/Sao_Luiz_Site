@@ -4,6 +4,7 @@ import clsx from "clsx";
 import dynamic from "next/dynamic";
 import { useAuth } from "../context/AuthContext";
 import { useData } from "../context/DataContext";
+import { matchAgencyStopKey } from "../lib/cteLocationKeys";
 import {
   DESTINO_OPTIONS,
   DESTINO_TO_MAPS_URL_BY_NORMALIZED,
@@ -61,6 +62,16 @@ type VeiculoHistRow = {
   data_viagem?: string;
   hora_viagem?: string;
   veiculo?: string | number;
+};
+
+type RoutePatternPreview = {
+  polyline: Array<{ lat: number; lng: number }>;
+  stats: {
+    trip_count: number;
+    duration_p50_minutes: number;
+    duration_p90_minutes: number;
+    computed_at: string;
+  } | null;
 };
 
 type TrackingDetail = {
@@ -252,6 +263,7 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
   const [linkNotes, setLinkNotes] = useState("");
   const [isLinking, setIsLinking] = useState(false);
   const [showMapModal, setShowMapModal] = useState(false);
+  const [routePattern, setRoutePattern] = useState<RoutePatternPreview | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const unitOptions = useMemo(() => {
@@ -383,6 +395,57 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected?.item?.CTE, selected?.item?.SERIE]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      if (!selected?.item) {
+        setRoutePattern(null);
+        return;
+      }
+      const ok = matchAgencyStopKey(selected.item.COLETA);
+      const dk = matchAgencyStopKey(selected.item.ENTREGA);
+      if (!ok || !dk) {
+        setRoutePattern(null);
+        return;
+      }
+      try {
+        const usp = new URLSearchParams();
+        usp.set("origin_key", ok);
+        usp.set("dest_key", dk);
+        const resp = await fetch(`/api/operational_tracking/route_pattern?${usp.toString()}`);
+        if (!resp.ok) {
+          if (!cancelled) setRoutePattern(null);
+          return;
+        }
+        const data = await resp.json();
+        if (cancelled) return;
+        const poly = Array.isArray(data.polyline)
+          ? data.polyline.map((p: { lat: number; lng: number }) => ({
+              lat: Number(p.lat),
+              lng: Number(p.lng),
+            }))
+          : [];
+        setRoutePattern({
+          polyline: poly,
+          stats: data.stats
+            ? {
+                trip_count: Number(data.stats.trip_count),
+                duration_p50_minutes: Number(data.stats.duration_p50_minutes),
+                duration_p90_minutes: Number(data.stats.duration_p90_minutes),
+                computed_at: String(data.stats.computed_at || ""),
+              }
+            : null,
+        });
+      } catch {
+        if (!cancelled) setRoutePattern(null);
+      }
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [selected?.item?.CTE, selected?.item?.SERIE, selected?.item?.COLETA, selected?.item?.ENTREGA]);
 
   useEffect(() => {
     if (!selected?.activeLink) {
@@ -1014,6 +1077,44 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
               </div>
             ) : null}
 
+            {(() => {
+              const ok = matchAgencyStopKey(selected.item.COLETA);
+              const dk = matchAgencyStopKey(selected.item.ENTREGA);
+              if (!ok || !dk) return null;
+              return (
+                <div className="border border-dashed border-slate-300 rounded-xl p-3 bg-slate-50/50">
+                  <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">
+                    Rota típica (histórico agregado)
+                  </div>
+                  <div className="text-xs font-semibold text-slate-900 mt-1">
+                    {ok} → {dk}
+                  </div>
+                  {routePattern?.stats ? (
+                    <div className="text-[11px] text-slate-600 mt-2 space-y-0.5">
+                      <div>{routePattern.stats.trip_count} trecho(s) na última agregação</div>
+                      <div>
+                        Tempo típico: ~{routePattern.stats.duration_p50_minutes} min (p90:{" "}
+                        {routePattern.stats.duration_p90_minutes} min)
+                      </div>
+                      {routePattern.stats.computed_at ? (
+                        <div className="text-slate-500">Calculado: {routePattern.stats.computed_at}</div>
+                      ) : null}
+                    </div>
+                  ) : routePattern && routePattern.polyline.length >= 2 ? (
+                    <div className="text-[11px] text-slate-600 mt-2">Trajeto histórico no mapa (linha cinza tracejada).</div>
+                  ) : (
+                    <div className="text-[11px] text-amber-900 mt-2 leading-relaxed">
+                      Ainda sem padrão para este par. Execute fora do Neon (baixo custo):{" "}
+                      <code className="text-[10px] bg-white px-1 rounded border border-amber-200">
+                        python scripts/compute_route_patterns.py
+                      </code>{" "}
+                      com <code className="text-[10px]">DATABASE_URL</code> no ambiente.
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
             <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2">
               <div className="flex items-center gap-2 flex-wrap justify-between">
                 <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Mapa Life</span>
@@ -1058,6 +1159,7 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
                 }
                 extraMarkers={mapExtraMarkers}
                 heightPx={220}
+                referencePolyline={routePattern?.polyline?.length ? routePattern.polyline : null}
               />
             </div>
 
@@ -1520,6 +1622,7 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
                     }
                     extraMarkers={mapExtraMarkers}
                     heightPx={500}
+                    referencePolyline={routePattern?.polyline?.length ? routePattern.polyline : null}
                   />
                 </div>
               </div>

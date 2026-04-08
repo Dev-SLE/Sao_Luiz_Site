@@ -1,3 +1,4 @@
+import { AGENCY_STOPS } from "../data/agencyStops";
 import { getCommercialPool, getPool } from "./db";
 
 let crmSchemaReady = false;
@@ -719,6 +720,10 @@ export async function ensureOperationalTrackingTables() {
     CREATE INDEX IF NOT EXISTS idx_operational_vehicle_positions_vehicle_time
     ON pendencias.operational_vehicle_positions(vehicle_id, position_at DESC)
   `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_operational_vehicle_positions_time
+    ON pendencias.operational_vehicle_positions (position_at DESC)
+  `);
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS pendencias.operational_load_links (
@@ -779,6 +784,70 @@ export async function ensureOperationalTrackingTables() {
     CREATE INDEX IF NOT EXISTS idx_operational_vehicle_latest_vehicle
     ON pendencias.operational_vehicle_position_latest(vehicle_id, position_at DESC)
   `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS pendencias.operational_stop_reference (
+      stop_key text PRIMARY KEY,
+      label text NOT NULL,
+      lat double precision NOT NULL,
+      lng double precision NOT NULL,
+      updated_at timestamptz NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS pendencias.operational_route_od_stats (
+      origin_key text NOT NULL,
+      dest_key text NOT NULL,
+      trip_count int NOT NULL DEFAULT 0,
+      duration_p50_minutes int NOT NULL DEFAULT 0,
+      duration_p90_minutes int NOT NULL DEFAULT 0,
+      last_sample_days int NOT NULL DEFAULT 7,
+      computed_at timestamptz NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (origin_key, dest_key)
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS pendencias.operational_route_od_polyline (
+      origin_key text NOT NULL,
+      dest_key text NOT NULL,
+      seq smallint NOT NULL,
+      lat double precision NOT NULL,
+      lng double precision NOT NULL,
+      PRIMARY KEY (origin_key, dest_key, seq)
+    )
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_operational_route_poly_od
+    ON pendencias.operational_route_od_polyline (origin_key, dest_key)
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS pendencias.operational_route_job_state (
+      job_name text PRIMARY KEY,
+      last_run_at timestamptz,
+      last_error text,
+      rows_scanned int,
+      notes text,
+      updated_at timestamptz NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  for (const s of AGENCY_STOPS) {
+    await pool.query(
+      `
+        INSERT INTO pendencias.operational_stop_reference (stop_key, label, lat, lng)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (stop_key) DO UPDATE SET
+          label = EXCLUDED.label,
+          lat = EXCLUDED.lat,
+          lng = EXCLUDED.lng,
+          updated_at = NOW()
+      `,
+      [s.key, s.label, s.lat, s.lng]
+    );
+  }
   })();
   try {
     await operationalSchemaPromise;
