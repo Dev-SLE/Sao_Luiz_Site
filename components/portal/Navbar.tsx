@@ -4,10 +4,22 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Menu, X } from 'lucide-react';
+import clsx from 'clsx';
 import { useData } from '@/context/DataContext';
 import { filterPortalNavLinks, PORTAL_NAV_LINKS } from '@/lib/navigation-manifest';
 import { NotificationsCenter } from '@/components/notifications/NotificationsCenter';
-import { GlobalSearchTrigger } from '@/components/search/GlobalSearchTrigger';
+
+const WORKSPACE_HREF = '/app/operacional/visao-geral';
+
+function portalTabClass(active: boolean) {
+  return clsx(
+    'relative isolate overflow-hidden whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold tracking-tight outline-none transition-all duration-300 ease-out',
+    'focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:ring-offset-2 focus-visible:ring-offset-sl-navy',
+    active
+      ? 'bg-sl-red text-white shadow-[0_4px_14px_rgba(196,18,48,0.35)] ring-1 ring-white/25'
+      : 'text-white/65 hover:bg-white/[0.12] hover:text-white hover:shadow-sm active:scale-[0.98]',
+  );
+}
 
 export function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
@@ -15,50 +27,71 @@ export function Navbar() {
   const { hasPermission } = useData();
   const links = filterPortalNavLinks(PORTAL_NAV_LINKS, hasPermission);
   const showWorkspace = hasPermission('workspace.app.view');
+  const isWorkspaceActive = Boolean(pathname?.startsWith('/app'));
 
   return (
     <nav className="fixed left-0 right-0 top-0 z-50 border-b border-black/15 bg-sl-navy/95 shadow-[0_1px_0_rgba(0,0,0,0.06)] backdrop-blur-md backdrop-saturate-150">
-      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
-        <Link href="/inicio" className="flex items-center gap-3">
-          <div className="flex h-8 w-8 shrink-0 overflow-hidden rounded-lg ring-1 ring-white/15">
-            <img src="/sle-brand-kangaroo.png" alt="" className="h-full w-full object-cover object-center" draggable={false} />
+      <div className="mx-auto flex h-16 max-w-7xl items-center gap-4 px-4 sm:px-6">
+        <Link href="/inicio" className="flex min-w-0 shrink-0 items-center gap-2.5 sm:gap-3">
+          <div className="flex h-9 w-9 shrink-0 overflow-hidden rounded-lg ring-1 ring-white/20 shadow-sm">
+            <img
+              src="/sle-brand-kangaroo.png"
+              alt=""
+              className="h-full w-full object-cover object-center"
+              draggable={false}
+            />
           </div>
-          <div className="hidden sm:block">
-            <span className="font-heading text-sm font-semibold tracking-wide text-white">São Luiz Express</span>
+          <div className="hidden min-w-0 flex-col leading-tight sm:flex">
+            <span className="font-heading truncate text-[13px] font-bold tracking-tight text-white">
+              São Luiz Express
+            </span>
+            <span className="truncate text-[10px] font-semibold uppercase tracking-[0.18em] text-white/55">
+              Portal
+            </span>
           </div>
         </Link>
 
-        <div className="hidden items-center gap-1 lg:flex">
+        <div className="hidden min-w-0 flex-1 items-center justify-center gap-0.5 lg:flex">
           {links.map((link) => {
-            const isActive = pathname === link.href || (link.href !== '/inicio' && pathname?.startsWith(link.href));
+            const isActive =
+              pathname === link.href || (link.href !== '/inicio' && pathname?.startsWith(link.href));
             return (
               <Link
                 key={link.label}
                 href={link.href}
-                className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors duration-200 ${
-                  isActive ? 'bg-white/10 text-white' : 'text-white/60 hover:bg-white/5 hover:text-white'
-                }`}
+                className={clsx('group', portalTabClass(isActive))}
               >
-                {link.label}
+                {!isActive ? (
+                  <span
+                    className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/[0.07] to-transparent transition-transform duration-500 ease-out group-hover:translate-x-full"
+                    aria-hidden
+                  />
+                ) : null}
+                <span className="relative z-10">{link.label}</span>
               </Link>
             );
           })}
-          {showWorkspace && (
-            <Link
-              href="/app/operacional/visao-geral"
-              className="ml-2 rounded-lg border border-white/20 px-3 py-2 text-sm font-semibold text-white/90 hover:bg-white/10"
-            >
-              Sistema
-            </Link>
-          )}
+          {showWorkspace ? (
+            <>
+              <span className="mx-1 hidden h-7 w-px shrink-0 bg-white/15 lg:block" aria-hidden />
+              <Link href={WORKSPACE_HREF} className={clsx('group', portalTabClass(isWorkspaceActive))}>
+                {!isWorkspaceActive ? (
+                  <span
+                    className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/[0.07] to-transparent transition-transform duration-500 ease-out group-hover:translate-x-full"
+                    aria-hidden
+                  />
+                ) : null}
+                <span className="relative z-10">Área de trabalho</span>
+              </Link>
+            </>
+          ) : null}
         </div>
 
-        <div className="flex items-center gap-2">
-          <GlobalSearchTrigger variant="portal" />
+        <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
           <NotificationsCenter variant="portal" />
           <Link
             href="/perfil"
-            className="rounded-lg p-2 text-white/60 transition-colors hover:bg-white/5 hover:text-white"
+            className="rounded-lg p-2 text-white/60 transition-colors duration-200 hover:bg-white/10 hover:text-white"
             title="Meu perfil"
           >
             <span className="font-heading text-xs font-bold">EU</span>
@@ -66,43 +99,55 @@ export function Navbar() {
           <button
             type="button"
             onClick={() => setIsOpen(!isOpen)}
-            className="p-2 text-white/60 transition-colors hover:text-white lg:hidden"
+            className="rounded-lg p-2 text-white/60 transition-colors duration-200 hover:bg-white/10 hover:text-white lg:hidden"
+            aria-expanded={isOpen}
+            aria-label={isOpen ? 'Fechar menu' : 'Abrir menu'}
           >
             {isOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
         </div>
       </div>
 
-      {isOpen && (
+      {isOpen ? (
         <div className="border-t border-black/15 bg-sl-navy lg:hidden">
-          <div className="space-y-1 px-6 py-4">
+          <div className="space-y-1 px-4 py-3 sm:px-6">
             {links.map((link) => {
-              const isActive = pathname === link.href;
+              const isActive = pathname === link.href || (link.href !== '/inicio' && pathname?.startsWith(link.href));
               return (
                 <Link
                   key={link.label}
                   href={link.href}
                   onClick={() => setIsOpen(false)}
-                  className={`block rounded-lg px-3 py-3 text-sm font-medium transition-colors ${
-                    isActive ? 'bg-white/10 text-white' : 'text-white/60 hover:bg-white/5 hover:text-white'
-                  }`}
+                  className={clsx('group', portalTabClass(isActive), 'block w-full text-center')}
                 >
-                  {link.label}
+                  {!isActive ? (
+                    <span
+                      className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/[0.07] to-transparent transition-transform duration-500 ease-out group-hover:translate-x-full"
+                      aria-hidden
+                    />
+                  ) : null}
+                  <span className="relative z-10">{link.label}</span>
                 </Link>
               );
             })}
-            {showWorkspace && (
+            {showWorkspace ? (
               <Link
-                href="/app/operacional/visao-geral"
+                href={WORKSPACE_HREF}
                 onClick={() => setIsOpen(false)}
-                className="block rounded-lg px-3 py-3 text-sm font-medium text-white/80 hover:bg-white/5"
+                className={clsx('group', portalTabClass(isWorkspaceActive), 'block w-full text-center')}
               >
-                Sistema
+                {!isWorkspaceActive ? (
+                  <span
+                    className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/[0.07] to-transparent transition-transform duration-500 ease-out group-hover:translate-x-full"
+                    aria-hidden
+                  />
+                ) : null}
+                <span className="relative z-10">Área de trabalho</span>
               </Link>
-            )}
+            ) : null}
           </div>
         </div>
-      )}
+      ) : null}
     </nav>
   );
 }
