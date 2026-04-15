@@ -2,7 +2,18 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '../context/AuthContext';
-import { ArrowRight, Eye, EyeOff, Loader2, Lock, Sparkles, User } from 'lucide-react';
+import {
+  ArrowRight,
+  Building2,
+  Eye,
+  EyeOff,
+  LayoutGrid,
+  Loader2,
+  Lock,
+  Sparkles,
+  Truck,
+  User,
+} from 'lucide-react';
 import clsx from 'clsx';
 
 function safeInternalPath(from: string | null): string | null {
@@ -25,16 +36,16 @@ const Login: React.FC = () => {
 
   const securityInfoMap: Record<'CRIPTO' | 'PERMISSOES' | 'AUDITORIA', { title: string; text: string }> = {
     CRIPTO: {
-      title: 'Criptografia',
-      text: 'Os dados sensíveis trafegam por conexão segura e são protegidos com padrões atuais de criptografia para reduzir riscos de interceptação.',
+      title: 'Dados protegidos',
+      text: 'Conexão cifrada e boas práticas de armazenamento para reduzir riscos em comunicados, documentos, RH e demais áreas do portal.',
     },
     PERMISSOES: {
-      title: 'Permissões',
-      text: 'Cada usuário acessa apenas o que o seu perfil permite, com controle de escopo por função, equipe e nível operacional.',
+      title: 'Acesso por perfil',
+      text: 'Cada colaborador vê apenas o portal, o workspace e as ferramentas (operacional, CRM, Sofia, etc.) autorizados para a sua função.',
     },
     AUDITORIA: {
-      title: 'Auditoria',
-      text: 'Ações críticas ficam registradas para rastreabilidade, investigação de incidentes e governança contínua da operação.',
+      title: 'Trilha e governança',
+      text: 'Eventos sensíveis podem ser registrados para rastreabilidade, apoio a investigações e alinhamento às políticas internas.',
     },
   };
 
@@ -62,50 +73,62 @@ const Login: React.FC = () => {
 
   const inputWrap = (focused: boolean) =>
     clsx(
-      'flex items-center rounded-xl border bg-white transition-all',
-      focused ? 'border-sl-navy shadow-[0_0_0_3px_rgba(44,52,140,0.12)]' : 'border-slate-200',
+      'flex items-center rounded-xl border bg-white transition-all duration-300',
+      focused
+        ? 'border-sl-navy shadow-[0_0_0_3px_rgba(196,18,48,0.12)] ring-1 ring-sl-red/25'
+        : 'border-slate-200 hover:border-slate-300',
     );
 
   return (
-    <div className="app-typography relative min-h-screen w-full overflow-hidden bg-[#f5f7fa] text-slate-800">
-      <div className="pointer-events-none absolute -left-24 -top-20 h-80 w-80 rounded-full bg-sl-navy/30 blur-3xl fx-orbit" />
-      <div className="pointer-events-none absolute -right-20 top-1/3 h-72 w-72 rounded-full bg-sl-red/20 blur-3xl fx-orbit-rev" />
-      <div className="pointer-events-none absolute left-1/3 bottom-[-120px] h-72 w-72 rounded-full bg-sl-navy/20 blur-3xl fx-drift-slow" />
-      <div className="grid min-h-screen grid-cols-1 lg:grid-cols-12">
-        <div className="relative z-10 flex min-h-[min(100dvh,960px)] flex-col justify-center overflow-x-hidden overflow-y-auto border-b border-slate-300/40 bg-gradient-to-br from-white via-slate-50 to-slate-100 px-7 py-10 sm:px-10 md:px-12 lg:col-span-4 lg:min-h-screen lg:border-b-0 lg:pr-8 xl:px-14 xl:pr-16">
-          {/* Ponte suave → painel azul (sem corte seco) */}
+    <div
+      data-theme="portal"
+      className="font-body relative min-h-dvh w-full overflow-hidden bg-[var(--sl-gray-50,#f5f7fa)] text-slate-800"
+    >
+      <div className="pointer-events-none absolute -left-24 -top-20 h-80 w-80 rounded-full bg-sl-navy/25 blur-3xl fx-orbit" />
+      <div className="pointer-events-none absolute -right-20 top-1/3 h-72 w-72 rounded-full bg-sl-red/18 blur-3xl fx-orbit-rev" />
+      <div className="pointer-events-none absolute bottom-[-120px] left-1/3 h-72 w-72 rounded-full bg-sl-navy-light/25 blur-3xl fx-drift-slow" />
+
+      <div className="grid min-h-dvh grid-cols-1 lg:grid-cols-12">
+        {/* Coluna formulário */}
+        <div className="relative z-10 flex min-h-[min(100dvh,960px)] flex-col justify-center overflow-x-hidden overflow-y-auto border-b border-slate-200/80 bg-gradient-to-br from-white via-[#f5f7fa] to-slate-100 px-7 py-10 sm:px-10 md:px-12 lg:col-span-4 lg:min-h-dvh lg:border-b-0 lg:pr-8 xl:px-14 xl:pr-16">
           <div
-            className="pointer-events-none absolute inset-y-0 right-0 z-[4] w-[min(42%,220px)] bg-[linear-gradient(90deg,transparent_0%,rgba(11,30,72,0.07)_45%,rgba(24,47,107,0.22)_88%,rgba(11,30,72,0.38)_100%)]"
+            className="pointer-events-none absolute inset-y-0 right-0 z-[4] w-[min(42%,220px)] bg-[linear-gradient(90deg,transparent_0%,rgba(10,22,40,0.06)_45%,rgba(26,45,80,0.18)_88%,rgba(10,22,40,0.32)_100%)]"
             aria-hidden
           />
           <div
-            className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_90%_55%_at_50%_-15%,rgba(44,52,140,0.14),transparent_52%)]"
+            className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_90%_55%_at_50%_-15%,rgba(196,18,48,0.08),transparent_55%)]"
             aria-hidden
           />
-          {/* Camadas 3D / movimento (mais visíveis no login) */}
+
           <div
-            className="pointer-events-none absolute left-[4%] top-[14%] z-[2] h-36 w-36 rounded-3xl border border-sl-navy/25 bg-gradient-to-br from-white/40 to-sl-navy/10 shadow-[0_12px_40px_rgba(10,22,40,0.14)] fx-orbit"
-            aria-hidden
-          />
-          <div
-            className="pointer-events-none absolute bottom-[18%] left-[8%] z-[2] h-28 w-28 rounded-full border border-sl-red/20 bg-sl-red/5 blur-[1px] fx-drift"
+            className="pointer-events-none absolute left-[4%] top-[14%] z-[2] h-36 w-36 rounded-3xl border border-sl-navy/20 bg-gradient-to-br from-white/50 to-sl-navy/10 shadow-[0_12px_40px_rgba(10,22,40,0.12)] fx-orbit"
             aria-hidden
           />
           <div
-            className="pointer-events-none absolute -right-8 bottom-[22%] z-[2] h-40 w-40 rounded-2xl border border-sl-navy/18 bg-white/30 shadow-lg fx-float"
+            className="pointer-events-none absolute bottom-[18%] left-[8%] z-[2] h-28 w-28 rounded-full border border-sl-red/25 bg-sl-red/8 fx-drift"
             aria-hidden
           />
           <div
-            className="pointer-events-none absolute right-[20%] top-[22%] z-[2] h-24 w-24 rounded-full bg-sl-navy/15 blur-2xl fx-drift-slow"
+            className="pointer-events-none absolute -right-8 bottom-[22%] z-[2] h-40 w-40 rounded-2xl border border-sl-navy/15 bg-white/40 shadow-lg fx-float"
             aria-hidden
           />
-          {/* Fundo limpo no painel de login para evitar recorte visível da Sofia */}
-          <div className="relative z-10 mx-auto w-full max-w-lg rounded-3xl border border-slate-300/70 bg-white/96 p-6 shadow-[0_24px_50px_rgba(15,23,42,0.14),0_2px_0_rgba(255,255,255,0.9)_inset] backdrop-blur-md interactive-lift md:p-8">
+          <div
+            className="pointer-events-none absolute right-[20%] top-[22%] z-[2] h-24 w-24 rounded-full bg-sl-red/10 blur-2xl fx-drift-slow"
+            aria-hidden
+          />
+
+          <div className="relative z-10 mx-auto w-full max-w-lg rounded-3xl border border-slate-200/90 bg-white/95 p-6 shadow-[0_24px_50px_rgba(10,22,40,0.12),0_2px_0_rgba(255,255,255,0.85)_inset] backdrop-blur-md interactive-lift md:p-8">
             <div className="mb-8">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-sl-navy">São Luiz Express</p>
-              <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-900 md:text-4xl">Acessar plataforma</h1>
+              <p className="font-heading text-[11px] font-semibold uppercase tracking-[0.22em] text-sl-navy">
+                São Luiz Express
+              </p>
+              <h1 className="font-heading mt-2 text-3xl font-bold tracking-tight text-sl-navy md:text-4xl">
+                Portal do colaborador
+              </h1>
               <p className="mt-2 text-sm leading-relaxed text-slate-600">
-                Login unificado para CRM, atendimento com IA Sofia e operação logística.
+                Um único login para o <span className="font-semibold text-sl-navy">portal</span> (comunicação, RH e
+                serviços), a <span className="font-semibold text-sl-navy">área de trabalho</span> operacional e as
+                ferramentas do seu perfil — tudo integrado.
               </p>
             </div>
 
@@ -113,7 +136,7 @@ const Login: React.FC = () => {
               <div className="space-y-2">
                 <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Usuário</label>
                 <div className={inputWrap(isFocused === 'user')}>
-                  <User size={18} className="ml-3 text-sl-navy" />
+                  <User size={18} className="ml-3 shrink-0 text-sl-navy" />
                   <input
                     type="text"
                     value={username}
@@ -131,7 +154,7 @@ const Login: React.FC = () => {
               <div className="space-y-2">
                 <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Senha</label>
                 <div className={inputWrap(isFocused === 'pass')}>
-                  <Lock size={18} className="ml-3 text-sl-navy" />
+                  <Lock size={18} className="ml-3 shrink-0 text-sl-navy" />
                   <input
                     type={showPassword ? 'text' : 'password'}
                     value={password}
@@ -146,7 +169,7 @@ const Login: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setShowPassword((v) => !v)}
-                    className="mr-3 text-slate-400 hover:text-sl-navy"
+                    className="mr-3 text-slate-400 transition-colors hover:text-sl-navy"
                     aria-label="Alternar visibilidade da senha"
                   >
                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
@@ -157,14 +180,14 @@ const Login: React.FC = () => {
               <div className="text-right">
                 <Link
                   href="/recuperar-senha"
-                  className="text-[11px] font-semibold text-sl-navy underline-offset-2 hover:underline"
+                  className="text-[11px] font-semibold text-sl-navy underline-offset-2 hover:text-sl-red hover:underline"
                 >
                   Esqueci minha senha
                 </Link>
               </div>
 
               {(error || authMessage) && (
-                <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+                <div className="rounded-xl border border-sl-red/30 bg-sl-red/5 px-3 py-2 text-sm text-sl-red">
                   {error || authMessage}
                 </div>
               )}
@@ -172,7 +195,7 @@ const Login: React.FC = () => {
               <button
                 type="submit"
                 disabled={loading}
-                className="pressable-3d w-full rounded-xl bg-gradient-to-r from-sl-navy to-sl-navy-light px-4 py-3 text-sm font-semibold text-white transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
+                className="pressable-3d w-full rounded-xl bg-gradient-to-r from-sl-navy to-sl-navy-light px-4 py-3 text-sm font-semibold text-white shadow-[0_8px_24px_rgba(10,22,40,0.25)] transition hover:brightness-[1.06] disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <span className="inline-flex items-center justify-center gap-2">
                   {loading ? (
@@ -182,55 +205,75 @@ const Login: React.FC = () => {
                     </>
                   ) : (
                     <>
-                      Entrar
+                      Entrar no ecossistema
                       <ArrowRight size={16} />
                     </>
                   )}
                 </span>
               </button>
             </form>
+
             <div className="mt-6 border-t border-slate-200 pt-4">
               <p className="text-[11px] leading-relaxed text-slate-500">
-                Ao continuar, você acessa um ambiente corporativo protegido por políticas de segurança, controle de
-                permissões e trilha de auditoria operacional.
+                Ambiente corporativo: sessão protegida, permissões por perfil e uso conforme as políticas da São Luiz
+                Express.
               </p>
             </div>
           </div>
         </div>
 
-        <div className="relative z-10 hidden min-h-screen overflow-hidden bg-gradient-to-br from-[#0b1e48] via-[#182f6b] to-[#101f47] lg:col-span-8 lg:flex lg:flex-col lg:justify-center">
+        {/* Coluna narrativa / 3D */}
+        <div className="relative z-10 hidden min-h-dvh overflow-hidden bg-gradient-to-br from-sl-navy via-sl-navy-light to-sl-navy lg:col-span-8 lg:flex lg:flex-col lg:justify-center">
           <div
-            className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(11,30,72,0.35)_0%,transparent_28%),radial-gradient(circle_at_82%_18%,rgba(228,36,36,0.22),transparent_42%),radial-gradient(circle_at_18%_80%,rgba(121,141,255,0.18),transparent_48%)]"
+            className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(10,22,40,0.45)_0%,transparent_30%),radial-gradient(circle_at_82%_18%,rgba(196,18,48,0.28),transparent_45%),radial-gradient(circle_at_12%_78%,rgba(255,255,255,0.12),transparent_42%)]"
             aria-hidden
           />
 
-          <div className="relative flex h-full min-h-0 w-full flex-1 flex-col justify-between gap-5 overflow-hidden px-8 py-10 sm:px-10 sm:py-12 xl:mx-auto xl:max-w-4xl xl:gap-6 xl:px-12 xl:py-14">
+          <div className="relative flex h-full min-h-0 w-full flex-1 flex-col justify-between gap-6 overflow-hidden px-8 py-10 sm:px-10 sm:py-12 xl:mx-auto xl:max-w-4xl xl:gap-8 xl:px-12 xl:py-14">
             <div className="pointer-events-none absolute right-[4%] top-[8%] z-0 h-52 w-52 rounded-full border border-white/15 bg-white/8 backdrop-blur-sm fx-orbit-rev" />
-            <div className="pointer-events-none absolute right-[16%] bottom-[14%] z-0 h-36 w-36 rounded-3xl border border-white/20 bg-white/10 shadow-[0_16px_36px_rgba(15,23,42,0.35)] fx-orbit" />
-            <div className="pointer-events-none absolute right-[34%] top-[26%] z-0 h-20 w-20 rounded-full bg-sl-red/18 blur-xl fx-drift" />
-            <div className="pointer-events-none absolute right-[10%] top-[44%] z-0 h-24 w-24 rounded-full border border-[#9fb4ff]/35 bg-[#9fb4ff]/10 backdrop-blur-sm fx-float" />
-            <div className="relative z-10 max-w-3xl xl:max-w-none">
-              <div className="inline-flex items-center gap-2 rounded-full border border-white/30 bg-white/12 px-3 py-1.5 text-xs text-white shadow-sm backdrop-blur">
-                <Sparkles size={14} className="text-[#ff9ea1]" />
-                Plataforma inteligente e segura
+            <div className="pointer-events-none absolute right-[16%] bottom-[14%] z-0 h-36 w-36 rounded-3xl border border-white/18 bg-white/10 shadow-[0_16px_36px_rgba(0,0,0,0.25)] fx-orbit" />
+            <div className="pointer-events-none absolute right-[34%] top-[26%] z-0 h-20 w-20 rounded-full bg-sl-red/25 blur-xl fx-drift" />
+            <div className="pointer-events-none absolute right-[10%] top-[44%] z-0 h-24 w-24 rounded-full border border-white/25 bg-white/10 backdrop-blur-sm fx-float" />
+
+            {/* Anel 3D decorativo */}
+            <div
+              className="pointer-events-none absolute left-1/2 top-[42%] z-[1] hidden -translate-x-1/2 xl:block"
+              style={{ perspective: '880px' }}
+              aria-hidden
+            >
+              <div
+                className="relative h-44 w-44 [transform-style:preserve-3d] fx-orbit"
+                style={{ transformStyle: 'preserve-3d' }}
+              >
+                <div className="absolute inset-0 rounded-[1.35rem] border-2 border-white/25 bg-white/5 shadow-[0_20px_50px_rgba(0,0,0,0.35)]" />
+                <div className="absolute inset-3 rounded-2xl border border-sl-red/35 bg-sl-red/10 shadow-inner" />
+                <div className="absolute inset-6 rounded-xl border border-white/20 bg-gradient-to-br from-white/15 to-transparent fx-orbit-rev" />
               </div>
-              <h2 className="mt-5 text-4xl font-black leading-tight tracking-tight text-white drop-shadow-[0_8px_20px_rgba(0,0,0,0.3)] sm:text-5xl xl:text-[3.1rem]">
+            </div>
+
+            <div className="relative z-10 max-w-3xl xl:max-w-none">
+              <div className="inline-flex items-center gap-2 rounded-full border border-white/30 bg-white/12 px-3 py-1.5 text-xs font-medium text-white shadow-sm backdrop-blur">
+                <Sparkles size={14} className="text-sl-red-light" />
+                Ecossistema integrado · Um acesso, várias experiências
+              </div>
+              <h2 className="font-heading mt-5 text-4xl font-black leading-tight tracking-tight text-white drop-shadow-[0_8px_24px_rgba(0,0,0,0.35)] sm:text-5xl xl:text-[3.05rem]">
                 São Luiz Express
               </h2>
-              <p className="mt-2 text-sm font-semibold uppercase tracking-[0.18em] text-[#dbe7ff]">
-                CRM · IA SOFIA · OPERAÇÃO INTEGRADA
+              <p className="mt-2 text-sm font-semibold uppercase tracking-[0.2em] text-white/80">
+                Portal · Workspace · Operação e ferramentas
               </p>
-              <p className="mt-3 max-w-2xl text-base leading-relaxed text-slate-100/95">
-                Plataforma para atendimento logístico: automações com IA, controle de SLA e rastreio operacional com
-                governança.
+              <p className="mt-4 max-w-2xl text-base leading-relaxed text-white/95">
+                Comunicados e documentos, jornada em RH, campanhas internas e suporte — lado a lado com a operação
+                logística, indicadores e, quando autorizado, CRM e automações com IA. Tudo pensado para o colaborador
+                no centro.
               </p>
             </div>
 
-            <div className="relative z-10 max-w-3xl rounded-2xl border border-white/30 bg-white/16 p-6 shadow-[0_16px_40px_rgba(0,0,0,0.28)] backdrop-blur-md sm:p-7">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/85">Conexão protegida</p>
+            <div className="relative z-10 max-w-3xl rounded-2xl border border-white/28 bg-white/14 p-6 shadow-[0_20px_48px_rgba(0,0,0,0.28)] backdrop-blur-md sm:p-7">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/90">Confiança e controle</p>
               <p className="mt-2 text-[15px] leading-relaxed text-white/95">
-                Controle de permissão por perfil, trilha de auditoria para ações críticas e proteção de sessão para
-                integridade no CRM e no atendimento com IA.
+                O mesmo login abre o que você precisa no dia a dia, respeitando perfis e políticas — do portal institucional
+                às telas operacionais e comerciais.
               </p>
               <div className="mt-4 grid grid-cols-3 gap-2 text-[11px]">
                 {(['CRIPTO', 'PERMISSOES', 'AUDITORIA'] as const).map((key) => (
@@ -239,37 +282,55 @@ const Login: React.FC = () => {
                     type="button"
                     onClick={() => setSecurityInfoKey(key)}
                     className={clsx(
-                      'pressable-3d rounded-lg border px-2 py-1.5 text-center transition-all',
+                      'pressable-3d rounded-lg border px-2 py-1.5 text-center transition-all duration-200',
                       securityInfoKey === key
-                        ? 'border-white/45 bg-white font-semibold text-sl-navy'
-                        : 'border-white/20 bg-white/14 text-white hover:border-white/40',
+                        ? 'border-white/50 bg-white font-semibold text-sl-navy shadow-md'
+                        : 'border-white/22 bg-white/12 text-white hover:border-white/40 hover:bg-white/18',
                     )}
                   >
                     {securityInfoMap[key].title}
                   </button>
                 ))}
               </div>
-              <div className="mt-3 rounded-xl border border-white/30 bg-white/18 px-3 py-2">
+              <div className="mt-3 rounded-xl border border-white/28 bg-white/16 px-3 py-2.5 transition-colors">
                 <p className="text-[11px] font-semibold text-white">{securityInfoMap[securityInfoKey].title}</p>
                 <p className="mt-1 text-xs leading-relaxed text-white/90">{securityInfoMap[securityInfoKey].text}</p>
               </div>
               <p className="mt-4 text-[11px] text-white/65">
-                © {new Date().getFullYear()} São Luiz Express. Ambiente corporativo interno.
+                © {new Date().getFullYear()} São Luiz Express. Uso interno autorizado.
               </p>
             </div>
 
-            <div className="relative z-10 grid max-w-3xl grid-cols-3 gap-3">
-              <div className="pressable-3d rounded-xl border border-white/30 bg-white/14 p-3 backdrop-blur sm:p-3.5">
-                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-white/80">SLA</p>
-                <p className="mt-1 text-lg font-bold text-white">Tempo real</p>
+            <div className="relative z-10 grid max-w-3xl grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="pressable-3d flex gap-3 rounded-xl border border-white/28 bg-white/14 p-3.5 backdrop-blur sm:flex-col sm:gap-0">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-sl-red/25 text-white shadow-inner">
+                  <LayoutGrid size={20} strokeWidth={2.2} />
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-white/75">Portal</p>
+                  <p className="mt-1 text-lg font-bold leading-tight text-white">Colaborador</p>
+                  <p className="mt-1 text-[11px] leading-snug text-white/75">Início, comunicados, RH e mais.</p>
+                </div>
               </div>
-              <div className="pressable-3d rounded-xl border border-white/30 bg-white/14 p-3 backdrop-blur sm:p-3.5">
-                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-white/80">CRM</p>
-                <p className="mt-1 text-lg font-bold text-white">Funil ativo</p>
+              <div className="pressable-3d flex gap-3 rounded-xl border border-white/28 bg-white/14 p-3.5 backdrop-blur sm:flex-col sm:gap-0">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white/18 text-white shadow-inner">
+                  <Truck size={20} strokeWidth={2.2} />
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-white/75">Workspace</p>
+                  <p className="mt-1 text-lg font-bold leading-tight text-white">Operação</p>
+                  <p className="mt-1 text-[11px] leading-snug text-white/75">Pendências, rastreio e visão integrada.</p>
+                </div>
               </div>
-              <div className="pressable-3d rounded-xl border border-white/30 bg-white/14 p-3 backdrop-blur sm:p-3.5">
-                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-white/80">IA Sofia</p>
-                <p className="mt-1 text-lg font-bold text-[#ffd0d2]">Assistindo</p>
+              <div className="pressable-3d flex gap-3 rounded-xl border border-white/28 bg-white/14 p-3.5 backdrop-blur sm:flex-col sm:gap-0">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-sl-red/30 text-white shadow-inner">
+                  <Building2 size={20} strokeWidth={2.2} />
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-white/75">Negócio</p>
+                  <p className="mt-1 text-lg font-bold leading-tight text-white">CRM e IA</p>
+                  <p className="mt-1 text-[11px] leading-snug text-white/75">Quando o seu perfil permitir.</p>
+                </div>
               </div>
             </div>
           </div>

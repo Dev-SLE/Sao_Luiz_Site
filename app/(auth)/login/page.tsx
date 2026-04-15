@@ -26,8 +26,12 @@ export default function LoginPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex min-h-dvh items-center justify-center bg-[#cfd9e8] text-slate-600">
-          <p className="text-sm">Carregando…</p>
+        <div
+          data-theme="portal"
+          className="font-body flex min-h-dvh flex-col items-center justify-center gap-3 bg-gradient-to-b from-slate-100 to-slate-200/90 text-sl-navy"
+        >
+          <div className="h-10 w-10 animate-spin rounded-xl border-2 border-sl-navy/30 border-t-sl-red" aria-hidden />
+          <p className="text-sm font-medium text-slate-600">Carregando portal…</p>
         </div>
       }
     >
