@@ -720,7 +720,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
     <div className="flex flex-col h-full gap-4">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="rounded-lg bg-slate-100 p-2 text-[#e42424] border border-slate-200 shadow-[0_0_18px_rgba(236,27,35,0.4)]">
+          <div className="rounded-lg bg-slate-100 p-2 text-sl-red border border-slate-200 shadow-[0_0_18px_rgba(236,27,35,0.4)]">
             <Columns3 size={22} />
           </div>
           <div>
@@ -738,7 +738,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
           <button
             type="button"
             onClick={handleCreateLead}
-            className="inline-flex items-center gap-2 rounded-xl bg-[#2c348c] px-4 py-2 text-xs font-semibold text-white shadow-[0_0_18px_rgba(26,27,98,0.7)] hover:bg-[#e42424] hover:shadow-[0_0_22px_rgba(236,27,35,0.8)] transition-all"
+            className="inline-flex items-center gap-2 rounded-xl bg-sl-navy px-4 py-2 text-xs font-semibold text-white shadow-[0_0_18px_rgba(26,27,98,0.7)] hover:bg-sl-red hover:shadow-[0_0_22px_rgba(236,27,35,0.8)] transition-all"
           >
             <Plus size={16} />
             Novo Lead
@@ -746,7 +746,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
           <button
             type="button"
             onClick={handleOpenPipelineModal}
-            className="inline-flex items-center gap-2 rounded-xl bg-slate-50 px-4 py-2 text-xs font-semibold text-slate-800 border border-slate-200 hover:border-[#2c348c]/50 transition-colors"
+            className="inline-flex items-center gap-2 rounded-xl bg-slate-50 px-4 py-2 text-xs font-semibold text-slate-800 border border-slate-200 hover:border-sl-navy/40 transition-colors"
           >
             <Columns3 size={16} />
             Criar Novo Funil
@@ -755,7 +755,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
       </div>
 
       {/* Filtros do board */}
-      <div className="rounded-2xl border border-[#2c348c]/20 bg-gradient-to-b from-white to-[#f4f7ff] p-3 shadow-[0_12px_26px_rgba(15,23,42,0.12)]">
+      <div className="rounded-2xl border border-sl-navy/15 bg-gradient-to-b from-white to-slate-50 p-3 shadow-[0_12px_26px_rgba(15,23,42,0.12)]">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           <div className="flex-1">
             <input
@@ -763,7 +763,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
               value={boardSearch}
               onChange={(e) => setBoardSearch(e.target.value)}
               placeholder="Pesquisar (título, telefone, email, CTE, rastreio)..."
-              className="w-full rounded-xl bg-white border border-slate-300 px-3 py-2 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-[#2c348c]/25 focus:border-[#2c348c]/40"
+              className="w-full rounded-xl bg-white border border-slate-300 px-3 py-2 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-sl-navy/20 focus:border-sl-navy/40"
             />
           </div>
 
@@ -771,7 +771,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
             <select
               value={boardPriority}
               onChange={(e) => setBoardPriority(e.target.value as any)}
-              className="appearance-none rounded-xl bg-white border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-[#2c348c]/25 focus:border-[#2c348c]/40"
+              className="appearance-none rounded-xl bg-white border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-sl-navy/20 focus:border-sl-navy/40"
             >
               <option value="ALL">Todas prioridades</option>
               <option value="ALTA">Alta</option>
@@ -782,7 +782,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
             <select
               value={boardSource}
               onChange={(e) => setBoardSource(e.target.value as any)}
-              className="appearance-none rounded-xl bg-white border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-[#2c348c]/25 focus:border-[#2c348c]/40"
+              className="appearance-none rounded-xl bg-white border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-sl-navy/20 focus:border-sl-navy/40"
             >
               <option value="ALL">Todas origens</option>
               <option value="WHATSAPP">WhatsApp</option>
@@ -795,7 +795,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                 type="checkbox"
                 checked={onlyMine}
                 onChange={(e) => setOnlyMine(e.target.checked)}
-                className="accent-[#2c348c]"
+                className="accent-sl-navy"
               />
               Somente meus leads
             </label>
@@ -910,13 +910,13 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                       onDragStart={() => handleDragStart(lead.id)}
                       onClick={() => setDrawerLeadId(lead.id)}
                       className={clsx(
-                        'rounded-xl border-l-4 border-l-[#2c348c] bg-gradient-to-b from-white to-[#f8fbff] border border-slate-200 p-3 shadow-sm flex flex-col gap-2 cursor-grab active:cursor-grabbing transition-all duration-200 hover:-translate-y-[1px] hover:border-[#2c348c]/45 hover:shadow-[0_12px_24px_rgba(44,52,140,0.18)]',
+                        'rounded-xl border-l-4 border-l-sl-navy bg-gradient-to-b from-white to-slate-50 border border-slate-200 p-3 shadow-sm flex flex-col gap-2 cursor-grab active:cursor-grabbing transition-all duration-200 hover:-translate-y-[1px] hover:border-sl-navy/35 hover:shadow-[0_12px_24px_rgba(10,22,40,0.14)]',
                         draggingId === lead.id && 'opacity-70 scale-[0.98]'
                       )}
                     >
                       <div className="flex justify-between items-start gap-2">
                         <div className="min-w-0 flex-1 pr-1">
-                          <div className="mb-1 inline-flex rounded-full border border-[#2c348c]/20 bg-[#eef3ff] px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-[#2c348c]">
+                          <div className="mb-1 inline-flex rounded-full border border-sl-navy/20 bg-slate-100 px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-sl-navy">
                             Lead
                           </div>
                           <div className="font-bold text-xs md:text-sm text-slate-900 leading-tight break-words">
@@ -954,7 +954,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                       </div>
                       {lead.currentLocation && (
                         <div className="text-[11px] text-slate-600 mt-1 line-clamp-3 flex items-start gap-1.5">
-                          <MapPin size={11} className="text-[#e42424] mt-0.5 shrink-0" />
+                          <MapPin size={11} className="text-sl-red mt-0.5 shrink-0" />
                           <span>{lead.currentLocation}</span>
                         </div>
                       )}
@@ -1018,7 +1018,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                           <button
                             type="button"
                             onClick={() => onGoToChat?.(lead.id)}
-                            className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-white border border-slate-200 text-slate-700 hover:border-[#2c348c]/50 hover:text-[#2c348c] text-[11px]"
+                            className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-white border border-slate-200 text-slate-700 hover:border-sl-navy/40 hover:text-sl-navy text-[11px]"
                           >
                             <MessageCircle size={14} />
                           </button>
@@ -1029,7 +1029,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                                 onOpenTracking?.(lead.cte);
                               }
                             }}
-                            className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-white border border-slate-200 text-slate-700 hover:border-[#2c348c]/50 hover:text-[#2c348c] text-[11px]"
+                            className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-white border border-slate-200 text-slate-700 hover:border-sl-navy/40 hover:text-sl-navy text-[11px]"
                           >
                             <MapPin size={14} />
                           </button>
@@ -1040,7 +1040,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                                 window.open(`tel:${lead.phone.replace(/\s/g, '')}`);
                               }
                             }}
-                            className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-white border border-slate-200 text-slate-700 hover:border-[#2c348c]/50 hover:text-[#2c348c] text-[11px]"
+                            className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-white border border-slate-200 text-slate-700 hover:border-sl-navy/40 hover:text-sl-navy text-[11px]"
                           >
                             <Phone size={14} />
                           </button>
@@ -1073,7 +1073,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
             <button
               type="button"
               onClick={() => setNewLeadOpen(false)}
-              className="absolute top-3 right-3 rounded-full border border-slate-200 p-1 text-slate-600 hover:text-[#2c348c] hover:border-[#2c348c]/50"
+              className="absolute top-3 right-3 rounded-full border border-slate-200 p-1 text-slate-600 hover:text-sl-navy hover:border-sl-navy/40"
               aria-label="Fechar"
             >
               <X size={14} />
@@ -1088,7 +1088,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                   Nome
                 </label>
                 <input
-                  className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-[#2c348c]/30"
+                  className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-sl-navy/25"
                   value={leadForm.title}
                   onChange={(e) => setLeadForm((f) => ({ ...f, title: e.target.value }))}
                   placeholder="Razão social ou contato"
@@ -1100,7 +1100,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                     Protocolo (opcional)
                   </label>
                   <input
-                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-[#2c348c]/30"
+                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-sl-navy/25"
                     value={leadForm.protocolNumber}
                     onChange={(e) => setLeadForm((f) => ({ ...f, protocolNumber: e.target.value }))}
                     placeholder="Se vazio, gera automático"
@@ -1111,7 +1111,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                     Telefone
                   </label>
                   <input
-                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-[#2c348c]/30"
+                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-sl-navy/25"
                     value={leadForm.phone}
                     onChange={(e) => setLeadForm((f) => ({ ...f, phone: e.target.value }))}
                     placeholder="(11) 99999-0000"
@@ -1122,7 +1122,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                     CTE (opcional)
                   </label>
                   <input
-                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-[#2c348c]/30"
+                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-sl-navy/25"
                     value={leadForm.cte}
                     onChange={(e) => setLeadForm((f) => ({ ...f, cte: e.target.value }))}
                     placeholder="12345"
@@ -1135,7 +1135,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                     Origem
                   </label>
                   <input
-                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-[#2c348c]/30"
+                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-sl-navy/25"
                     value={leadForm.routeOrigin}
                     onChange={(e) => setLeadForm((f) => ({ ...f, routeOrigin: e.target.value }))}
                     placeholder="Cidade/UF origem"
@@ -1146,7 +1146,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                     Destino
                   </label>
                   <input
-                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-[#2c348c]/30"
+                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-sl-navy/25"
                     value={leadForm.routeDestination}
                     onChange={(e) => setLeadForm((f) => ({ ...f, routeDestination: e.target.value }))}
                     placeholder="Cidade/UF destino"
@@ -1160,7 +1160,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                   </label>
                   <input
                     type="datetime-local"
-                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-[#2c348c]/30"
+                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-sl-navy/25"
                     value={leadForm.requestedAt}
                     onChange={(e) => setLeadForm((f) => ({ ...f, requestedAt: e.target.value }))}
                   />
@@ -1171,7 +1171,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                   </label>
                   <input
                     type="datetime-local"
-                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-[#2c348c]/30"
+                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-sl-navy/25"
                     value={leadForm.mdfeDate}
                     onChange={(e) => setLeadForm((f) => ({ ...f, mdfeDate: e.target.value }))}
                   />
@@ -1181,7 +1181,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                     Atendimento
                   </label>
                   <input
-                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-[#2c348c]/30"
+                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-sl-navy/25"
                     value={leadForm.serviceType}
                     onChange={(e) => setLeadForm((f) => ({ ...f, serviceType: e.target.value }))}
                     placeholder="Ex: RASTREIO"
@@ -1195,7 +1195,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                     Email
                   </label>
                   <input
-                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-[#2c348c]/30"
+                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-sl-navy/25"
                     value={leadForm.email}
                     onChange={(e) => setLeadForm((f) => ({ ...f, email: e.target.value }))}
                     placeholder="email@dominio.com"
@@ -1206,7 +1206,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                     Localização / Rastreio
                   </label>
                   <input
-                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-[#2c348c]/30"
+                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-sl-navy/25"
                     value={leadForm.currentLocation}
                     onChange={(e) => setLeadForm((f) => ({ ...f, currentLocation: e.target.value }))}
                     placeholder="Ex: CTE / Terminal / Status"
@@ -1219,7 +1219,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                     Valor
                   </label>
                   <input
-                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-[#2c348c]/30"
+                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-sl-navy/25"
                     value={leadForm.freteValue}
                     onChange={(e) =>
                       setLeadForm((f) => ({ ...f, freteValue: e.target.value }))
@@ -1232,7 +1232,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                     Origem
                   </label>
                   <select
-                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-[#2c348c]/30"
+                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-sl-navy/25"
                     value={leadForm.source}
                     onChange={(e) =>
                       setLeadForm((f) => ({ ...f, source: e.target.value as Source }))
@@ -1248,7 +1248,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                     Prioridade
                   </label>
                   <select
-                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-[#2c348c]/30"
+                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-sl-navy/25"
                     value={leadForm.priority}
                     onChange={(e) =>
                       setLeadForm((f) => ({ ...f, priority: e.target.value as Priority }))
@@ -1266,7 +1266,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                     Status da carga
                   </label>
                   <input
-                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-[#2c348c]/30"
+                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-sl-navy/25"
                     value={leadForm.cargoStatus}
                     onChange={(e) => setLeadForm((f) => ({ ...f, cargoStatus: e.target.value }))}
                     placeholder="Ex: EM_TRANSFERENCIA"
@@ -1277,7 +1277,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                     Status do cliente
                   </label>
                   <input
-                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-[#2c348c]/30"
+                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-sl-navy/25"
                     value={leadForm.customerStatus}
                     onChange={(e) => setLeadForm((f) => ({ ...f, customerStatus: e.target.value }))}
                     placeholder="Ex: PENDENTE"
@@ -1289,7 +1289,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                   Agência envolvida
                 </label>
                 <select
-                  className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-[#2c348c]/30"
+                  className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-sl-navy/25"
                   value={leadForm.agencyId}
                   onChange={(e) => setLeadForm((f) => ({ ...f, agencyId: e.target.value }))}
                 >
@@ -1307,7 +1307,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                   Responsável
                 </label>
                 <select
-                  className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-[#2c348c]/30"
+                  className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-sl-navy/25"
                   value={leadForm.ownerUsername}
                   onChange={(e) => setLeadForm((f) => ({ ...f, ownerUsername: e.target.value }))}
                 >
@@ -1323,7 +1323,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
               <button
                 type="button"
                 onClick={() => setNewLeadOpen(false)}
-                className="px-4 py-2 text-xs rounded-lg border border-slate-200 text-slate-700 hover:bg-[#243a7a]"
+                className="px-4 py-2 text-xs rounded-lg border border-slate-200 text-slate-700 hover:bg-sl-navy-light"
               >
                 Cancelar
               </button>
@@ -1331,7 +1331,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                 type="button"
                 onClick={handleSaveLead}
                 disabled={isSavingLead}
-                className="px-4 py-2 text-xs rounded-lg bg-[#2c348c] text-white font-semibold shadow-[0_0_18px_rgba(26,27,98,0.8)] hover:bg-[#e42424] disabled:opacity-70 disabled:cursor-not-allowed"
+                className="px-4 py-2 text-xs rounded-lg bg-sl-navy text-white font-semibold shadow-[0_0_18px_rgba(26,27,98,0.8)] hover:bg-sl-red disabled:opacity-70 disabled:cursor-not-allowed"
               >
                 {isSavingLead ? "Salvando..." : "Salvar Lead"}
               </button>
@@ -1346,7 +1346,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
             <button
               type="button"
               onClick={() => setEditLeadOpen(false)}
-              className="absolute top-3 right-3 rounded-full border border-slate-200 p-1 text-slate-600 hover:text-[#2c348c] hover:border-[#2c348c]/50"
+              className="absolute top-3 right-3 rounded-full border border-slate-200 p-1 text-slate-600 hover:text-sl-navy hover:border-sl-navy/40"
               aria-label="Fechar"
             >
               <X size={14} />
@@ -1362,7 +1362,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                   Nome
                 </label>
                 <input
-                  className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-[#2c348c]/30"
+                  className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-sl-navy/25"
                   value={editLeadForm.title}
                   onChange={(e) => setEditLeadForm((f) => ({ ...f, title: e.target.value }))}
                   placeholder="Razão social ou contato"
@@ -1375,7 +1375,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                     Protocolo
                   </label>
                   <input
-                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-[#2c348c]/30"
+                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-sl-navy/25"
                     value={editLeadForm.protocolNumber}
                     onChange={(e) => setEditLeadForm((f) => ({ ...f, protocolNumber: e.target.value }))}
                   />
@@ -1385,7 +1385,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                     Telefone
                   </label>
                   <input
-                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-[#2c348c]/30"
+                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-sl-navy/25"
                     value={editLeadForm.phone}
                     onChange={(e) => setEditLeadForm((f) => ({ ...f, phone: e.target.value }))}
                     placeholder="(11) 99999-0000"
@@ -1396,7 +1396,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                     Email
                   </label>
                   <input
-                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-[#2c348c]/30"
+                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-sl-navy/25"
                     value={editLeadForm.email}
                     onChange={(e) => setEditLeadForm((f) => ({ ...f, email: e.target.value }))}
                     placeholder="email@dominio.com"
@@ -1410,7 +1410,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                     Origem
                   </label>
                   <input
-                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-[#2c348c]/30"
+                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-sl-navy/25"
                     value={editLeadForm.routeOrigin}
                     onChange={(e) => setEditLeadForm((f) => ({ ...f, routeOrigin: e.target.value }))}
                     placeholder="Cidade/UF origem"
@@ -1421,7 +1421,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                     Destino
                   </label>
                   <input
-                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-[#2c348c]/30"
+                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-sl-navy/25"
                     value={editLeadForm.routeDestination}
                     onChange={(e) => setEditLeadForm((f) => ({ ...f, routeDestination: e.target.value }))}
                     placeholder="Cidade/UF destino"
@@ -1435,7 +1435,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                   </label>
                   <input
                     type="datetime-local"
-                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-[#2c348c]/30"
+                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-sl-navy/25"
                     value={editLeadForm.requestedAt}
                     onChange={(e) => setEditLeadForm((f) => ({ ...f, requestedAt: e.target.value }))}
                   />
@@ -1446,7 +1446,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                   </label>
                   <input
                     type="datetime-local"
-                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-[#2c348c]/30"
+                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-sl-navy/25"
                     value={editLeadForm.mdfeDate}
                     onChange={(e) => setEditLeadForm((f) => ({ ...f, mdfeDate: e.target.value }))}
                   />
@@ -1456,7 +1456,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                     Atendimento
                   </label>
                   <input
-                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-[#2c348c]/30"
+                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-sl-navy/25"
                     value={editLeadForm.serviceType}
                     onChange={(e) => setEditLeadForm((f) => ({ ...f, serviceType: e.target.value }))}
                   />
@@ -1468,7 +1468,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                     Status da carga
                   </label>
                   <input
-                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-[#2c348c]/30"
+                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-sl-navy/25"
                     value={editLeadForm.cargoStatus}
                     onChange={(e) => setEditLeadForm((f) => ({ ...f, cargoStatus: e.target.value }))}
                   />
@@ -1478,7 +1478,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                     Status do cliente
                   </label>
                   <input
-                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-[#2c348c]/30"
+                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-sl-navy/25"
                     value={editLeadForm.customerStatus}
                     onChange={(e) => setEditLeadForm((f) => ({ ...f, customerStatus: e.target.value }))}
                   />
@@ -1490,7 +1490,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                     CTE (opcional)
                   </label>
                   <input
-                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-[#2c348c]/30"
+                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-sl-navy/25"
                     value={editLeadForm.cte}
                     onChange={(e) => setEditLeadForm((f) => ({ ...f, cte: e.target.value }))}
                     placeholder="12345"
@@ -1501,7 +1501,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                     Valor
                   </label>
                   <input
-                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-[#2c348c]/30"
+                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-sl-navy/25"
                     value={editLeadForm.freteValue}
                     onChange={(e) => setEditLeadForm((f) => ({ ...f, freteValue: e.target.value }))}
                     placeholder="5300,00"
@@ -1515,7 +1515,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                     Origem
                   </label>
                   <select
-                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-[#2c348c]/30"
+                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-sl-navy/25"
                     value={editLeadForm.source}
                     onChange={(e) => setEditLeadForm((f) => ({ ...f, source: e.target.value as Source }))}
                   >
@@ -1529,7 +1529,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                     Prioridade
                   </label>
                   <select
-                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-[#2c348c]/30"
+                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-sl-navy/25"
                     value={editLeadForm.priority}
                     onChange={(e) => setEditLeadForm((f) => ({ ...f, priority: e.target.value as Priority }))}
                   >
@@ -1543,7 +1543,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                     Etapa
                   </label>
                   <select
-                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-[#2c348c]/30"
+                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-sl-navy/25"
                     value={editLeadForm.stageId}
                     onChange={(e) => setEditLeadForm((f) => ({ ...f, stageId: e.target.value }))}
                   >
@@ -1562,7 +1562,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                     Rastreio / Localização
                   </label>
                   <input
-                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-[#2c348c]/30"
+                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-sl-navy/25"
                     value={editLeadForm.currentLocation}
                     onChange={(e) => setEditLeadForm((f) => ({ ...f, currentLocation: e.target.value }))}
                     placeholder="Ex: CTE / Terminal / Status"
@@ -1573,7 +1573,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                     Responsável
                   </label>
                   <select
-                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-[#2c348c]/30"
+                    className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-sl-navy/25"
                     value={editLeadForm.ownerUsername}
                     onChange={(e) => setEditLeadForm((f) => ({ ...f, ownerUsername: e.target.value }))}
                   >
@@ -1590,7 +1590,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                   Agência envolvida
                 </label>
                 <select
-                  className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-[#2c348c]/30"
+                  className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-sl-navy/25"
                   value={editLeadForm.agencyId}
                   onChange={(e) =>
                     setEditLeadForm((f) => ({
@@ -1615,7 +1615,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
               <button
                 type="button"
                 onClick={() => setEditLeadOpen(false)}
-                className="px-4 py-2 text-xs rounded-lg border border-slate-200 text-slate-700 hover:bg-[#243a7a]"
+                className="px-4 py-2 text-xs rounded-lg border border-slate-200 text-slate-700 hover:bg-sl-navy-light"
                 disabled={isSavingLeadEdit}
               >
                 Cancelar
@@ -1624,7 +1624,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                 type="button"
                 onClick={handleSaveEditLead}
                 disabled={isSavingLeadEdit || agencyAutomationLoading}
-                className="px-4 py-2 text-xs rounded-lg bg-[#2c348c] text-white font-semibold shadow-[0_0_18px_rgba(26,27,98,0.8)] hover:bg-[#e42424] disabled:opacity-70 disabled:cursor-not-allowed"
+                className="px-4 py-2 text-xs rounded-lg bg-sl-navy text-white font-semibold shadow-[0_0_18px_rgba(26,27,98,0.8)] hover:bg-sl-red disabled:opacity-70 disabled:cursor-not-allowed"
               >
                 {isSavingLeadEdit ? "Salvando..." : "Salvar Alterações"}
               </button>
@@ -1644,7 +1644,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
             <button
               type="button"
               onClick={() => setNewPipelineOpen(false)}
-              className="absolute top-3 right-3 rounded-full border border-slate-200 p-1 text-slate-600 hover:text-[#2c348c] hover:border-[#2c348c]/50"
+              className="absolute top-3 right-3 rounded-full border border-slate-200 p-1 text-slate-600 hover:text-sl-navy hover:border-sl-navy/40"
               aria-label="Fechar"
             >
               <X size={14} />
@@ -1659,7 +1659,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                   Nome do Funil
                 </label>
                 <input
-                  className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-[#2c348c]/30"
+                  className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-sl-navy/25"
                   value={pipelineForm.name}
                   onChange={(e) =>
                     setPipelineForm((f) => ({ ...f, name: e.target.value }))
@@ -1673,7 +1673,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                   Descrição (opcional)
                 </label>
                 <textarea
-                  className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-[#2c348c]/30 min-h-[70px] resize-none"
+                  className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-sl-navy/25 min-h-[70px] resize-none"
                   value={pipelineForm.description}
                   onChange={(e) => setPipelineForm((f) => ({ ...f, description: e.target.value }))}
                   placeholder="Ex: Funil para atendimento comercial"
@@ -1685,7 +1685,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                   Template de etapas
                 </label>
                 <select
-                  className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-[#2c348c]/30"
+                  className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-sl-navy/25"
                   value={pipelineForm.template}
                   onChange={(e) => {
                     const v = e.target.value;
@@ -1715,7 +1715,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                   {pipelineForm.stages.map((s, idx) => (
                     <div key={`${idx}-${s}`} className="flex items-center gap-2">
                       <input
-                        className="flex-1 rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-[#2c348c]/30"
+                        className="flex-1 rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-sl-navy/25"
                         value={s}
                         onChange={(e) => {
                           const v = e.target.value;
@@ -1738,7 +1738,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                             return { ...f, stages: next, template: 'CUSTOM' };
                           });
                         }}
-                        className="px-2 py-2 text-xs rounded-lg border border-slate-200 text-slate-700 hover:bg-[#243a7a] disabled:opacity-40 disabled:cursor-not-allowed"
+                        className="px-2 py-2 text-xs rounded-lg border border-slate-200 text-slate-700 hover:bg-sl-navy-light disabled:opacity-40 disabled:cursor-not-allowed"
                         disabled={idx === 0}
                         aria-label="Mover para cima"
                       >
@@ -1756,7 +1756,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                             return { ...f, stages: next, template: 'CUSTOM' };
                           });
                         }}
-                        className="px-2 py-2 text-xs rounded-lg border border-slate-200 text-slate-700 hover:bg-[#243a7a] disabled:opacity-40 disabled:cursor-not-allowed"
+                        className="px-2 py-2 text-xs rounded-lg border border-slate-200 text-slate-700 hover:bg-sl-navy-light disabled:opacity-40 disabled:cursor-not-allowed"
                         disabled={idx === pipelineForm.stages.length - 1}
                         aria-label="Mover para baixo"
                       >
@@ -1783,7 +1783,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                     onClick={() => {
                       setPipelineForm((f) => ({ ...f, stages: [...f.stages, `Etapa ${f.stages.length + 1}`], template: 'CUSTOM' }));
                     }}
-                    className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 text-slate-700 hover:bg-[#243a7a]"
+                    className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 text-slate-700 hover:bg-sl-navy-light"
                   >
                     + Adicionar etapa
                   </button>
@@ -1796,7 +1796,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                     type="checkbox"
                     checked={pipelineForm.makeDefault}
                     onChange={(e) => setPipelineForm((f) => ({ ...f, makeDefault: e.target.checked }))}
-                    className="accent-[#2c348c]"
+                    className="accent-sl-navy"
                   />
                   Tornar padrão
                 </label>
@@ -1805,7 +1805,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                     type="checkbox"
                     checked={pipelineForm.moveLeadsFromOldDefault}
                     onChange={(e) => setPipelineForm((f) => ({ ...f, moveLeadsFromOldDefault: e.target.checked }))}
-                    className="accent-[#2c348c]"
+                    className="accent-sl-navy"
                     disabled={!pipelineForm.makeDefault}
                   />
                   Mover leads do padrão atual para o novo
@@ -1816,7 +1816,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
               <button
                 type="button"
                 onClick={() => setNewPipelineOpen(false)}
-                className="px-4 py-2 text-xs rounded-lg border border-slate-200 text-slate-700 hover:bg-[#243a7a]"
+                className="px-4 py-2 text-xs rounded-lg border border-slate-200 text-slate-700 hover:bg-sl-navy-light"
               >
                 Cancelar
               </button>
@@ -1824,7 +1824,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                 type="button"
                 onClick={handleSavePipeline}
                 disabled={isSavingPipeline}
-                className="px-4 py-2 text-xs rounded-lg bg-[#2c348c] text-white font-semibold shadow-[0_0_18px_rgba(26,27,98,0.8)] hover:bg-[#e42424] disabled:opacity-70 disabled:cursor-not-allowed"
+                className="px-4 py-2 text-xs rounded-lg bg-sl-navy text-white font-semibold shadow-[0_0_18px_rgba(26,27,98,0.8)] hover:bg-sl-red disabled:opacity-70 disabled:cursor-not-allowed"
               >
                 {isSavingPipeline ? "Aplicando..." : "Aplicar Funil"}
               </button>
@@ -1845,7 +1845,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
             <button
               type="button"
               onClick={() => setDrawerLeadId(null)}
-              className="text-slate-500 hover:text-[#2c348c] text-xs"
+              className="text-slate-500 hover:text-sl-navy text-xs"
             >
               Fechar
             </button>
@@ -1855,7 +1855,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
               <button
                 type="button"
                 onClick={handleOpenEditLead}
-                className="flex-1 px-3 py-2 text-xs rounded-lg bg-[#2c348c] text-white font-semibold hover:bg-[#243a7a] border border-slate-300"
+                className="flex-1 px-3 py-2 text-xs rounded-lg bg-sl-navy text-white font-semibold hover:bg-sl-navy-light border border-slate-300"
                 disabled={isSavingLeadEdit}
               >
                 {isSavingLeadEdit ? "Carregando..." : "Editar"}
@@ -1968,7 +1968,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                   onClick={() => {
                     onGoToChat(selectedLead.id);
                   }}
-                  className="inline-flex items-center gap-1 rounded-full bg-[#2c348c] px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-[#e42424] shadow-[0_0_18px_rgba(26,27,98,0.8)]"
+                  className="inline-flex items-center gap-1 rounded-full bg-sl-navy px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-sl-red shadow-[0_0_18px_rgba(26,27,98,0.8)]"
                 >
                   <ArrowRightCircle size={14} />
                   Ir para Chat

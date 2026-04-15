@@ -1,10 +1,11 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { authClient, AuthUser } from '../lib/auth';
+import { getDefaultPostLoginPath } from '@/lib/post-login-path';
 import { UserData } from '../types';
 
 interface AuthContextType {
   user: UserData | null;
-  login: (username: string, password: string) => Promise<void>;
+  login: (username: string, password: string) => Promise<{ defaultPath: string }>;
   logout: () => Promise<void>;
   loading: boolean;
   authMessage: string;
@@ -47,7 +48,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       setLoading(true);
       setAuthMessage('');
-      const authResponse = await authClient.login(username, password);
+        const authResponse = await authClient.login(username, password);
       if (authResponse && authResponse.user) {
         const u = {
           username: authResponse.user.username,
@@ -56,36 +57,45 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           linkedDestUnit: authResponse.user.dest || '',
         };
 
-        // Conexão Google Drive obrigatória: abre popup e aguarda token ser salvo.
-        const popup = window.open(
-          `/api/auth/google?username=${encodeURIComponent(u.username || '')}`,
-          '_blank',
-          'width=600,height=700'
-        );
+        const perms = authResponse.permissions || [];
+        const skipGoogle = perms.includes('auth.google_drive.skip');
 
-        const startedAt = Date.now();
-        const timeoutMs = 2 * 60 * 1000;
+        if (!skipGoogle) {
+          // Conexão Google Drive obrigatória: abre popup e aguarda token ser salvo.
+          const popup = window.open(
+            `/api/auth/google?username=${encodeURIComponent(u.username || '')}`,
+            '_blank',
+            'width=600,height=700'
+          );
 
-        const waitForGoogle = async () => {
-          while (Date.now() - startedAt < timeoutMs) {
-            if (popup && popup.closed) {
-              throw new Error('GOOGLE_POPUP_CLOSED');
+          const startedAt = Date.now();
+          const timeoutMs = 2 * 60 * 1000;
+
+          const waitForGoogle = async () => {
+            while (Date.now() - startedAt < timeoutMs) {
+              if (popup && popup.closed) {
+                throw new Error('GOOGLE_POPUP_CLOSED');
+              }
+              try {
+                const st = await authClient.getGoogleStatus(u.username);
+                if (st?.connected) return;
+              } catch {
+                // ignora e tenta de novo
+              }
+              await new Promise((r) => setTimeout(r, 1000));
             }
-            try {
-              const st = await authClient.getGoogleStatus(u.username);
-              if (st?.connected) return;
-            } catch {
-              // ignora e tenta de novo
-            }
-            await new Promise((r) => setTimeout(r, 1000));
-          }
-          throw new Error('GOOGLE_TIMEOUT');
-        };
+            throw new Error('GOOGLE_TIMEOUT');
+          };
 
-        await waitForGoogle();
-        try { if (popup && !popup.closed) popup.close(); } catch {}
+          await waitForGoogle();
+          try {
+            if (popup && !popup.closed) popup.close();
+          } catch {}
+        }
 
         setUser(u);
+        const defaultPath = getDefaultPostLoginPath(authResponse.permissions, u.role);
+        return { defaultPath };
       } else {
         throw new Error('Usuário não encontrado');
       }
@@ -109,6 +119,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await authClient.logout();
       setUser(null);
+      if (typeof window !== 'undefined') {
+        window.location.href = '/login';
+      }
     } catch (error) {
       console.error('Erro no logout:', error);
     }

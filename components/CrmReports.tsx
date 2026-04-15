@@ -99,7 +99,7 @@ const CrmReports: React.FC = () => {
   return (
     <div className="flex flex-col gap-4 animate-in fade-in duration-500 text-slate-900 max-w-3xl">
       <div className="flex items-center gap-3">
-        <div className="rounded-lg bg-slate-100 p-2 text-[#2c348c] border border-slate-200">
+        <div className="rounded-lg bg-slate-100 p-2 text-sl-navy border border-slate-200">
           <FileSpreadsheet size={22} />
         </div>
         <div>
@@ -132,7 +132,7 @@ const CrmReports: React.FC = () => {
           <button type="button" className="rounded border border-slate-200 bg-white px-2 py-1" onClick={() => { setFilterFrom(''); setFilterTo(''); setFilterChannel(''); setFilterTeamId(''); }}>
             Limpar
           </button>
-          <button type="button" className="rounded bg-[#2c348c] px-3 py-1 font-semibold text-white" onClick={() => void load()}>
+          <button type="button" className="rounded bg-sl-navy px-3 py-1 font-semibold text-white" onClick={() => void load()}>
             Aplicar
           </button>
         </div>
@@ -144,14 +144,14 @@ const CrmReports: React.FC = () => {
           <p className="text-[11px] text-slate-600">
             Leads no período (atualização), conversas ativas no recorte de canal/time, taxa de SLA.
           </p>
-          <button type="button" className="w-full rounded-lg border border-slate-200 bg-white py-2 text-xs font-bold text-slate-800 hover:border-[#2c348c]/40" onClick={exportKpis} disabled={!executive}>
+          <button type="button" className="w-full rounded-lg border border-slate-200 bg-white py-2 text-xs font-bold text-slate-800 hover:border-sl-navy/40" onClick={exportKpis} disabled={!executive}>
             Baixar CSV
           </button>
         </div>
         <div className="surface-card p-4 space-y-2">
           <h2 className="text-sm font-bold">Produtividade</h2>
           <p className="text-[11px] text-slate-600">Canais, agentes e tempos médios por estágio (conforme filtros).</p>
-          <button type="button" className="w-full rounded-lg border border-slate-200 bg-white py-2 text-xs font-bold text-slate-800 hover:border-[#2c348c]/40" onClick={exportProd} disabled={!productivity}>
+          <button type="button" className="w-full rounded-lg border border-slate-200 bg-white py-2 text-xs font-bold text-slate-800 hover:border-sl-navy/40" onClick={exportProd} disabled={!productivity}>
             Baixar CSV
           </button>
         </div>

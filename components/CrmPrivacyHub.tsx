@@ -36,7 +36,7 @@ const CrmPrivacyHub: React.FC = () => {
     <div className="flex flex-col gap-4 animate-in fade-in duration-500 text-slate-900 max-w-5xl">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="rounded-lg bg-slate-100 p-2 text-[#2c348c] border border-slate-200">
+          <div className="rounded-lg bg-slate-100 p-2 text-sl-navy border border-slate-200">
             <Shield size={22} />
           </div>
           <div>
@@ -98,7 +98,7 @@ const CrmPrivacyHub: React.FC = () => {
         />
         <button
           type="button"
-          className="rounded-lg bg-[#2c348c] px-4 py-2 text-xs font-bold text-white"
+          className="rounded-lg bg-sl-navy px-4 py-2 text-xs font-bold text-white"
           onClick={async () => {
             if (!form.phone.trim() && !form.email.trim()) {
               window.alert('Informe telefone ou e-mail.');

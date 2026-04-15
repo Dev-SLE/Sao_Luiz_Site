@@ -1,9 +1,19 @@
 import React, { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '../context/AuthContext';
 import { ArrowRight, Eye, EyeOff, Loader2, Lock, Sparkles, User } from 'lucide-react';
 import clsx from 'clsx';
 
+function safeInternalPath(from: string | null): string | null {
+  if (!from || !from.startsWith('/') || from.startsWith('//')) return null;
+  if (from.startsWith('/login')) return null;
+  return from;
+}
+
 const Login: React.FC = () => {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const { login, authMessage, clearAuthMessage } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -39,7 +49,9 @@ const Login: React.FC = () => {
     setError('');
     setLoading(true);
     try {
-      await login(username, password);
+      const { defaultPath } = await login(username, password);
+      const next = safeInternalPath(searchParams.get('from')) || defaultPath;
+      router.replace(next);
     } catch (err) {
       console.error('Erro no login:', err);
       setError('Credenciais inválidas. Verifique seu usuário e senha.');
@@ -51,16 +63,16 @@ const Login: React.FC = () => {
   const inputWrap = (focused: boolean) =>
     clsx(
       'flex items-center rounded-xl border bg-white transition-all',
-      focused ? 'border-[#2c348c] shadow-[0_0_0_3px_rgba(44,52,140,0.12)]' : 'border-slate-200',
+      focused ? 'border-sl-navy shadow-[0_0_0_3px_rgba(44,52,140,0.12)]' : 'border-slate-200',
     );
 
   return (
-    <div className="app-typography relative min-h-screen w-full overflow-hidden bg-[#cfd9e8] text-slate-800">
-      <div className="pointer-events-none absolute -left-24 -top-20 h-80 w-80 rounded-full bg-[#2c348c]/30 blur-3xl fx-orbit" />
-      <div className="pointer-events-none absolute -right-20 top-1/3 h-72 w-72 rounded-full bg-[#e42424]/20 blur-3xl fx-orbit-rev" />
-      <div className="pointer-events-none absolute left-1/3 bottom-[-120px] h-72 w-72 rounded-full bg-[#06183e]/20 blur-3xl fx-drift-slow" />
+    <div className="app-typography relative min-h-screen w-full overflow-hidden bg-[#f5f7fa] text-slate-800">
+      <div className="pointer-events-none absolute -left-24 -top-20 h-80 w-80 rounded-full bg-sl-navy/30 blur-3xl fx-orbit" />
+      <div className="pointer-events-none absolute -right-20 top-1/3 h-72 w-72 rounded-full bg-sl-red/20 blur-3xl fx-orbit-rev" />
+      <div className="pointer-events-none absolute left-1/3 bottom-[-120px] h-72 w-72 rounded-full bg-sl-navy/20 blur-3xl fx-drift-slow" />
       <div className="grid min-h-screen grid-cols-1 lg:grid-cols-12">
-        <div className="relative z-10 flex min-h-[min(100dvh,960px)] flex-col justify-center overflow-x-hidden overflow-y-auto border-b border-slate-300/40 bg-gradient-to-br from-white via-[#f8faff] to-[#edf2f9] px-7 py-10 sm:px-10 md:px-12 lg:col-span-4 lg:min-h-screen lg:border-b-0 lg:pr-8 xl:px-14 xl:pr-16">
+        <div className="relative z-10 flex min-h-[min(100dvh,960px)] flex-col justify-center overflow-x-hidden overflow-y-auto border-b border-slate-300/40 bg-gradient-to-br from-white via-slate-50 to-slate-100 px-7 py-10 sm:px-10 md:px-12 lg:col-span-4 lg:min-h-screen lg:border-b-0 lg:pr-8 xl:px-14 xl:pr-16">
           {/* Ponte suave → painel azul (sem corte seco) */}
           <div
             className="pointer-events-none absolute inset-y-0 right-0 z-[4] w-[min(42%,220px)] bg-[linear-gradient(90deg,transparent_0%,rgba(11,30,72,0.07)_45%,rgba(24,47,107,0.22)_88%,rgba(11,30,72,0.38)_100%)]"
@@ -72,25 +84,25 @@ const Login: React.FC = () => {
           />
           {/* Camadas 3D / movimento (mais visíveis no login) */}
           <div
-            className="pointer-events-none absolute left-[4%] top-[14%] z-[2] h-36 w-36 rounded-3xl border border-[#2c348c]/25 bg-gradient-to-br from-white/40 to-[#2c348c]/10 shadow-[0_12px_40px_rgba(44,52,140,0.15)] fx-orbit"
+            className="pointer-events-none absolute left-[4%] top-[14%] z-[2] h-36 w-36 rounded-3xl border border-sl-navy/25 bg-gradient-to-br from-white/40 to-sl-navy/10 shadow-[0_12px_40px_rgba(10,22,40,0.14)] fx-orbit"
             aria-hidden
           />
           <div
-            className="pointer-events-none absolute bottom-[18%] left-[8%] z-[2] h-28 w-28 rounded-full border border-[#e42424]/20 bg-[#e42424]/5 blur-[1px] fx-drift"
+            className="pointer-events-none absolute bottom-[18%] left-[8%] z-[2] h-28 w-28 rounded-full border border-sl-red/20 bg-sl-red/5 blur-[1px] fx-drift"
             aria-hidden
           />
           <div
-            className="pointer-events-none absolute -right-8 bottom-[22%] z-[2] h-40 w-40 rounded-2xl border border-[#2c348c]/18 bg-white/30 shadow-lg fx-float"
+            className="pointer-events-none absolute -right-8 bottom-[22%] z-[2] h-40 w-40 rounded-2xl border border-sl-navy/18 bg-white/30 shadow-lg fx-float"
             aria-hidden
           />
           <div
-            className="pointer-events-none absolute right-[20%] top-[22%] z-[2] h-24 w-24 rounded-full bg-[#2c348c]/15 blur-2xl fx-drift-slow"
+            className="pointer-events-none absolute right-[20%] top-[22%] z-[2] h-24 w-24 rounded-full bg-sl-navy/15 blur-2xl fx-drift-slow"
             aria-hidden
           />
           {/* Fundo limpo no painel de login para evitar recorte visível da Sofia */}
           <div className="relative z-10 mx-auto w-full max-w-lg rounded-3xl border border-slate-300/70 bg-white/96 p-6 shadow-[0_24px_50px_rgba(15,23,42,0.14),0_2px_0_rgba(255,255,255,0.9)_inset] backdrop-blur-md interactive-lift md:p-8">
             <div className="mb-8">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#2c348c]">São Luiz Express</p>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-sl-navy">São Luiz Express</p>
               <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-900 md:text-4xl">Acessar plataforma</h1>
               <p className="mt-2 text-sm leading-relaxed text-slate-600">
                 Login unificado para CRM, atendimento com IA Sofia e operação logística.
@@ -101,7 +113,7 @@ const Login: React.FC = () => {
               <div className="space-y-2">
                 <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Usuário</label>
                 <div className={inputWrap(isFocused === 'user')}>
-                  <User size={18} className="ml-3 text-[#2c348c]" />
+                  <User size={18} className="ml-3 text-sl-navy" />
                   <input
                     type="text"
                     value={username}
@@ -119,7 +131,7 @@ const Login: React.FC = () => {
               <div className="space-y-2">
                 <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Senha</label>
                 <div className={inputWrap(isFocused === 'pass')}>
-                  <Lock size={18} className="ml-3 text-[#2c348c]" />
+                  <Lock size={18} className="ml-3 text-sl-navy" />
                   <input
                     type={showPassword ? 'text' : 'password'}
                     value={password}
@@ -134,12 +146,21 @@ const Login: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setShowPassword((v) => !v)}
-                    className="mr-3 text-slate-400 hover:text-[#2c348c]"
+                    className="mr-3 text-slate-400 hover:text-sl-navy"
                     aria-label="Alternar visibilidade da senha"
                   >
                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                   </button>
                 </div>
+              </div>
+
+              <div className="text-right">
+                <Link
+                  href="/recuperar-senha"
+                  className="text-[11px] font-semibold text-sl-navy underline-offset-2 hover:underline"
+                >
+                  Esqueci minha senha
+                </Link>
               </div>
 
               {(error || authMessage) && (
@@ -151,7 +172,7 @@ const Login: React.FC = () => {
               <button
                 type="submit"
                 disabled={loading}
-                className="pressable-3d w-full rounded-xl bg-gradient-to-r from-[#2c348c] to-[#06183e] px-4 py-3 text-sm font-semibold text-white transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
+                className="pressable-3d w-full rounded-xl bg-gradient-to-r from-sl-navy to-sl-navy-light px-4 py-3 text-sm font-semibold text-white transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <span className="inline-flex items-center justify-center gap-2">
                   {loading ? (
@@ -186,7 +207,7 @@ const Login: React.FC = () => {
           <div className="relative flex h-full min-h-0 w-full flex-1 flex-col justify-between gap-5 overflow-hidden px-8 py-10 sm:px-10 sm:py-12 xl:mx-auto xl:max-w-4xl xl:gap-6 xl:px-12 xl:py-14">
             <div className="pointer-events-none absolute right-[4%] top-[8%] z-0 h-52 w-52 rounded-full border border-white/15 bg-white/8 backdrop-blur-sm fx-orbit-rev" />
             <div className="pointer-events-none absolute right-[16%] bottom-[14%] z-0 h-36 w-36 rounded-3xl border border-white/20 bg-white/10 shadow-[0_16px_36px_rgba(15,23,42,0.35)] fx-orbit" />
-            <div className="pointer-events-none absolute right-[34%] top-[26%] z-0 h-20 w-20 rounded-full bg-[#e42424]/18 blur-xl fx-drift" />
+            <div className="pointer-events-none absolute right-[34%] top-[26%] z-0 h-20 w-20 rounded-full bg-sl-red/18 blur-xl fx-drift" />
             <div className="pointer-events-none absolute right-[10%] top-[44%] z-0 h-24 w-24 rounded-full border border-[#9fb4ff]/35 bg-[#9fb4ff]/10 backdrop-blur-sm fx-float" />
             <div className="relative z-10 max-w-3xl xl:max-w-none">
               <div className="inline-flex items-center gap-2 rounded-full border border-white/30 bg-white/12 px-3 py-1.5 text-xs text-white shadow-sm backdrop-blur">
@@ -220,7 +241,7 @@ const Login: React.FC = () => {
                     className={clsx(
                       'pressable-3d rounded-lg border px-2 py-1.5 text-center transition-all',
                       securityInfoKey === key
-                        ? 'border-white/45 bg-white font-semibold text-[#06183e]'
+                        ? 'border-white/45 bg-white font-semibold text-sl-navy'
                         : 'border-white/20 bg-white/14 text-white hover:border-white/40',
                     )}
                   >

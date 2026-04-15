@@ -307,12 +307,12 @@ const CrmOpsAdmin: React.FC = () => {
     />
     <EvolutionInboxPairModal open={Boolean(pairInbox)} onClose={() => setPairInbox(null)} inbox={pairInbox} />
     <div className="space-y-4">
-      <div className="surface-card-strong p-4 border border-[#2c348c]/25 bg-gradient-to-br from-[#f8faff] to-white">
-        <h3 className="text-sm font-black text-[#06183e]">Multiatendimento (estilo Kommo)</h3>
+      <div className="surface-card-strong p-4 border border-sl-navy/25 bg-gradient-to-br from-slate-50 to-white">
+        <h3 className="text-sm font-black text-sl-navy">Multiatendimento (estilo Kommo)</h3>
         <ul className="mt-2 space-y-1.5 text-[11px] text-slate-700 list-disc pl-4 leading-relaxed">
           <li>
             <strong>Atendentes são usuários da plataforma</strong> (login e senha em{' '}
-            <span className="font-semibold text-[#2c348c]">Configurações → Gestão de Usuários</span>). Crie um perfil com{' '}
+            <span className="font-semibold text-sl-navy">Configurações → Gestão de Usuários</span>). Crie um perfil com{' '}
             <code className="text-[10px] bg-slate-100 px-1 rounded">VIEW_CRM_CHAT</code>,{' '}
             <code className="text-[10px] bg-slate-100 px-1 rounded">VIEW_CRM_FUNIL</code> e escopo{' '}
             <code className="text-[10px] bg-slate-100 px-1 rounded">CRM_SCOPE_SELF</code> (só o que é dele + fila) ou{' '}
@@ -391,7 +391,7 @@ const CrmOpsAdmin: React.FC = () => {
             <div className="flex gap-2">
               <button
                 type="button"
-                className="rounded bg-[#2c348c] px-3 py-1.5 text-[11px] font-bold text-white hover:bg-[#e42424]"
+                className="rounded bg-sl-navy px-3 py-1.5 text-[11px] font-bold text-white hover:bg-sl-red"
                 onClick={async () => {
                   try {
                     await authClient.saveCrmAutomation({
@@ -448,7 +448,7 @@ const CrmOpsAdmin: React.FC = () => {
                 <button
                   type="button"
                   key={c.id}
-                  className="w-full text-left rounded border border-slate-100 bg-slate-50 px-2 py-1 text-[11px] hover:border-[#2c348c]/30"
+                  className="w-full text-left rounded border border-slate-100 bg-slate-50 px-2 py-1 text-[11px] hover:border-sl-navy/30"
                   onClick={() =>
                     setCadenceForm({
                       id: String(c.id),
@@ -533,7 +533,7 @@ const CrmOpsAdmin: React.FC = () => {
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                className="rounded bg-[#2c348c] px-3 py-1.5 text-[11px] font-bold text-white hover:bg-[#e42424]"
+                className="rounded bg-sl-navy px-3 py-1.5 text-[11px] font-bold text-white hover:bg-sl-red"
                 onClick={async () => {
                   try {
                     const af: Record<string, unknown> = { limit: Number(campaignForm.audienceLimit || 100) };
@@ -586,7 +586,7 @@ const CrmOpsAdmin: React.FC = () => {
                 <div key={c.id} className="flex flex-wrap items-center justify-between gap-2 rounded border border-slate-100 bg-slate-50 px-2 py-1 text-[11px]">
                   <button
                     type="button"
-                    className="text-left font-semibold text-[#2c348c] hover:underline"
+                    className="text-left font-semibold text-sl-navy hover:underline"
                     onClick={() => {
                       const af =
                         c.audience_filter && typeof c.audience_filter === "object"
@@ -661,7 +661,7 @@ const CrmOpsAdmin: React.FC = () => {
         <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-2">
           <input className="rounded bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800" placeholder="Nome do time" value={teamForm.name} onChange={(e) => setTeamForm((f) => ({ ...f, name: e.target.value }))} />
           <input className="rounded bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800" placeholder="Descrição" value={teamForm.description} onChange={(e) => setTeamForm((f) => ({ ...f, description: e.target.value }))} />
-          <button className="pressable-3d rounded bg-gradient-to-r from-[#2c348c] to-[#1f2f86] text-xs text-white font-bold" onClick={async () => { await authClient.saveCrmTeam(teamForm); setTeamForm({ id: "", name: "", description: "" }); await loadAll(); }}>Salvar time</button>
+          <button className="pressable-3d rounded bg-gradient-to-r from-sl-navy to-sl-navy-light text-xs text-white font-bold" onClick={async () => { await authClient.saveCrmTeam(teamForm); setTeamForm({ id: "", name: "", description: "" }); await loadAll(); }}>Salvar time</button>
         </div>
         <div className="mt-3 space-y-2">
           {teams.map((t) => (
@@ -701,7 +701,7 @@ const CrmOpsAdmin: React.FC = () => {
       <div className="surface-card-strong p-4 border border-emerald-200/60 bg-gradient-to-br from-emerald-50/40 to-white">
         <h3 className="text-sm font-bold text-slate-900">Caixas WhatsApp Web (Evolution API)</h3>
         <p className="mt-1 text-[11px] text-slate-600 leading-relaxed">
-          <a className="font-semibold text-[#2c348c] underline" href="https://github.com/EvolutionAPI/evolution-api" target="_blank" rel="noreferrer">
+          <a className="font-semibold text-sl-navy underline" href="https://github.com/EvolutionAPI/evolution-api" target="_blank" rel="noreferrer">
             Evolution API
           </a>{" "}
           — <strong>modo rápido</strong>: quem usa o CRM só informa o <strong>nome da linha</strong>; URL e chave da Evolution ficam no servidor (
@@ -734,7 +734,7 @@ const CrmOpsAdmin: React.FC = () => {
               disabled={!evolutionDefaultsConfigured}
               onClick={() => setEvoAdvancedOpen(false)}
               className={`rounded-full border px-3 py-1.5 text-[11px] font-bold ${
-                !evoAdvancedOpen ? "border-[#2c348c] bg-[#2c348c]/10 text-[#06183e]" : "border-slate-200 bg-white text-slate-600"
+                !evoAdvancedOpen ? "border-sl-navy bg-sl-navy/10 text-sl-navy" : "border-slate-200 bg-white text-slate-600"
               } disabled:opacity-40`}
             >
               Modo rápido
@@ -972,7 +972,7 @@ const CrmOpsAdmin: React.FC = () => {
                   </a>
                   <button
                     type="button"
-                    className="text-[11px] text-[#2c348c] hover:underline"
+                    className="text-[11px] text-sl-navy hover:underline"
                     onClick={() => {
                       setEvoAdvancedOpen(true);
                       setEvoForm({
@@ -1220,7 +1220,7 @@ const CrmOpsAdmin: React.FC = () => {
             <option value="INTERNO">INTERNO</option>
           </select>
           <input type="number" className="rounded bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800" value={slaForm.slaMinutes} onChange={(e) => setSlaForm((f) => ({ ...f, slaMinutes: Number(e.target.value) || 30 }))} />
-          <button className="pressable-3d rounded bg-gradient-to-r from-[#2c348c] to-[#1f2f86] text-xs text-white font-bold" onClick={async () => { await authClient.saveCrmSlaRule(slaForm); setSlaForm({ teamId: "", topic: "", channel: "WHATSAPP", priority: "MEDIA", slaMinutes: 30 }); await loadAll(); }}>Salvar SLA</button>
+          <button className="pressable-3d rounded bg-gradient-to-r from-sl-navy to-sl-navy-light text-xs text-white font-bold" onClick={async () => { await authClient.saveCrmSlaRule(slaForm); setSlaForm({ teamId: "", topic: "", channel: "WHATSAPP", priority: "MEDIA", slaMinutes: 30 }); await loadAll(); }}>Salvar SLA</button>
         </div>
         <div className="mt-3 space-y-2">
           {slaRules.map((s) => (
@@ -1248,7 +1248,7 @@ const CrmOpsAdmin: React.FC = () => {
             <option value="ATENDENTE">Atendente</option>
             <option value="SUPERVISOR">Supervisor</option>
           </select>
-          <button className="pressable-3d rounded bg-gradient-to-r from-[#2c348c] to-[#1f2f86] text-xs text-white font-bold" onClick={async () => { await authClient.saveCrmTeamMember(memberForm); setMemberForm({ teamId: "", username: "", memberRole: "ATENDENTE" }); await loadAll(); }}>Adicionar membro</button>
+          <button className="pressable-3d rounded bg-gradient-to-r from-sl-navy to-sl-navy-light text-xs text-white font-bold" onClick={async () => { await authClient.saveCrmTeamMember(memberForm); setMemberForm({ teamId: "", username: "", memberRole: "ATENDENTE" }); await loadAll(); }}>Adicionar membro</button>
         </div>
       </div>
 
@@ -1269,7 +1269,7 @@ const CrmOpsAdmin: React.FC = () => {
             <option value="TEAM">TEAM</option>
             <option value="NONE">NONE</option>
           </select>
-          <button className="pressable-3d rounded bg-gradient-to-r from-[#2c348c] to-[#1f2f86] text-xs text-white font-bold" onClick={async () => { await authClient.saveCrmRoutingRule(ruleForm); setRuleForm({ id: "", name: "", priority: 100, matchType: "TOPIC", matchValue: "", targetType: "USER", targetUsername: "", targetTeamId: "", targetStageId: "" }); await loadAll(); }}>Salvar regra</button>
+          <button className="pressable-3d rounded bg-gradient-to-r from-sl-navy to-sl-navy-light text-xs text-white font-bold" onClick={async () => { await authClient.saveCrmRoutingRule(ruleForm); setRuleForm({ id: "", name: "", priority: 100, matchType: "TOPIC", matchValue: "", targetType: "USER", targetUsername: "", targetTeamId: "", targetStageId: "" }); await loadAll(); }}>Salvar regra</button>
         </div>
         <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2">
           <select className="rounded bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800" value={ruleForm.targetUsername} onChange={(e) => setRuleForm((f) => ({ ...f, targetUsername: e.target.value }))}>

@@ -103,6 +103,21 @@ export enum Page {
   COMERCIAL_ROBO_SUPREMO = 'comercial_robo_supremo',
   RELATORIOS = 'relatorios',
   MUDAR_SENHA = 'mudar_senha',
+  /** Módulos com shell placeholder até migração completa (fase_1). */
+  MODULE_MANIFESTOS = 'module_manifestos',
+  MODULE_CLIENTES = 'module_clientes',
+  MODULE_PATRIMONIO = 'module_patrimonio',
+  MODULE_FINANCEIRO = 'module_financeiro',
+  MODULE_FISCAL = 'module_fiscal',
+  MODULE_RH = 'module_rh',
+  MODULE_COMPRAS = 'module_compras',
+  MODULE_JURIDICO = 'module_juridico',
+  MODULE_GERENCIAL = 'module_gerencial',
+  MODULE_AUDITORIA_APP = 'module_auditoria_app',
+  /** Rotas fora de `/app` — portal colaborador (`/inicio`, `/comunicados`, …). */
+  PORTAL_COLABORADOR = 'portal_colaborador',
+  /** Rotas `/gestor` e subpáginas. */
+  PORTAL_GESTOR = 'portal_gestor',
 }
 
 export interface KPIData {

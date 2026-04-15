@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
-import { UserData, ProfileData, Page } from '../types';
+import { UserData, ProfileData } from '../types';
 import {
   Trash2,
   UserPlus,
@@ -15,8 +15,6 @@ import {
   Activity,
   Search,
   Pencil,
-  SlidersHorizontal,
-  ExternalLink,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { authClient } from '../lib/auth';
@@ -148,12 +146,39 @@ function groupProfilePermissions(rows: ProfilePermissionRow[]): Record<Permissio
 
 const PROFILE_PERMISSIONS_BY_SECTION = groupProfilePermissions(PROFILE_PERMISSION_ROWS);
 
-type SettingsProps = {
-  /** Navegação para telas dedicadas (ex.: Operação CRM) sem duplicar conteúdo nesta tela. */
-  onNavigateToPage?: (page: Page) => void;
-};
+/** Modelos de permissão (chaves canónicas) — aplicar substitui a lista atual. */
+const PROFILE_PRESETS: { id: string; label: string; permissions: string[] }[] = [
+  {
+    id: 'op-leitura-unidade',
+    label: 'Operacional: leitura na unidade',
+    permissions: [
+      'module.operacional.view',
+      'scope.operacional.unit.self',
+      'tab.operacional.visao_geral.view',
+      'tab.operacional.pendencias.view',
+      'tab.operacional.criticos.view',
+      'tab.operacional.em_busca.view',
+      'tab.operacional.ocorrencias.view',
+      'tab.operacional.concluidos.view',
+      'tab.operacional.rastreio.view',
+    ],
+  },
+  {
+    id: 'crm-atendente',
+    label: 'CRM: atendimento (funil + chat)',
+    permissions: [
+      'module.crm.view',
+      'scope.crm.self',
+      'tab.crm.funil.view',
+      'tab.crm.chat.view',
+      'tab.crm.dashboard.view',
+      'crm.leads.view',
+      'crm.messages.send',
+    ],
+  },
+];
 
-const Settings: React.FC<SettingsProps> = ({ onNavigateToPage }) => {
+const Settings: React.FC = () => {
   const { user } = useAuth();
   const { users, profiles, baseData, addUser, deleteUser, saveProfile, deleteProfile, hasPermission } = useData();
   const [activeTab, setActiveTab] = useState<'USERS' | 'PROFILES' | 'LOGS'>('USERS');
@@ -354,7 +379,7 @@ const Settings: React.FC<SettingsProps> = ({ onNavigateToPage }) => {
              className={clsx(
                  "pressable-3d rounded-xl py-2.5 px-4 font-bold text-sm border border-transparent transition-all flex items-center gap-2",
                  activeTab === 'USERS'
-                   ? "border-[#2c348c]/35 bg-gradient-to-b from-[#eef3ff] to-white text-[#1f2f86]"
+                   ? "border-sl-navy/35 bg-gradient-to-b from-slate-50 to-white text-sl-navy"
                    : "text-slate-600 hover:text-slate-900 hover:bg-white"
              )}
           >
@@ -365,7 +390,7 @@ const Settings: React.FC<SettingsProps> = ({ onNavigateToPage }) => {
              className={clsx(
                  "pressable-3d rounded-xl py-2.5 px-4 font-bold text-sm border border-transparent transition-all flex items-center gap-2",
                  activeTab === 'PROFILES'
-                   ? "border-[#2c348c] text-[#2c348c]"
+                   ? "border-sl-navy text-sl-navy"
                    : "border-transparent text-slate-500 hover:text-slate-800"
              )}
           >
@@ -376,55 +401,13 @@ const Settings: React.FC<SettingsProps> = ({ onNavigateToPage }) => {
             className={clsx(
                  "pressable-3d rounded-xl py-2.5 px-4 font-bold text-sm border border-transparent transition-all flex items-center gap-2",
               activeTab === 'LOGS'
-                ? "border-[#2c348c] text-[#2c348c]"
+                ? "border-sl-navy text-sl-navy"
                 : "border-transparent text-slate-500 hover:text-slate-800"
             )}
           >
             <Activity size={18} /> Logs do Sistema
           </button>
       </div>
-
-      {(hasPermission('MANAGE_CRM_OPS') || hasPermission('MANAGE_SETTINGS')) && (
-        <div className="surface-card border border-[#2c348c]/20 bg-gradient-to-r from-[#f8faff] to-white p-4 text-sm text-slate-700">
-          <p className="font-bold text-slate-900">CRM fora desta tela</p>
-          <p className="mt-1 text-xs text-slate-600">
-            Operação técnica do CRM (times, Evolution, triagem, roteamento, SLA, cadências) e privacidade/consentimento
-            têm páginas próprias no menu <strong>Atendimento CRM</strong>, para não duplicar com Configurações.
-          </p>
-          {onNavigateToPage && (
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => onNavigateToPage(Page.CRM_OPS)}
-                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-[#2c348c] shadow-sm hover:border-[#2c348c]/40"
-              >
-                <SlidersHorizontal size={16} />
-                Abrir Operação CRM
-                <ExternalLink size={12} className="opacity-60" />
-              </button>
-              <button
-                type="button"
-                onClick={() => onNavigateToPage(Page.CRM_PRIVACY)}
-                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-[#2c348c] shadow-sm hover:border-[#2c348c]/40"
-              >
-                <Shield size={16} />
-                Abrir Privacidade CRM
-                <ExternalLink size={12} className="opacity-60" />
-              </button>
-              {hasPermission('MANAGE_SOFIA') && (
-                <button
-                  type="button"
-                  onClick={() => onNavigateToPage(Page.SOFIA_CONFIG)}
-                  className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm hover:border-[#2c348c]/40"
-                >
-                  Configurações da Sofia
-                  <ExternalLink size={12} className="opacity-60" />
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-      )}
 
       {/* --- USERS TAB --- */}
       {activeTab === 'USERS' && (
@@ -442,7 +425,7 @@ const Settings: React.FC<SettingsProps> = ({ onNavigateToPage }) => {
               {hasPermission('MANAGE_USERS') && !isAddingUser ? (
                   <button 
                     onClick={() => setIsAddingUser(true)}
-                    className="pressable-3d flex items-center gap-2 rounded-lg bg-gradient-to-r from-[#2c348c] to-[#1f2f86] px-4 py-2 font-bold text-white transition hover:brightness-105"
+                    className="pressable-3d flex items-center gap-2 rounded-lg bg-gradient-to-r from-sl-navy to-sl-navy-light px-4 py-2 font-bold text-white transition hover:brightness-105"
                   >
                       <UserPlus size={18} /> Adicionar Usuário
                   </button>
@@ -458,7 +441,7 @@ const Settings: React.FC<SettingsProps> = ({ onNavigateToPage }) => {
                               <label className="text-xs font-bold text-slate-600 uppercase">Usuário</label>
                               <input 
                                 required
-                                className="w-full p-2 rounded border border-slate-200 bg-slate-50 text-slate-800 placeholder-gray-500 focus:ring-2 focus:ring-[#2c348c]/30 outline-none" 
+                                className="w-full p-2 rounded border border-slate-200 bg-slate-50 text-slate-800 placeholder-gray-500 focus:ring-2 focus:ring-sl-navy/30 outline-none" 
                                 value={newUser.username} 
                                 onChange={e => setNewUser({...newUser, username: e.target.value})} 
                                 disabled={!!editingUsername}
@@ -470,7 +453,7 @@ const Settings: React.FC<SettingsProps> = ({ onNavigateToPage }) => {
                               </label>
                               <input 
                                 required={!editingUsername}
-                                className="w-full p-2 rounded border border-slate-200 bg-slate-50 text-slate-800 placeholder-gray-500 focus:ring-2 focus:ring-[#2c348c]/30 outline-none" 
+                                className="w-full p-2 rounded border border-slate-200 bg-slate-50 text-slate-800 placeholder-gray-500 focus:ring-2 focus:ring-sl-navy/30 outline-none" 
                                 value={newUser.password} 
                                 onChange={e => setNewUser({...newUser, password: e.target.value})} 
                                 placeholder={editingUsername ? 'Deixe vazio para manter a senha atual' : ''}
@@ -480,7 +463,7 @@ const Settings: React.FC<SettingsProps> = ({ onNavigateToPage }) => {
                               <label className="text-xs font-bold text-slate-600 uppercase">Perfil</label>
                               <select 
                                 required
-                                className="w-full p-2 rounded border border-slate-200 focus:ring-2 focus:ring-[#2c348c]/30 outline-none bg-slate-50 text-slate-800"
+                                className="w-full p-2 rounded border border-slate-200 focus:ring-2 focus:ring-sl-navy/30 outline-none bg-slate-50 text-slate-800"
                                 value={newUser.role}
                                 onChange={e => setNewUser({...newUser, role: e.target.value})}
                               >
@@ -491,7 +474,7 @@ const Settings: React.FC<SettingsProps> = ({ onNavigateToPage }) => {
                           <div className="space-y-1">
                               <label className="text-xs font-bold text-slate-600 uppercase">Unidade Origem (Opcional)</label>
                               <select 
-                                className="w-full p-2 rounded border border-slate-200 focus:ring-2 focus:ring-[#2c348c]/30 outline-none bg-slate-50 text-slate-800"
+                                className="w-full p-2 rounded border border-slate-200 focus:ring-2 focus:ring-sl-navy/30 outline-none bg-slate-50 text-slate-800"
                                 value={newUser.linkedOriginUnit}
                                 onChange={e => setNewUser({...newUser, linkedOriginUnit: e.target.value})}
                               >
@@ -502,7 +485,7 @@ const Settings: React.FC<SettingsProps> = ({ onNavigateToPage }) => {
                           <div className="space-y-1">
                               <label className="text-xs font-bold text-slate-600 uppercase">Unidade Destino (Opcional)</label>
                               <select 
-                                className="w-full p-2 rounded border border-slate-200 focus:ring-2 focus:ring-[#2c348c]/30 outline-none bg-slate-50 text-slate-800"
+                                className="w-full p-2 rounded border border-slate-200 focus:ring-2 focus:ring-sl-navy/30 outline-none bg-slate-50 text-slate-800"
                                 value={newUser.linkedDestUnit}
                                 onChange={e => setNewUser({...newUser, linkedDestUnit: e.target.value})}
                               >
@@ -550,7 +533,7 @@ const Settings: React.FC<SettingsProps> = ({ onNavigateToPage }) => {
                                       <div className="inline-flex items-center gap-1">
                                         <button
                                           onClick={() => startEditUser(u)}
-                                          className="text-slate-500 hover:text-[#2c348c] p-1"
+                                          className="text-slate-500 hover:text-sl-navy p-1"
                                           title="Editar usuário"
                                         >
                                           <Pencil size={16} />
@@ -582,7 +565,7 @@ const Settings: React.FC<SettingsProps> = ({ onNavigateToPage }) => {
               <div className="md:col-span-1 space-y-3">
                   <button 
                       onClick={() => setEditingProfile({ name: '', description: '', permissions: [] })}
-                      className="pressable-3d mb-4 flex w-full items-center justify-center gap-2 rounded-lg border border-slate-300/80 bg-gradient-to-b from-white to-slate-50 py-2 font-bold text-slate-800 transition hover:border-[#2c348c]/30"
+                      className="pressable-3d mb-4 flex w-full items-center justify-center gap-2 rounded-lg border border-slate-300/80 bg-gradient-to-b from-white to-slate-50 py-2 font-bold text-slate-800 transition hover:border-sl-navy/30"
                   >
                       <UserPlus size={16} /> Novo Perfil
                   </button>
@@ -593,7 +576,7 @@ const Settings: React.FC<SettingsProps> = ({ onNavigateToPage }) => {
                         className={clsx(
                             "p-3 rounded-lg border cursor-pointer transition-all hover:shadow-md",
                             editingProfile?.name === p.name
-                              ? "bg-slate-50 border-[#2c348c]/40 ring-1 ring-[#2c348c]/25"
+                              ? "bg-slate-50 border-sl-navy/40 ring-1 ring-sl-navy/25"
                               : "bg-white border-slate-200"
                         )}
                         onClick={() => setEditingProfile(p)}
@@ -605,11 +588,22 @@ const Settings: React.FC<SettingsProps> = ({ onNavigateToPage }) => {
                               </div>
                               <div className="flex gap-1">
                                   <button 
+                                    type="button"
                                     onClick={(e) => {
                                         e.stopPropagation();
-                                        setEditingProfile({ ...p, name: `${p.name}_COPY` });
+                                        let base = `${p.name} (cópia)`;
+                                        let next = base;
+                                        let i = 2;
+                                        while (profiles.some((x) => (x.name || '').toLowerCase() === next.toLowerCase())) {
+                                          next = `${base} ${i++}`;
+                                        }
+                                        setEditingProfile({
+                                          ...p,
+                                          name: next.slice(0, 120),
+                                          description: p.description || '',
+                                        });
                                     }}
-                                    className="p-1 text-slate-500 hover:text-blue-400" title="Copiar"
+                                    className="p-1 text-slate-500 hover:text-blue-400" title="Duplicar perfil"
                                   >
                                       <Copy size={14} />
                                   </button>
@@ -648,7 +642,7 @@ const Settings: React.FC<SettingsProps> = ({ onNavigateToPage }) => {
                                       <label className="text-xs font-bold text-slate-600 uppercase">Nome do Perfil</label>
                                       <input 
                                         required
-                                        className="w-full p-2.5 rounded border border-slate-200 bg-slate-50 text-slate-800 placeholder-gray-500 focus:ring-2 focus:ring-[#2c348c]/30 outline-none"
+                                        className="w-full p-2.5 rounded border border-slate-200 bg-slate-50 text-slate-800 placeholder-gray-500 focus:ring-2 focus:ring-sl-navy/30 outline-none"
                                         value={editingProfile.name}
                                         onChange={e => setEditingProfile({...editingProfile, name: e.target.value})}
                                         disabled={profiles.some(p => p.name === editingProfile.name && p.name?.toUpperCase() === 'ADMIN')} // Admin name locked
@@ -657,11 +651,34 @@ const Settings: React.FC<SettingsProps> = ({ onNavigateToPage }) => {
                                   <div className="space-y-1">
                                       <label className="text-xs font-bold text-slate-600 uppercase">Descrição</label>
                                       <input 
-                                        className="w-full p-2.5 rounded border border-slate-200 bg-slate-50 text-slate-800 placeholder-gray-500 focus:ring-2 focus:ring-[#2c348c]/30 outline-none"
+                                        className="w-full p-2.5 rounded border border-slate-200 bg-slate-50 text-slate-800 placeholder-gray-500 focus:ring-2 focus:ring-sl-navy/30 outline-none"
                                         value={editingProfile.description}
                                         onChange={e => setEditingProfile({...editingProfile, description: e.target.value})}
                                       />
                                   </div>
+                              </div>
+
+                              <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3">
+                                <p className="text-xs font-bold uppercase tracking-wide text-slate-600">Modelos rápidos</p>
+                                <p className="mt-1 text-[11px] text-slate-500">
+                                  Aplicar substitui todas as permissões do perfil em edição pela lista do modelo (pode ajustar depois).
+                                </p>
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                  {PROFILE_PRESETS.map((pr) => (
+                                    <button
+                                      key={pr.id}
+                                      type="button"
+                                      className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-left text-[11px] font-bold text-sl-navy shadow-sm hover:border-sl-navy/40"
+                                      onClick={() =>
+                                        setEditingProfile((cur) =>
+                                          cur ? { ...cur, permissions: [...pr.permissions] } : cur,
+                                        )
+                                      }
+                                    >
+                                      {pr.label}
+                                    </button>
+                                  ))}
+                                </div>
                               </div>
 
                               <div>
@@ -669,7 +686,7 @@ const Settings: React.FC<SettingsProps> = ({ onNavigateToPage }) => {
                                     Permissões de acesso
                                   </label>
                                   <p className="text-[11px] text-slate-500 mb-4">
-                                    Itens agrupados por módulo. Chaves novas (ex.: <code className="text-[10px]">tab.operacional.*</code>) substituem
+                                    Itens agrupados por módulo e camada. Chaves novas (ex.: <code className="text-[10px]">tab.operacional.*</code>) substituem
                                     as antigas (<code className="text-[10px]">VIEW_*</code>) — marcar uma opção liga ou desliga todas as variantes equivalentes.
                                   </p>
                                   <div className="space-y-8">
@@ -679,7 +696,7 @@ const Settings: React.FC<SettingsProps> = ({ onNavigateToPage }) => {
                                       return (
                                         <div key={sectionId} className="space-y-3">
                                           <h4 className="text-sm font-bold text-slate-900 border-b border-slate-200 pb-2 flex items-center gap-2">
-                                            <span className="h-2 w-2 rounded-full bg-[#2c348c]" />
+                                            <span className="h-2 w-2 rounded-full bg-sl-navy" />
                                             {PERMISSION_SECTION_LABELS[sectionId]}
                                           </h4>
                                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -692,19 +709,19 @@ const Settings: React.FC<SettingsProps> = ({ onNavigateToPage }) => {
                                                   className={clsx(
                                                     'flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all select-none',
                                                     isChecked
-                                                      ? 'border-[#2c348c]/40 bg-slate-50 text-slate-900'
+                                                      ? 'border-sl-navy/40 bg-slate-50 text-slate-900'
                                                       : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-100',
                                                   )}
                                                 >
                                                   {isChecked ? (
-                                                    <CheckSquare size={20} className="text-[#2c348c]" />
+                                                    <CheckSquare size={20} className="text-sl-navy" />
                                                   ) : (
                                                     <Square size={20} />
                                                   )}
                                                   <div className="flex flex-col min-w-0">
                                                     <span className="font-bold text-sm text-slate-800">{label}</span>
                                                     <span className="text-[11px] text-slate-500">{description}</span>
-                                                    <span className="mt-1 font-mono text-[10px] text-[#2c348c]/80 break-all">
+                                                    <span className="mt-1 font-mono text-[10px] text-sl-navy/80 break-all">
                                                       {key}
                                                     </span>
                                                   </div>
@@ -719,7 +736,7 @@ const Settings: React.FC<SettingsProps> = ({ onNavigateToPage }) => {
                               </div>
 
                               <div className="flex justify-end pt-4 border-t border-slate-200">
-                                  <button type="submit" className="pressable-3d flex items-center gap-2 rounded-lg bg-gradient-to-r from-[#2c348c] to-[#1f2f86] px-6 py-2.5 font-bold text-white transition hover:brightness-105">
+                                  <button type="submit" className="pressable-3d flex items-center gap-2 rounded-lg bg-gradient-to-r from-sl-navy to-sl-navy-light px-6 py-2.5 font-bold text-white transition hover:brightness-105">
                                       <Save size={18} /> Salvar Alterações
                                   </button>
                               </div>
@@ -751,7 +768,7 @@ const Settings: React.FC<SettingsProps> = ({ onNavigateToPage }) => {
               <div className="surface-card-strong p-4">
                 <div className="flex items-center justify-between gap-3 flex-wrap">
                   <div className="flex items-center gap-2 text-sm font-bold text-slate-800">
-                    <Search size={16} className="text-[#2c348c]" /> Filtros
+                    <Search size={16} className="text-sl-navy" /> Filtros
                   </div>
                   <div className="flex items-center gap-2">
                     <select
@@ -776,7 +793,7 @@ const Settings: React.FC<SettingsProps> = ({ onNavigateToPage }) => {
                         // trigger reload via state change
                         setLogLimit((v) => v);
                       }}
-                      className="pressable-3d px-3 py-1 rounded bg-gradient-to-b from-white to-slate-50 border border-slate-300/80 text-xs font-bold text-slate-700 hover:border-[#2c348c]/30"
+                      className="pressable-3d px-3 py-1 rounded bg-gradient-to-b from-white to-slate-50 border border-slate-300/80 text-xs font-bold text-slate-700 hover:border-sl-navy/30"
                       type="button"
                     >
                       Recarregar
@@ -785,7 +802,7 @@ const Settings: React.FC<SettingsProps> = ({ onNavigateToPage }) => {
                       type="button"
                       onClick={exportLogsCsv}
                       disabled={!canExportLogs || logsLoading || logs.length === 0}
-                      className="pressable-3d px-3 py-1 rounded bg-gradient-to-b from-white to-slate-50 border border-slate-300/80 text-xs font-bold text-slate-700 disabled:opacity-50 hover:border-[#2c348c]/30"
+                      className="pressable-3d px-3 py-1 rounded bg-gradient-to-b from-white to-slate-50 border border-slate-300/80 text-xs font-bold text-slate-700 disabled:opacity-50 hover:border-sl-navy/30"
                     >
                       Exportar CSV
                     </button>
@@ -793,7 +810,7 @@ const Settings: React.FC<SettingsProps> = ({ onNavigateToPage }) => {
                       type="button"
                       onClick={exportLogsXlsx}
                       disabled={!canExportLogs || logsLoading || logs.length === 0}
-                      className="pressable-3d px-3 py-1 rounded bg-gradient-to-b from-white to-slate-50 border border-slate-300/80 text-xs font-bold text-slate-700 disabled:opacity-50 hover:border-[#2c348c]/30"
+                      className="pressable-3d px-3 py-1 rounded bg-gradient-to-b from-white to-slate-50 border border-slate-300/80 text-xs font-bold text-slate-700 disabled:opacity-50 hover:border-sl-navy/30"
                     >
                       Exportar Excel
                     </button>

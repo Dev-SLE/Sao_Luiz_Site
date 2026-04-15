@@ -59,7 +59,7 @@ const ComercialRoboSupremo: React.FC = () => {
           type="button"
           onClick={() => void load()}
           disabled={loading}
-          className="inline-flex items-center gap-2 rounded-xl bg-[#2c348c] px-4 py-2 text-xs font-bold text-white hover:bg-[#e42424] transition-colors disabled:opacity-60"
+          className="inline-flex items-center gap-2 rounded-xl bg-sl-navy px-4 py-2 text-xs font-bold text-white hover:bg-sl-red transition-colors disabled:opacity-60"
         >
           <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
           Atualizar status
@@ -119,7 +119,7 @@ const ComercialRoboSupremo: React.FC = () => {
             type="button"
             onClick={() => void runNow()}
             disabled={!runtimeReady || running}
-            className="inline-flex items-center gap-2 rounded-xl bg-[#2c348c] px-4 py-2 text-xs font-bold text-white hover:bg-[#e42424] transition-colors disabled:opacity-60"
+            className="inline-flex items-center gap-2 rounded-xl bg-sl-navy px-4 py-2 text-xs font-bold text-white hover:bg-sl-red transition-colors disabled:opacity-60"
           >
             <Play size={14} />
             {running ? 'Robô em execução' : 'Iniciar Robô'}

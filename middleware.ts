@@ -1,25 +1,44 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
 
-/**
- * Evolution Manager às vezes concatena base (…/api/whatsapp/evolution) com path
- * (/api/whatsapp/evolution/webhook), gerando URL duplicada.
- * Rewrite mantém método e corpo do POST.
- */
-const DUPLICATE_WEBHOOK = "/api/whatsapp/evolution/api/whatsapp/evolution/webhook";
+/** Mesmo nome que `SESSION_COOKIE_NAME` em `lib/server/session.ts` (evita import Node no Edge). */
+const SESSION_COOKIE_NAME = 'sle_session';
 
 export function middleware(request: NextRequest) {
-  const p = request.nextUrl.pathname.replace(/\/+$/, "") || "/";
-  if (p !== DUPLICATE_WEBHOOK) {
+  const { pathname } = request.nextUrl;
+
+  if (
+    pathname.startsWith('/api/') ||
+    pathname.startsWith('/_next/') ||
+    pathname === '/favicon.ico' ||
+    pathname === '/manifest.webmanifest' ||
+    pathname.startsWith('/icon') ||
+    /\.[a-zA-Z0-9]+$/.test(pathname)
+  ) {
     return NextResponse.next();
   }
-  const url = request.nextUrl.clone();
-  url.pathname = "/api/whatsapp/evolution/webhook";
-  return NextResponse.rewrite(url);
+
+  if (pathname === '/login' || pathname === '/recuperar-senha' || pathname === '/redefinir-senha') {
+    return NextResponse.next();
+  }
+
+  const cookie = request.cookies.get(SESSION_COOKIE_NAME);
+  if (!cookie?.value || cookie.value.length < 8) {
+    const url = request.nextUrl.clone();
+    url.pathname = '/login';
+    url.searchParams.set('from', pathname);
+    return NextResponse.redirect(url);
+  }
+
+  if (pathname === '/colaborador') {
+    const url = request.nextUrl.clone();
+    url.pathname = '/perfil';
+    return NextResponse.redirect(url);
+  }
+
+  return NextResponse.next();
 }
 
 export const config = {
-  matcher: [
-    "/api/whatsapp/evolution/api/whatsapp/evolution/webhook",
-    "/api/whatsapp/evolution/api/whatsapp/evolution/webhook/",
-  ],
+  matcher: ['/((?!_next/static|_next/image).*)'],
 };

@@ -9,6 +9,14 @@ const NORMALIZED_STATUS_SQL = `
   TRANSLATE(UPPER(COALESCE(c.status, '')), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇ', 'AAAAAEEEEIIIIOOOOOUUUUC')
 `;
 
+const VIEW_TAB_PERMISSION: Record<string, string> = {
+  pendencias: "tab.operacional.pendencias.view",
+  criticos: "tab.operacional.criticos.view",
+  em_busca: "tab.operacional.em_busca.view",
+  ocorrencias: "tab.operacional.ocorrencias.view",
+  concluidos: "tab.operacional.concluidos.view",
+};
+
 export async function POST(req: Request) {
   try {
     const session = await getSessionContext(req);
@@ -39,6 +47,10 @@ export async function POST(req: Request) {
 
     const rawViewKey = ["pendencias", "criticos", "em_busca", "ocorrencias", "tad", "concluidos"].includes(String(view)) ? String(view) : "pendencias";
     const viewKey = rawViewKey === "tad" ? "ocorrencias" : rawViewKey;
+    const tabPerm = VIEW_TAB_PERMISSION[viewKey];
+    if (tabPerm && !can(session, tabPerm)) {
+      return NextResponse.json({ error: "Sem permissão para esta visualização" }, { status: 403 });
+    }
     const hasOperationalGlobal =
       can(session, "scope.operacional.all") || can(session, "MANAGE_SETTINGS") || String(session.role || "").toLowerCase() === "admin";
     const serverLinkedUnit = hasOperationalGlobal ? "" : String(session.dest || "").trim();
@@ -91,6 +103,16 @@ export async function POST(req: Request) {
     const assignmentIdExpr = assignmentAvailable ? "a.id" : "NULL";
     const assignmentAgencyExpr = assignmentAvailable ? "a.agency_unit" : "NULL";
     const assignmentUserExpr = assignmentAvailable ? "a.assigned_username" : "NULL";
+
+    const assignPoolNarrow =
+      assignmentAvailable &&
+      can(session, "ASSIGN_OPERATIONAL_PENDING") &&
+      !hasOperationalGlobal;
+    const sessionUserForPool = String(session.username || "").trim();
+    const extraAssignClause = assignmentAvailable
+      ? ` AND (NOT $10::boolean OR COALESCE(TRIM(a.assigned_username), '') = '' OR LOWER(TRIM(a.assigned_username)) = LOWER(TRIM($11::text))) `
+      : "";
+
     const sql = `
       WITH base AS (
         SELECT
@@ -146,6 +168,7 @@ export async function POST(req: Request) {
           )
         )
           AND ($2::text IS NULL OR c.entrega = $2::text)
+          ${extraAssignClause}
           AND (
             $5::text = 'ALL'
             OR ($5::text = 'WITH' AND ${assignmentIdExpr} IS NOT NULL)
@@ -206,7 +229,7 @@ export async function POST(req: Request) {
         ) w) AS assignment_user_counts
     `;
 
-    const result = await pool.query(sql, [
+    const queryParams: unknown[] = [
       viewKey,
       effectiveUnit || null,
       payArr,
@@ -216,7 +239,11 @@ export async function POST(req: Request) {
       assignmentUserValue || null,
       assignmentMine,
       assignmentMineUser,
-    ]);
+    ];
+    if (assignmentAvailable) {
+      queryParams.push(assignPoolNarrow, sessionUserForPool);
+    }
+    const result = await pool.query(sql, queryParams);
     const row = result.rows?.[0] || {};
 
     return NextResponse.json({

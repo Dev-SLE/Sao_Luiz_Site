@@ -51,7 +51,7 @@ const CrmContact360: React.FC = () => {
   return (
     <div className="flex flex-col gap-4 animate-in fade-in duration-500 text-slate-900 max-w-5xl">
       <div className="flex items-center gap-3">
-        <div className="rounded-lg bg-slate-100 p-2 text-[#2c348c] border border-slate-200">
+        <div className="rounded-lg bg-slate-100 p-2 text-sl-navy border border-slate-200">
           <UserCircle2 size={22} />
         </div>
         <div>
@@ -84,7 +84,7 @@ const CrmContact360: React.FC = () => {
         <button
           type="button"
           disabled={loading || (!phone.trim() && !email.trim() && !leadId.trim())}
-          className="rounded-lg bg-[#2c348c] px-4 py-2 text-xs font-bold text-white disabled:opacity-50 flex items-center justify-center gap-2"
+          className="rounded-lg bg-sl-navy px-4 py-2 text-xs font-bold text-white disabled:opacity-50 flex items-center justify-center gap-2"
           onClick={() => void runSearch()}
         >
           <Search size={14} />

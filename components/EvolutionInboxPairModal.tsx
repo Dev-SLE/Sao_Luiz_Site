@@ -263,7 +263,7 @@ export const EvolutionInboxPairModal: React.FC<Props> = ({ open, onClose, inbox 
       >
         <div className="flex items-start justify-between gap-2">
           <div>
-            <h2 id="evo-pair-title" className="text-sm font-black text-[#06183e]">
+            <h2 id="evo-pair-title" className="text-sm font-black text-sl-navy">
               Conectar WhatsApp Web
             </h2>
             <p className="mt-1 text-[11px] text-slate-600">
@@ -330,7 +330,7 @@ export const EvolutionInboxPairModal: React.FC<Props> = ({ open, onClose, inbox 
                 onClick={() => setDeviceOs(b.id)}
                 className={`rounded-full border px-3 py-1.5 text-[10px] font-semibold transition-colors ${
                   deviceOs === b.id
-                    ? "border-[#2c348c] bg-[#2c348c]/10 text-[#06183e]"
+                    ? "border-sl-navy bg-sl-navy/10 text-sl-navy"
                     : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
                 }`}
               >
@@ -378,7 +378,7 @@ export const EvolutionInboxPairModal: React.FC<Props> = ({ open, onClose, inbox 
             type="button"
             disabled={loading || pairSuccess}
             onClick={() => runConnect(true)}
-            className="inline-flex items-center gap-1 rounded-lg bg-gradient-to-r from-[#2c348c] to-[#1f2f86] px-4 py-2 text-xs font-bold text-white disabled:opacity-60"
+            className="inline-flex items-center gap-1 rounded-lg bg-gradient-to-r from-sl-navy to-sl-navy-light px-4 py-2 text-xs font-bold text-white disabled:opacity-60"
           >
             {loading && <Loader2 size={14} className="animate-spin" />}
             Gerar QR
@@ -403,7 +403,7 @@ export const EvolutionInboxPairModal: React.FC<Props> = ({ open, onClose, inbox 
             <img src={base64} alt="QR Code WhatsApp" className="max-w-[240px] rounded-lg border border-white shadow" />
           ) : waitingQr ? (
             <div className="text-center text-[11px] text-slate-600">
-              <Loader2 className="mx-auto mb-2 animate-spin text-[#2c348c]" size={28} />
+              <Loader2 className="mx-auto mb-2 animate-spin text-sl-navy" size={28} />
               Aguardando QR (webhook <code className="text-[10px]">QRCODE_UPDATED</code>)…
             </div>
           ) : (

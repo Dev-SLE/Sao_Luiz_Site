@@ -394,7 +394,7 @@ const OcorrenciasHub: React.FC<Props> = ({ data, onNoteClick, serverPagination, 
             type="button"
             onClick={() => setTab(id)}
             className={`rounded-lg px-3 py-1.5 text-xs font-bold border ${
-              tab === id ? "bg-[#2c348c] text-white border-[#2c348c]" : "bg-white text-slate-700 border-slate-200"
+              tab === id ? "bg-sl-navy text-white border-sl-navy" : "bg-white text-slate-700 border-slate-200"
             }`}
           >
             {label}
@@ -419,7 +419,7 @@ const OcorrenciasHub: React.FC<Props> = ({ data, onNoteClick, serverPagination, 
               <div className="absolute right-0 z-50 mt-1 w-[min(100vw-2rem,22rem)] rounded-xl border border-slate-200 bg-white shadow-lg">
                 <div className="flex items-center justify-between border-b border-slate-100 px-3 py-2">
                   <span className="text-[11px] font-bold text-slate-700">Alertas operacionais</span>
-                  <button type="button" onClick={ackOccNotifications} className="text-[10px] font-bold text-[#2c348c] underline">
+                  <button type="button" onClick={ackOccNotifications} className="text-[10px] font-bold text-sl-navy underline">
                     Marcar como lidas
                   </button>
                 </div>
@@ -568,7 +568,7 @@ const OcorrenciasHub: React.FC<Props> = ({ data, onNoteClick, serverPagination, 
               <p className="text-[11px] font-bold uppercase tracking-wider text-slate-600">Indenizações</p>
               <p className="text-xs text-slate-600 mt-1 max-w-3xl">
                 Processo de ressarcimento ligado à ocorrência. Quando o caso estiver maduro juridicamente/financeiramente, a{" "}
-                <strong>última etapa</strong> costuma ser consolidar tudo no <button type="button" className="text-[#2c348c] font-bold underline" onClick={() => setTab("DOSSIE")}>Dossiê</button> — documentação única para defesa e arquivo.
+                <strong>última etapa</strong> costuma ser consolidar tudo no <button type="button" className="text-sl-navy font-bold underline" onClick={() => setTab("DOSSIE")}>Dossiê</button> — documentação única para defesa e arquivo.
               </p>
             </div>
             <button
@@ -762,7 +762,7 @@ const OcorrenciasHub: React.FC<Props> = ({ data, onNoteClick, serverPagination, 
                                 onClick={() => setActiveFolder(fb.key)}
                                 className={`flex flex-col items-start gap-1 rounded-xl border p-3 text-left transition-colors ${
                                   activeFolder === fb.key
-                                    ? "border-[#2c348c] bg-[#f0f1fb] shadow-sm"
+                                    ? "border-sl-navy bg-[#f0f1fb] shadow-sm"
                                     : "border-slate-200 bg-slate-50 hover:border-slate-300"
                                 }`}
                               >
@@ -804,7 +804,7 @@ const OcorrenciasHub: React.FC<Props> = ({ data, onNoteClick, serverPagination, 
                                       href={`https://drive.google.com/file/d/${dossierDetail.dossier.pdf_drive_file_id}/view`}
                                       target="_blank"
                                       rel="noreferrer"
-                                      className="text-[#2c348c] font-bold underline"
+                                      className="text-sl-navy font-bold underline"
                                     >
                                       abrir
                                     </a>
@@ -846,7 +846,7 @@ const OcorrenciasHub: React.FC<Props> = ({ data, onNoteClick, serverPagination, 
                                           <span className="rounded bg-slate-100 px-1 font-bold">{at.category}</span>{" "}
                                           {at.label || "arquivo"}{" "}
                                           {at.url ? (
-                                            <a href={at.url} target="_blank" rel="noreferrer" className="text-[#2c348c] underline font-bold">
+                                            <a href={at.url} target="_blank" rel="noreferrer" className="text-sl-navy underline font-bold">
                                               abrir
                                             </a>
                                           ) : null}
@@ -883,7 +883,7 @@ const OcorrenciasHub: React.FC<Props> = ({ data, onNoteClick, serverPagination, 
                                       <div className="font-bold text-[11px]">{n.usuario}</div>
                                       <div>{n.texto}</div>
                                       {n.link_imagem ? (
-                                        <a href={String(n.link_imagem).split(/[\s,]+/)[0]} target="_blank" rel="noreferrer" className="text-[10px] text-[#2c348c] font-bold underline">
+                                        <a href={String(n.link_imagem).split(/[\s,]+/)[0]} target="_blank" rel="noreferrer" className="text-[10px] text-sl-navy font-bold underline">
                                           Abrir anexo
                                         </a>
                                       ) : null}
@@ -913,7 +913,7 @@ const OcorrenciasHub: React.FC<Props> = ({ data, onNoteClick, serverPagination, 
                                     href={pdfUrl(d.cte, d.serie)}
                                     target="_blank"
                                     rel="noreferrer"
-                                    className="inline-flex items-center gap-1 rounded-lg bg-[#2c348c] px-3 py-2 text-white text-xs font-bold"
+                                    className="inline-flex items-center gap-1 rounded-lg bg-sl-navy px-3 py-2 text-white text-xs font-bold"
                                   >
                                     <ExternalLink size={14} /> Baixar PDF
                                   </a>

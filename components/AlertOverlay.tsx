@@ -117,7 +117,7 @@ const AlertOverlay: React.FC<Props> = ({ onOpenCte }) => {
       className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-md"
     >
       <div className={`w-full max-w-lg overflow-hidden rounded-3xl border shadow-2xl ${isOcorrencia ? 'border-violet-200 bg-white' : 'border-red-200 bg-white'}`}>
-        <div className={`px-6 py-4 ${isOcorrencia ? 'bg-gradient-to-r from-violet-700 to-violet-600' : 'bg-gradient-to-r from-[#e42424] to-[#c21820]'}`}>
+        <div className={`px-6 py-4 ${isOcorrencia ? 'bg-gradient-to-r from-violet-700 to-violet-600' : 'bg-gradient-to-r from-sl-red to-[#9e0f26]'}`}>
           <div className="flex items-center gap-3 text-white">
             <span className="rounded-xl bg-white/20 p-2">
               <BellRing size={20} />
@@ -159,7 +159,7 @@ const AlertOverlay: React.FC<Props> = ({ onOpenCte }) => {
           </button>
           <button
             onClick={() => { setActive(false); onOpenCte(targetCte); }}
-            className={`flex-1 rounded-xl px-4 py-3 text-sm font-black text-white transition-all active:scale-[0.99] ${isOcorrencia ? 'bg-violet-600 hover:bg-violet-700' : 'bg-[#e42424] hover:bg-[#c21820]'}`}
+            className={`flex-1 rounded-xl px-4 py-3 text-sm font-black text-white transition-all active:scale-[0.99] ${isOcorrencia ? 'bg-violet-600 hover:bg-violet-700' : 'bg-sl-red hover:bg-[#9e0f26]'}`}
           >
             Verificar e Anotar
           </button>

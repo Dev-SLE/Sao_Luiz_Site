@@ -126,7 +126,7 @@ const OperationalMap: React.FC<Props> = ({
       ))}
       {hasTrail ? (
         <>
-          <Polyline positions={trailChrono.map((p) => [p.lat, p.lng])} pathOptions={{ color: "#2c348c", weight: 4 }} />
+          <Polyline positions={trailChrono.map((p) => [p.lat, p.lng])} pathOptions={{ color: "#0a1628", weight: 4 }} />
           {arrowIcon && latest ? (
             <Marker position={[latest.lat, latest.lng]} icon={arrowIcon}>
               <Popup>
@@ -138,7 +138,7 @@ const OperationalMap: React.FC<Props> = ({
               </Popup>
             </Marker>
           ) : (
-            <CircleMarker center={[latest!.lat, latest!.lng]} radius={8} pathOptions={{ color: "#e42424" }}>
+            <CircleMarker center={[latest!.lat, latest!.lng]} radius={8} pathOptions={{ color: "#c41230" }}>
               <Popup>
                 Última posição
                 <br />
@@ -150,7 +150,7 @@ const OperationalMap: React.FC<Props> = ({
           )}
         </>
       ) : fallbackPoint ? (
-        <CircleMarker center={[fallbackPoint.lat, fallbackPoint.lng]} radius={8} pathOptions={{ color: "#e42424" }}>
+        <CircleMarker center={[fallbackPoint.lat, fallbackPoint.lng]} radius={8} pathOptions={{ color: "#c41230" }}>
           <Popup>{fallbackPoint?.label || "Última posição"}</Popup>
         </CircleMarker>
       ) : hasRef ? (

@@ -53,7 +53,7 @@ const Modal: React.FC<{ open: boolean; title: string; onClose: () => void; child
       <div className="w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_0_40px_rgba(0,0,0,0.9)]">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-black text-slate-900">{title}</h3>
-          <button onClick={onClose} className="rounded-full border border-slate-200 p-1 text-slate-600 hover:border-[#2c348c]/50 hover:text-[#2c348c]">
+          <button onClick={onClose} className="rounded-full border border-slate-200 p-1 text-slate-600 hover:border-sl-navy/50 hover:text-sl-navy">
             <X size={14} />
           </button>
         </div>
@@ -299,7 +299,7 @@ const ComercialAuditoria: React.FC = () => {
           type="button"
           onClick={() => void load()}
           disabled={loading}
-          className="inline-flex items-center gap-2 rounded-xl bg-[#2c348c] px-4 py-2 text-xs font-bold text-white hover:bg-[#e42424] transition-colors disabled:opacity-60"
+          className="inline-flex items-center gap-2 rounded-xl bg-sl-navy px-4 py-2 text-xs font-bold text-white hover:bg-sl-red transition-colors disabled:opacity-60"
         >
           <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
           Atualizar
@@ -307,9 +307,9 @@ const ComercialAuditoria: React.FC = () => {
       </div>
 
       <div className="flex gap-2">
-        <button className={`px-3 py-1.5 rounded-lg text-xs font-bold border ${tab === 'ACOES' ? 'bg-[#2c348c] border-[#2c348c]/50 text-white' : 'bg-slate-50 border-slate-200 text-slate-600'}`} onClick={() => setTab('ACOES')}>Ações</button>
-        <button className={`px-3 py-1.5 rounded-lg text-xs font-bold border ${tab === 'DOSSIE' ? 'bg-[#2c348c] border-[#2c348c]/50 text-white' : 'bg-slate-50 border-slate-200 text-slate-600'}`} onClick={() => setTab('DOSSIE')}>Dossiê</button>
-        <button className={`px-3 py-1.5 rounded-lg text-xs font-bold border ${tab === 'ACOMPANHAMENTO' ? 'bg-[#2c348c] border-[#2c348c]/50 text-white' : 'bg-slate-50 border-slate-200 text-slate-600'}`} onClick={() => setTab('ACOMPANHAMENTO')}>Acompanhamento</button>
+        <button className={`px-3 py-1.5 rounded-lg text-xs font-bold border ${tab === 'ACOES' ? 'bg-sl-navy border-sl-navy/50 text-white' : 'bg-slate-50 border-slate-200 text-slate-600'}`} onClick={() => setTab('ACOES')}>Ações</button>
+        <button className={`px-3 py-1.5 rounded-lg text-xs font-bold border ${tab === 'DOSSIE' ? 'bg-sl-navy border-sl-navy/50 text-white' : 'bg-slate-50 border-slate-200 text-slate-600'}`} onClick={() => setTab('DOSSIE')}>Dossiê</button>
+        <button className={`px-3 py-1.5 rounded-lg text-xs font-bold border ${tab === 'ACOMPANHAMENTO' ? 'bg-sl-navy border-sl-navy/50 text-white' : 'bg-slate-50 border-slate-200 text-slate-600'}`} onClick={() => setTab('ACOMPANHAMENTO')}>Acompanhamento</button>
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-4">
@@ -331,7 +331,7 @@ const ComercialAuditoria: React.FC = () => {
             </thead>
             <tbody className="divide-y divide-slate-200">
               {rowsByTab.map((r) => (
-                <tr key={r.id} className={selectedId === r.id ? 'bg-[#2c348c]/10' : 'hover:bg-slate-50'}>
+                <tr key={r.id} className={selectedId === r.id ? 'bg-sl-navy/10' : 'hover:bg-slate-50'}>
                   <td className="px-3 py-2">{r.id}</td>
                   <td className="px-3 py-2">{r.agencia}</td>
                   {tab === 'ACOES' && <td className="px-3 py-2">{Number(r.percProjetado || 0).toFixed(1)}%</td>}
@@ -343,7 +343,7 @@ const ComercialAuditoria: React.FC = () => {
                   {tab === 'ACOMPANHAMENTO' && <td className="px-3 py-2">{r.responsavel || '-'}</td>}
                   <td className="px-3 py-2">{tab === 'DOSSIE' ? (r.dataAtualizacao ? new Date(r.dataAtualizacao).toLocaleDateString('pt-BR') : '-') : r.statusAuditoria}</td>
                   <td className="px-3 py-2">
-                    <button onClick={() => onView(r.id)} className="inline-flex items-center gap-1 rounded-md bg-[#2c348c] px-2 py-1 font-bold text-white hover:bg-[#243a7a]">
+                    <button onClick={() => onView(r.id)} className="inline-flex items-center gap-1 rounded-md bg-sl-navy px-2 py-1 font-bold text-white hover:bg-sl-navy-light">
                       <Eye size={12} />
                       Ver
                     </button>
@@ -384,7 +384,7 @@ const ComercialAuditoria: React.FC = () => {
                   <textarea className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 min-h-[100px] resize-y outline-none" value={resumo} onChange={(e) => setResumo(e.target.value)} />
                 </div>
                 <div className="flex justify-end">
-                  <button onClick={() => void suggestPlan()} disabled={suggesting} className="inline-flex items-center gap-2 rounded-xl bg-[#2c348c] px-4 py-2 text-xs font-bold text-white hover:bg-[#e42424] transition-colors disabled:opacity-60">
+                  <button onClick={() => void suggestPlan()} disabled={suggesting} className="inline-flex items-center gap-2 rounded-xl bg-sl-navy px-4 py-2 text-xs font-bold text-white hover:bg-sl-red transition-colors disabled:opacity-60">
                     <Sparkles size={14} />
                     {suggesting ? 'Sugerindo...' : 'Sugerir Plano com IA'}
                   </button>
@@ -394,7 +394,7 @@ const ComercialAuditoria: React.FC = () => {
                   <textarea className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 min-h-[180px] resize-y outline-none" value={plano} onChange={(e) => setPlano(e.target.value)} />
                 </div>
                 <div className="flex justify-end">
-                  <button onClick={() => void saveAcoes()} disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-[#2c348c] px-4 py-2 text-xs font-bold text-white hover:bg-[#e42424] transition-colors disabled:opacity-60">
+                  <button onClick={() => void saveAcoes()} disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-sl-navy px-4 py-2 text-xs font-bold text-white hover:bg-sl-red transition-colors disabled:opacity-60">
                     <Save size={14} />
                     {saving ? 'Salvando...' : 'Salvar Ações'}
                   </button>
@@ -422,7 +422,7 @@ const ComercialAuditoria: React.FC = () => {
                           <td className="px-3 py-2">{h.acao}</td>
                           <td className="px-3 py-2">{h.actor || '-'}</td>
                           <td className="px-3 py-2">
-                            <button onClick={() => setSelectedHistoryDetail(h)} className="inline-flex items-center gap-1 rounded-md bg-[#2c348c] px-2 py-1 font-bold text-white hover:bg-[#243a7a]">
+                            <button onClick={() => setSelectedHistoryDetail(h)} className="inline-flex items-center gap-1 rounded-md bg-sl-navy px-2 py-1 font-bold text-white hover:bg-sl-navy-light">
                               <Eye size={12} />
                               Ver
                             </button>
@@ -442,7 +442,7 @@ const ComercialAuditoria: React.FC = () => {
                   <textarea className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 min-h-[90px] resize-y outline-none" value={historyNote} onChange={(e) => setHistoryNote(e.target.value)} />
                 </div>
                 <div className="flex justify-end">
-                  <button onClick={() => void addHistory()} disabled={savingHistory || !historyNote.trim()} className="inline-flex items-center gap-2 rounded-xl bg-[#2c348c] px-4 py-2 text-xs font-bold text-white hover:bg-[#e42424] transition-colors disabled:opacity-60">
+                  <button onClick={() => void addHistory()} disabled={savingHistory || !historyNote.trim()} className="inline-flex items-center gap-2 rounded-xl bg-sl-navy px-4 py-2 text-xs font-bold text-white hover:bg-sl-red transition-colors disabled:opacity-60">
                     <MessageSquarePlus size={14} />
                     {savingHistory ? 'Registrando...' : 'Registrar Evento'}
                   </button>
@@ -491,7 +491,7 @@ const ComercialAuditoria: React.FC = () => {
                   <textarea className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 min-h-[90px] resize-y outline-none" value={conclusao} onChange={(e) => setConclusao(e.target.value)} />
                 </div>
                 <div className="flex justify-end">
-                  <button onClick={() => void saveAcompanhamento()} disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-[#2c348c] px-4 py-2 text-xs font-bold text-white hover:bg-[#e42424] transition-colors disabled:opacity-60">
+                  <button onClick={() => void saveAcompanhamento()} disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-sl-navy px-4 py-2 text-xs font-bold text-white hover:bg-sl-red transition-colors disabled:opacity-60">
                     <Save size={14} />
                     {saving ? 'Salvando...' : 'Salvar Acompanhamento'}
                   </button>

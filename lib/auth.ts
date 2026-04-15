@@ -18,6 +18,8 @@ export interface AuthUser {
 export interface AuthResponse {
   user: AuthUser;
   success: boolean;
+  /** Permissões do perfil retornadas no login (para fluxo pós-login sem round-trip extra). */
+  permissions?: string[];
 }
 
 export class NeonDataClient {

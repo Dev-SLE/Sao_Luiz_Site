@@ -148,7 +148,7 @@ const CrmDashboard: React.FC = () => {
     <div className="flex flex-col gap-4 animate-in fade-in duration-500 text-slate-900">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="rounded-lg bg-slate-100 p-2 text-[#e42424] border border-slate-200 shadow-[0_0_18px_rgba(236,27,35,0.4)]">
+          <div className="rounded-lg bg-slate-100 p-2 text-sl-red border border-slate-200 shadow-[0_0_18px_rgba(236,27,35,0.4)]">
             <MessageSquare size={22} />
           </div>
           <div>
@@ -217,7 +217,7 @@ const CrmDashboard: React.FC = () => {
       <div className="flex flex-wrap gap-2 text-[11px]">
         <button
           type="button"
-          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold text-slate-700 hover:border-[#2c348c]/35"
+          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold text-slate-700 hover:border-sl-navy/35"
           onClick={exportKpisCsv}
         >
           <Download size={14} />
@@ -225,7 +225,7 @@ const CrmDashboard: React.FC = () => {
         </button>
         <button
           type="button"
-          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold text-slate-700 hover:border-[#2c348c]/35"
+          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold text-slate-700 hover:border-sl-navy/35"
           onClick={exportProductivityCsv}
         >
           <Download size={14} />
@@ -244,7 +244,7 @@ const CrmDashboard: React.FC = () => {
               Distribuídas entre WhatsApp, IA e Interno.
             </p>
           </div>
-          <Activity size={32} className="text-[#e42424]" />
+          <Activity size={32} className="text-sl-red" />
         </div>
 
         <div className="surface-card interactive-lift p-4 flex items-center justify-between">

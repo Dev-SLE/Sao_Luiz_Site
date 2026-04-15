@@ -732,7 +732,7 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
     <div className="space-y-4 animate-in fade-in duration-500 text-slate-900">
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="rounded-lg bg-slate-100 p-2 text-[#e42424] border border-slate-200 shadow-[0_0_18px_rgba(236,27,35,0.4)]">
+          <div className="rounded-lg bg-slate-100 p-2 text-sl-red border border-slate-200 shadow-[0_0_18px_rgba(236,27,35,0.4)]">
             <MapPin size={20} />
           </div>
           <div>
@@ -770,7 +770,7 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
           <button
             type="button"
             onClick={() => fetchItems()}
-            className="inline-flex items-center gap-2 rounded-xl bg-[#2c348c] px-4 py-2 text-xs font-semibold text-white shadow-md transition-all hover:bg-[#e42424]"
+            className="inline-flex items-center gap-2 rounded-xl bg-sl-navy px-4 py-2 text-xs font-semibold text-white shadow-md transition-all hover:bg-sl-red"
             disabled={loadingItems}
           >
             {loadingItems ? <Loader2 size={14} className="animate-spin" /> : "Atualizar"}
@@ -779,7 +779,7 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
       </div>
 
       {/* Filtros (cards, sem tabela) */}
-      <div className="rounded-2xl border border-[#2c348c]/20 bg-gradient-to-b from-white to-[#f4f7ff] p-3 shadow-[0_12px_26px_rgba(15,23,42,0.12)]">
+      <div className="rounded-2xl border border-sl-navy/20 bg-gradient-to-b from-white to-[#f4f7ff] p-3 shadow-[0_12px_26px_rgba(15,23,42,0.12)]">
         <div className="flex flex-col md:flex-row md:items-center md:gap-3">
           <div className="flex-1 relative">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -790,7 +790,7 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Buscar por CTE, série, destino, coleta, destinatário e rastreio..."
-              className="w-full pl-10 pr-4 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-[#2c348c]/25 focus:border-[#2c348c]/40"
+              className="w-full pl-10 pr-4 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-sl-navy/25 focus:border-sl-navy/40"
             />
           </div>
 
@@ -798,7 +798,7 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
             <select
               value={unit}
               onChange={(e) => setUnit(e.target.value)}
-              className="appearance-none rounded-xl bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-[#2c348c]/25 focus:border-[#2c348c]/40"
+              className="appearance-none rounded-xl bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-sl-navy/25 focus:border-sl-navy/40"
             >
               <option value="">Todas unidades</option>
               {unitOptions.map((u) => (
@@ -811,13 +811,13 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
               type="date"
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
-              className="appearance-none rounded-xl bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-[#2c348c]/25 focus:border-[#2c348c]/40"
+              className="appearance-none rounded-xl bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-sl-navy/25 focus:border-sl-navy/40"
             />
             <input
               type="date"
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
-              className="appearance-none rounded-xl bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-[#2c348c]/25 focus:border-[#2c348c]/40"
+              className="appearance-none rounded-xl bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-sl-navy/25 focus:border-sl-navy/40"
             />
 
             <button
@@ -826,7 +826,7 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
                 setPage(1);
                 fetchItems();
               }}
-              className="rounded-xl bg-[#2c348c] px-4 py-2 text-xs font-semibold text-white hover:bg-[#243a7a]"
+              className="rounded-xl bg-sl-navy px-4 py-2 text-xs font-semibold text-white hover:bg-sl-navy-light"
             >
               Aplicar
             </button>
@@ -845,7 +845,7 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
         {items.map((i) => (
           <div
             key={`${i.CTE}-${i.SERIE}`}
-            className="bg-white border border-slate-200 rounded-2xl p-4 shadow-[0_8px_24px_rgba(15,23,42,0.10)] transition-all duration-200 hover:-translate-y-[1px] hover:border-[#2c348c]/35 hover:shadow-[0_14px_30px_rgba(44,52,140,0.16)]"
+            className="bg-white border border-slate-200 rounded-2xl p-4 shadow-[0_8px_24px_rgba(15,23,42,0.10)] transition-all duration-200 hover:-translate-y-[1px] hover:border-sl-navy/35 hover:shadow-[0_14px_30px_rgba(44,52,140,0.16)]"
           >
             <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
               <div className="min-w-0">
@@ -920,7 +920,7 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
                 <button
                   type="button"
                   onClick={() => fetchDetail(i.CTE, i.SERIE)}
-                  className="rounded-xl border border-[#2c348c]/40 bg-[#2c348c] px-4 py-2 text-xs font-semibold text-white hover:bg-[#243a7a]"
+                  className="rounded-xl border border-sl-navy/40 bg-sl-navy px-4 py-2 text-xs font-semibold text-white hover:bg-sl-navy-light"
                 >
                   Abrir rastreio
                 </button>
@@ -1087,10 +1087,10 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
                   </span>
                   <span className="text-[10px] text-slate-500">{selected.sigaiLinhaTempo.length}</span>
                 </div>
-                <div className="relative border-l-2 border-[#2c348c]/35 ml-2 pl-4 space-y-4 pb-1">
+                <div className="relative border-l-2 border-sl-navy/35 ml-2 pl-4 space-y-4 pb-1">
                   {selected.sigaiLinhaTempo.map((row, idx) => (
                     <div key={`${row.data_evento}-${idx}`} className="relative">
-                      <span className="absolute -left-[calc(0.5rem+5px)] top-1.5 w-2.5 h-2.5 rounded-full bg-[#2c348c] ring-2 ring-white border border-white shadow" />
+                      <span className="absolute -left-[calc(0.5rem+5px)] top-1.5 w-2.5 h-2.5 rounded-full bg-sl-navy ring-2 ring-white border border-white shadow" />
                       <div className="text-[10px] text-slate-500 font-mono">{row.data_evento}</div>
                       <div className="text-xs font-semibold text-slate-900 leading-snug">{row.evento}</div>
                       <div className="text-[11px] text-slate-600">{row.operador || "—"}</div>
@@ -1243,7 +1243,7 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
                 <button
                   type="button"
                   onClick={() => setShowMapModal(true)}
-                  className="rounded-lg bg-[#2c348c] px-3 py-1.5 text-[11px] text-white hover:bg-[#243a7a]"
+                  className="rounded-lg bg-sl-navy px-3 py-1.5 text-[11px] text-white hover:bg-sl-navy-light"
                 >
                   Abrir mapa ampliado
                 </button>
@@ -1299,7 +1299,7 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
               />
               <div className="text-[10px] text-slate-500 mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 px-0.5">
                 <span>Tracejado cinza: itinerário típico</span>
-                <span className="text-[#2c348c]">Linha azul: trilha GPS</span>
+                <span className="text-sl-navy">Linha azul: trilha GPS</span>
                 <span className="text-amber-700">Ponto âmbar: progresso na rota típica</span>
                 <span className="text-blue-700">Azul claro: paragens O/D</span>
               </div>
@@ -1349,7 +1349,7 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
                   type="button"
                   onClick={handleSaveLink}
                   disabled={isLinking || (!linkVehicleId.trim() && !linkPlate.trim())}
-                  className="inline-flex items-center gap-2 rounded-lg bg-[#2c348c] px-3 py-2 text-xs text-white disabled:opacity-50"
+                  className="inline-flex items-center gap-2 rounded-lg bg-sl-navy px-3 py-2 text-xs text-white disabled:opacity-50"
                 >
                   {isLinking ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
                   {isLinking ? "Salvando vínculo..." : "Salvar vínculo / baldeação"}
@@ -1373,7 +1373,7 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
                       <button
                         type="button"
                         onClick={() => openMapsForStop(selected.item, s)}
-                        className="rounded-lg border border-[#2c348c]/40 bg-[#2c348c] px-2 py-1 text-[11px] text-white hover:bg-[#243a7a]"
+                        className="rounded-lg border border-sl-navy/40 bg-sl-navy px-2 py-1 text-[11px] text-white hover:bg-sl-navy-light"
                       >
                         Mapa
                       </button>
@@ -1483,7 +1483,7 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
                   onClick={() => setMode("ROTA")}
                   className={clsx(
                     "flex-1 px-3 py-2 text-xs rounded-lg border transition-colors",
-                    mode === "ROTA" ? "border-[#2c348c]/40 bg-[#2c348c] text-white" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-100"
+                    mode === "ROTA" ? "border-sl-navy/40 bg-sl-navy text-white" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-100"
                   )}
                   disabled={!canManage}
                 >
@@ -1494,7 +1494,7 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
                   onClick={() => setMode("DESCARGA")}
                   className={clsx(
                     "flex-1 px-3 py-2 text-xs rounded-lg border transition-colors",
-                    mode === "DESCARGA" ? "border-[#2c348c]/40 bg-[#2c348c] text-white" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-100"
+                    mode === "DESCARGA" ? "border-sl-navy/40 bg-sl-navy text-white" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-100"
                   )}
                   disabled={!canManage}
                 >
@@ -1509,7 +1509,7 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
                     <select
                       value={rotaAction}
                       onChange={(e) => setRotaAction(e.target.value as RotaAction)}
-                      className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-[#2c348c]/25 focus:border-[#2c348c]/40"
+                      className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-sl-navy/25 focus:border-sl-navy/40"
                       disabled={!canManage}
                     >
                       <option value="OBSERVACAO_GERAL">Observação geral</option>
@@ -1523,7 +1523,7 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
                     <div>
                       <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide">Ônibus (opcional)</label>
                       <input
-                        className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-[#2c348c]/25 focus:border-[#2c348c]/40"
+                        className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-sl-navy/25 focus:border-sl-navy/40"
                         value={busName}
                         onChange={(e) => setBusName(e.target.value)}
                         disabled={!canManage}
@@ -1533,7 +1533,7 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
                     <div>
                       <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide">Parada (opcional)</label>
                       <input
-                        className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-[#2c348c]/25 focus:border-[#2c348c]/40"
+                        className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-sl-navy/25 focus:border-sl-navy/40"
                         value={stopName}
                         onChange={(e) => setStopName(e.target.value)}
                         disabled={!canManage}
@@ -1545,7 +1545,7 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
                   <div>
                     <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide">Local (opcional)</label>
                     <input
-                      className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-[#2c348c]/25 focus:border-[#2c348c]/40"
+                      className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-sl-navy/25 focus:border-sl-navy/40"
                       value={locationText}
                       onChange={(e) => setLocationText(e.target.value)}
                       disabled={!canManage}
@@ -1560,7 +1560,7 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
                     <select
                       value={descStatus}
                       onChange={(e) => setDescStatus(e.target.value as DescargaStatus)}
-                      className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-[#2c348c]/25 focus:border-[#2c348c]/40"
+                      className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-sl-navy/25 focus:border-sl-navy/40"
                       disabled={!canManage}
                     >
                       <option value="RECEBIDO">Recebido</option>
@@ -1574,7 +1574,7 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
                     <div>
                       <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide">Ônibus (opcional)</label>
                       <input
-                        className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-[#2c348c]/25 focus:border-[#2c348c]/40"
+                        className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-sl-navy/25 focus:border-sl-navy/40"
                         value={busName}
                         onChange={(e) => setBusName(e.target.value)}
                         disabled={!canManage}
@@ -1591,7 +1591,7 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
                           setStopName(v);
                           setLocationText(v);
                         }}
-                        className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-[#2c348c]/25 focus:border-[#2c348c]/40"
+                        className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-sl-navy/25 focus:border-sl-navy/40"
                         disabled={!canManage}
                       >
                         <option value="">Selecione</option>
@@ -1605,7 +1605,7 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
 
                       {destinoSelectValue === "__CUSTOM__" && (
                         <input
-                          className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-[#2c348c]/25 focus:border-[#2c348c]/40"
+                          className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-sl-navy/25 focus:border-sl-navy/40"
                           value={stopName}
                           onChange={(e) => {
                             setStopName(e.target.value);
@@ -1623,7 +1623,7 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
               <div>
                 <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide">Observação</label>
                 <textarea
-                  className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-[#2c348c]/25 focus:border-[#2c348c]/40 min-h-[72px] resize-none"
+                  className="mt-1 w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-sl-navy/25 focus:border-sl-navy/40 min-h-[72px] resize-none"
                   value={observation}
                   onChange={(e) => setObservation(e.target.value)}
                   disabled={!canManage}
@@ -1716,7 +1716,7 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
                   type="button"
                   onClick={handleSaveEvent}
                   disabled={!canManage || isSaving || isUploading || !selected.item.CTE}
-                  className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#2c348c] px-3 py-2 text-xs font-semibold text-white shadow-md transition-all hover:bg-[#e42424] disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-sl-navy px-3 py-2 text-xs font-semibold text-white shadow-md transition-all hover:bg-sl-red disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
                   {isSaving ? "Salvando..." : "Salvar evento"}

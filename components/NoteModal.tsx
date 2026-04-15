@@ -111,7 +111,7 @@ const MediaAttachment: React.FC<MediaAttachmentProps> = ({ url, onImageClick }) 
                </div>
                <div className="rounded border border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-600">
                  A visualização incorporada do Google Drive pode ser bloqueada por políticas de segurança do navegador.
-                 <a href={url} target="_blank" rel="noreferrer" className="ml-1 font-bold text-[#2c348c] underline">
+                 <a href={url} target="_blank" rel="noreferrer" className="ml-1 font-bold text-sl-navy underline">
                    Abrir arquivo no Drive
                  </a>
                </div>
@@ -484,7 +484,7 @@ const NoteModal: React.FC<Props> = ({ cte, onClose }) => {
         )}
 
         <div className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-slate-50 p-4 text-slate-800">
-          <div><h3 className="font-bold text-lg flex items-center gap-2">CTE {cte.CTE} <span className="bg-[#2c348c] text-white text-[10px] px-2 py-0.5 rounded-full font-mono">{cte.SERIE}</span></h3><span className="text-xs text-sky-600">Anotações de Mercadoria</span></div>
+          <div><h3 className="font-bold text-lg flex items-center gap-2">CTE {cte.CTE} <span className="bg-sl-navy text-white text-[10px] px-2 py-0.5 rounded-full font-mono">{cte.SERIE}</span></h3><span className="text-xs text-sky-600">Anotações de Mercadoria</span></div>
           <button onClick={() => !isSending && onClose()} disabled={isSending} className="p-1.5 rounded-full hover:bg-slate-200 transition-colors">
             <X size={20}/>
           </button>
@@ -493,11 +493,11 @@ const NoteModal: React.FC<Props> = ({ cte, onClose }) => {
         <div className="bg-white border-b border-slate-200 px-4 py-3 flex flex-col gap-2 shrink-0">
              <div className="flex items-center gap-6 text-xs text-slate-600">
                  <div className="flex items-center gap-1.5">
-                     <Package size={16} className="text-[#e42424]" />
+                     <Package size={16} className="text-sl-red" />
                      <span>Vol: <strong className="text-slate-900">{liveCte.VOLUMES || '0'}</strong></span>
                  </div>
                  <div className="flex items-center gap-1.5">
-                     <Scale size={16} className="text-[#e42424]" />
+                     <Scale size={16} className="text-sl-red" />
                      <span>Peso: <strong className="text-slate-900">{liveCte.PESO || '0'}</strong></span>
                  </div>
              </div>
@@ -528,7 +528,7 @@ const NoteModal: React.FC<Props> = ({ cte, onClose }) => {
             {currentNotes.map((note, idx) => (
               <div key={idx} className={clsx("flex flex-col p-3 rounded-lg shadow-sm border relative bg-slate-50 border-slate-200 transition-all", note.pending && "opacity-60")}>
                 <div className="flex justify-between items-center text-xs text-slate-500 mb-2 pb-2 border-b border-slate-200">
-                  <div className="flex items-center gap-1.5 font-bold text-[#e42424]">{note.USUARIO}</div>
+                  <div className="flex items-center gap-1.5 font-bold text-sl-red">{note.USUARIO}</div>
                   <div className="flex items-center gap-2 font-mono text-[10px] text-slate-500">{note.DATA} {note.pending ? <Loader2 size={10} className="animate-spin" /> : <CheckCircle2 size={12} className="text-emerald-400" />}</div>
                 </div>
                 <p className="text-slate-800 text-sm leading-relaxed whitespace-pre-wrap font-medium">{note.TEXTO}</p>
@@ -548,7 +548,7 @@ const NoteModal: React.FC<Props> = ({ cte, onClose }) => {
                         <button
                           type="button"
                           onClick={() => setExpandedAttachments(prev => ({ ...prev, [note.ID]: true }))}
-                          className="mt-2 w-fit text-[11px] font-bold text-primary-300 bg-slate-100 border border-slate-200 px-3 py-1 rounded-lg hover:border-[#e42424] transition-colors"
+                          className="mt-2 w-fit text-[11px] font-bold text-primary-300 bg-slate-100 border border-slate-200 px-3 py-1 rounded-lg hover:border-sl-red transition-colors"
                         >
                           Ver anexos ({links.length})
                         </button>
@@ -590,7 +590,7 @@ const NoteModal: React.FC<Props> = ({ cte, onClose }) => {
                 <div className="flex flex-wrap gap-2 py-1">
                     {pendingFiles.map((f, i) => (
                         <div key={i} className="flex items-center gap-1 bg-slate-100 px-2 py-1 rounded border border-slate-200 text-[10px] font-medium text-slate-800 shadow-sm">
-                            <FileIcon size={12} className="text-[#e42424]"/> {f.name}
+                            <FileIcon size={12} className="text-sl-red"/> {f.name}
                             <button type="button" onClick={() => removeFile(i)} className="text-red-400 hover:text-red-300 ml-1"><Trash2 size={12}/></button>
                         </div>
                     ))}
@@ -700,12 +700,12 @@ const NoteModal: React.FC<Props> = ({ cte, onClose }) => {
                 value={text} onChange={e => setText(e.target.value)} 
                 placeholder={isOcorrencia ? "Descreva a ocorrência (obrigatório)..." : "Digite sua observação..."} 
                 rows={1} disabled={isSending || !hasPermission('EDIT_NOTES')}
-                className="flex-1 bg-slate-100 border border-slate-200 rounded-2xl px-4 py-2.5 text-sm text-slate-800 font-medium outline-none resize-none max-h-[100px] placeholder-gray-500 focus:bg-white focus:ring-2 focus:ring-[#2c348c]/25"
+                className="flex-1 bg-slate-100 border border-slate-200 rounded-2xl px-4 py-2.5 text-sm text-slate-800 font-medium outline-none resize-none max-h-[100px] placeholder-gray-500 focus:bg-white focus:ring-2 focus:ring-sl-navy/25"
                 style={{ fieldSizing: 'content' } as any} 
             />
             <input type="file" multiple ref={fileInputRef} onChange={handleFileChange} className="hidden" />
-            <button type="button" onClick={handleUploadClick} disabled={isSending || !hasPermission('EDIT_NOTES')} className={clsx("p-2.5 rounded-full transition-colors", pendingFiles.length > 0 ? "bg-slate-100 text-[#e42424] shadow-sm" : "text-slate-500 hover:bg-slate-100")}><Paperclip size={20} /></button>
-            <button type="submit" disabled={isSending || !hasPermission('EDIT_NOTES') || (!text.trim() && pendingFiles.length === 0)} className="rounded-full bg-gradient-to-r from-[#2c348c] to-[#06183e] p-2.5 text-white hover:opacity-95 disabled:opacity-50 shadow-[0_0_18px_rgba(26,27,98,0.8)] active:scale-95 transition-all">
+            <button type="button" onClick={handleUploadClick} disabled={isSending || !hasPermission('EDIT_NOTES')} className={clsx("p-2.5 rounded-full transition-colors", pendingFiles.length > 0 ? "bg-slate-100 text-sl-red shadow-sm" : "text-slate-500 hover:bg-slate-100")}><Paperclip size={20} /></button>
+            <button type="submit" disabled={isSending || !hasPermission('EDIT_NOTES') || (!text.trim() && pendingFiles.length === 0)} className="rounded-full bg-gradient-to-r from-sl-navy to-sl-navy-light p-2.5 text-white hover:opacity-95 disabled:opacity-50 shadow-[0_0_18px_rgba(26,27,98,0.8)] active:scale-95 transition-all">
               {isSending ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
             </button>
           </div>

@@ -79,7 +79,7 @@ export function AppMessageModal({
             </p>
             <button
               type="button"
-              className="mt-4 w-full rounded-xl bg-gradient-to-r from-[#2c348c] to-[#1f2f86] px-4 py-2.5 text-xs font-bold text-white hover:opacity-95"
+              className="mt-4 w-full rounded-xl bg-gradient-to-r from-sl-navy to-sl-navy-light px-4 py-2.5 text-xs font-bold text-white hover:opacity-95"
               onClick={onClose}
             >
               {actionLabel}
@@ -126,7 +126,7 @@ export function AppConfirmModal({
   if (!open) return null;
   const confirmClass = danger
     ? "bg-red-600 hover:bg-red-700 text-white border border-red-700"
-    : "bg-gradient-to-r from-[#2c348c] to-[#1f2f86] text-white border border-slate-300/20";
+    : "bg-gradient-to-r from-sl-navy to-sl-navy-light text-white border border-slate-300/20";
 
   return (
     <div
@@ -142,7 +142,7 @@ export function AppConfirmModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-2">
-          <h2 id="app-confirm-title" className="text-sm font-black text-[#06183e] pr-6">
+          <h2 id="app-confirm-title" className="text-sm font-black text-sl-navy pr-6">
             {title}
           </h2>
           <button

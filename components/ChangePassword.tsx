@@ -73,7 +73,7 @@ const ChangePassword: React.FC<Props> = ({ onClose }) => {
     <div className="mx-auto mt-6 max-w-md">
       <div className="mb-6 flex items-center justify-between">
         <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-900">
-          <Lock className="text-[#2c348c]" size={28} strokeWidth={2} /> Alterar senha
+          <Lock className="text-sl-navy" size={28} strokeWidth={2} /> Alterar senha
         </h1>
         {onClose && (
           <button
@@ -110,7 +110,7 @@ const ChangePassword: React.FC<Props> = ({ onClose }) => {
               required
               value={currentPass}
               onChange={(e) => setCurrentPass(e.target.value)}
-              className="w-full rounded-lg border border-slate-200 bg-white p-2.5 text-slate-900 outline-none placeholder:text-slate-400 focus:border-[#2c348c] focus:ring-2 focus:ring-[#2c348c]/20"
+              className="w-full rounded-lg border border-slate-200 bg-white p-2.5 text-slate-900 outline-none placeholder:text-slate-400 focus:border-sl-navy focus:ring-2 focus:ring-sl-navy/20"
               placeholder="Digite sua senha atual"
             />
           </div>
@@ -121,7 +121,7 @@ const ChangePassword: React.FC<Props> = ({ onClose }) => {
               required
               value={newPass}
               onChange={(e) => setNewPass(e.target.value)}
-              className="w-full rounded-lg border border-slate-200 bg-white p-2.5 text-slate-900 outline-none placeholder:text-slate-400 focus:border-[#2c348c] focus:ring-2 focus:ring-[#2c348c]/20"
+              className="w-full rounded-lg border border-slate-200 bg-white p-2.5 text-slate-900 outline-none placeholder:text-slate-400 focus:border-sl-navy focus:ring-2 focus:ring-sl-navy/20"
               placeholder="Digite a nova senha"
             />
           </div>
@@ -132,7 +132,7 @@ const ChangePassword: React.FC<Props> = ({ onClose }) => {
               required
               value={confirmPass}
               onChange={(e) => setConfirmPass(e.target.value)}
-              className="w-full rounded-lg border border-slate-200 bg-white p-2.5 text-slate-900 outline-none placeholder:text-slate-400 focus:border-[#2c348c] focus:ring-2 focus:ring-[#2c348c]/20"
+              className="w-full rounded-lg border border-slate-200 bg-white p-2.5 text-slate-900 outline-none placeholder:text-slate-400 focus:border-sl-navy focus:ring-2 focus:ring-sl-navy/20"
               placeholder="Confirme a nova senha"
             />
           </div>
@@ -140,7 +140,7 @@ const ChangePassword: React.FC<Props> = ({ onClose }) => {
           <button
             type="submit"
             disabled={loading}
-            className="flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-[#2c348c] to-[#06183e] py-2.5 font-bold text-white transition hover:opacity-95 disabled:opacity-50"
+            className="flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-sl-navy to-sl-navy-light py-2.5 font-bold text-white transition hover:opacity-95 disabled:opacity-50"
           >
             {loading ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
             {loading ? 'Salvando...' : 'Salvar nova senha'}

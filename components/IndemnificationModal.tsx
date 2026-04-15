@@ -343,7 +343,7 @@ const IndemnificationModal: React.FC<Props> = ({ indemnificationId, onClose, onU
                   type="button"
                   onClick={saveFields}
                   disabled={loading}
-                  className="rounded-lg bg-[#2c348c] px-3 py-1.5 text-[11px] font-bold text-white disabled:opacity-50"
+                  className="rounded-lg bg-sl-navy px-3 py-1.5 text-[11px] font-bold text-white disabled:opacity-50"
                 >
                   Salvar campos
                 </button>

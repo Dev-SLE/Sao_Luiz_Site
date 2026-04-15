@@ -153,7 +153,7 @@ function LeadAvatar({
       ) : (
         <UserCircle2
           size={size}
-          className={active ? 'text-[#e42424]' : 'text-[#2c348c]/70'}
+          className={active ? 'text-sl-red' : 'text-sl-navy/70'}
         />
       )}
     </div>
@@ -1312,10 +1312,10 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
   return (
     <div className="crm-chat-shell grid grid-cols-12 gap-4 h-full min-h-0">
       {/* Lista de conversas */}
-      <aside className="col-span-12 md:col-span-3 bg-gradient-to-b from-white to-[#f7faff] border border-[#2c348c]/20 rounded-xl flex flex-col min-h-0 shadow-[0_10px_24px_rgba(15,23,42,0.10)]">
+      <aside className="col-span-12 md:col-span-3 bg-gradient-to-b from-white to-slate-50 border border-sl-navy/15 rounded-xl flex flex-col min-h-0 shadow-[0_10px_24px_rgba(15,23,42,0.10)]">
         <div className="px-3 py-3 border-b border-slate-200 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="rounded-lg bg-slate-100 p-1.5 text-[#e42424] border border-slate-200">
+            <div className="rounded-lg bg-slate-100 p-1.5 text-sl-red border border-slate-200">
               <MessageSquare size={18} />
             </div>
             <div>
@@ -1353,8 +1353,8 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
           </div>
         </div>
         {crmScope && (
-          <div className="px-3 py-2 border-b border-slate-200 bg-[#eef3ff]/80">
-            <p className="text-[10px] font-semibold text-[#1f2f86] leading-snug">
+          <div className="px-3 py-2 border-b border-slate-200 bg-slate-100/90">
+            <p className="text-[10px] font-semibold text-sl-navy leading-snug">
               {crmScope === 'ALL' && 'Visão global: você enxerga todas as conversas.'}
               {crmScope === 'TEAM' &&
                 'Visão da equipe: conversas do seu time, sem responsável na fila e as suas.'}
@@ -1365,7 +1365,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
         )}
         <div className="px-3 py-2 border-b border-slate-200">
           <div className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-[11px] text-slate-700">
-            <Hash size={12} className="text-[#2c348c]/70" />
+            <Hash size={12} className="text-sl-navy/70" />
             <input
               placeholder="Buscar por nome ou CTE..."
               value={conversationQuery}
@@ -1413,7 +1413,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                 }}
                 className={clsx(
                   'flex w-full gap-2 border-b border-slate-200 px-3 py-2.5 text-left transition-all duration-150 hover:bg-slate-50 hover:pl-4',
-                  active && 'bg-slate-50 border-l-2 border-l-[#2c348c]'
+                  active && 'bg-slate-50 border-l-2 border-l-sl-navy'
                 )}
               >
                 <div className="mt-1">
@@ -1453,7 +1453,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                     {hasUnread && (
                       <span
                         className={clsx(
-                          'ml-auto inline-flex min-w-[16px] h-4 items-center justify-center rounded-full bg-[#e42424] px-1 text-[9px] font-bold text-white',
+                          'ml-auto inline-flex min-w-[16px] h-4 items-center justify-center rounded-full bg-sl-red px-1 text-[9px] font-bold text-white',
                           pulseUnread && 'animate-pulse'
                         )}
                       >
@@ -1472,7 +1472,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
       </aside>
 
       {/* Chat */}
-      <section className="col-span-12 md:col-span-6 bg-gradient-to-b from-white to-[#f7faff] border border-[#2c348c]/20 rounded-xl flex flex-col min-h-0 shadow-[0_10px_24px_rgba(15,23,42,0.10)]">
+      <section className="col-span-12 md:col-span-6 bg-gradient-to-b from-white to-slate-50 border border-sl-navy/15 rounded-xl flex flex-col min-h-0 shadow-[0_10px_24px_rgba(15,23,42,0.10)]">
         <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
           <div>
               <h2 className="title-ui-section">
@@ -1530,7 +1530,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
               </span>
             )}
           <button
-            className="inline-flex items-center gap-1 rounded-full bg-slate-50 border border-slate-200 px-3 py-1 text-[11px] text-slate-700 hover:border-[#2c348c]/40"
+            className="inline-flex items-center gap-1 rounded-full bg-slate-50 border border-slate-200 px-3 py-1 text-[11px] text-slate-700 hover:border-sl-navy/35"
             onClick={() => {
               if (selectedConversation?.leadPhone) {
                 window.open(`tel:${String(selectedConversation.leadPhone).replace(/\s/g, '')}`);
@@ -1582,7 +1582,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
           {messages.map((m) => {
             const isMe = m.from === 'AGENTE' || m.from === 'IA';
             const bubbleClass = isMe
-              ? 'bg-gradient-to-br from-[#2c348c] to-[#e42424] border-transparent'
+              ? 'bg-gradient-to-br from-sl-navy to-sl-red border-transparent'
               : 'border-slate-300 bg-white';
             return (
               <div
@@ -1756,7 +1756,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                   assignmentMode: 'MANUAL',
                 });
               }}
-              className="rounded-lg bg-white border border-slate-300 px-2 py-2 text-[11px] text-slate-900 outline-none focus:border-[#2c348c]/45 focus:ring-2 focus:ring-[#2c348c]/25"
+              className="rounded-lg bg-white border border-slate-300 px-2 py-2 text-[11px] text-slate-900 outline-none focus:border-sl-navy/40 focus:ring-2 focus:ring-sl-navy/20"
             >
               <option value="">Sem responsável</option>
               {agents.map((a) => (
@@ -1775,7 +1775,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                     lockMinutes: 20,
                   })
                 }
-                className="flex-1 rounded-lg bg-slate-50 border border-slate-200 px-2 py-2 text-[11px] text-slate-800 hover:border-[#2c348c]/40"
+                className="flex-1 rounded-lg bg-slate-50 border border-slate-200 px-2 py-2 text-[11px] text-slate-800 hover:border-sl-navy/35"
               >
                 {selectedConversation?.lockedBy ? `Desbloquear (${selectedConversation.lockedBy})` : 'Assumir conversa'}
               </button>
@@ -1813,7 +1813,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
           <div className="flex items-end gap-2">
             <button
               type="button"
-              className="p-2 rounded-full bg-slate-50 border border-slate-200 text-slate-600 hover:text-[#2c348c] hover:border-[#2c348c]/40"
+              className="p-2 rounded-full bg-slate-50 border border-slate-200 text-slate-600 hover:text-sl-navy hover:border-sl-navy/35"
               onClick={() => {
                 setEmojiOpen((v) => !v);
               }}
@@ -1822,7 +1822,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
             </button>
             <button
               type="button"
-              className="px-2 py-1 rounded-lg bg-slate-50 border border-slate-200 text-[10px] text-slate-700 hover:border-[#2c348c]/40"
+              className="px-2 py-1 rounded-lg bg-slate-50 border border-slate-200 text-[10px] text-slate-700 hover:border-sl-navy/35"
               onClick={handleSofiaSuggest}
               disabled={sofiaSuggesting}
             >
@@ -1830,7 +1830,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
             </button>
             <button
               type="button"
-              className="px-2 py-1 rounded-lg bg-[#2c348c] border border-slate-300 text-[10px] text-white hover:bg-[#e42424]"
+              className="px-2 py-1 rounded-lg bg-sl-navy border border-slate-300 text-[10px] text-white hover:bg-sl-red"
               onClick={handleSofiaAutoReply}
               disabled={sofiaAutoRunning}
             >
@@ -1838,7 +1838,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
             </button>
             <button
               type="button"
-              className="p-2 rounded-full bg-slate-50 border border-slate-200 text-slate-600 hover:text-[#2c348c] hover:border-[#2c348c]/40"
+              className="p-2 rounded-full bg-slate-50 border border-slate-200 text-slate-600 hover:text-sl-navy hover:border-sl-navy/35"
               onClick={() => fileInputRef.current?.click()}
             >
               <Paperclip size={18} />
@@ -1854,7 +1854,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
               {replyTarget && (
                 <div className="mb-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1 text-[10px] text-slate-700 flex items-center justify-between gap-2">
                   <span className="truncate">Respondendo {replyTarget.sender}: {replyTarget.text}</span>
-                  <button type="button" className="text-[10px] text-slate-500 hover:text-[#e42424]" onClick={() => setReplyTarget(null)}>
+                  <button type="button" className="text-[10px] text-slate-500 hover:text-sl-red" onClick={() => setReplyTarget(null)}>
                     limpar
                   </button>
                 </div>
@@ -1871,7 +1871,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                   }
                 }}
                 placeholder="Digite sua mensagem..."
-                className="w-full resize-none rounded-2xl border border-slate-300 bg-white px-4 py-2 text-xs text-slate-900 outline-none placeholder:text-slate-500 focus:border-[#2c348c]/45 focus:ring-2 focus:ring-[#2c348c]/25"
+                className="w-full resize-none rounded-2xl border border-slate-300 bg-white px-4 py-2 text-xs text-slate-900 outline-none placeholder:text-slate-500 focus:border-sl-navy/40 focus:ring-2 focus:ring-sl-navy/20"
                 style={{ minHeight: 38, maxHeight: 168 }}
               />
             </div>
@@ -1879,7 +1879,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
               type="button"
               onClick={handleSend}
               disabled={sendingAttachment}
-              className="rounded-full bg-[#2c348c] p-2.5 text-white shadow-md transition-colors hover:bg-[#e42424] disabled:opacity-60"
+              className="rounded-full bg-sl-navy p-2.5 text-white shadow-md transition-colors hover:bg-sl-red disabled:opacity-60"
             >
               <Send size={18} />
             </button>
@@ -1910,7 +1910,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
       </section>
 
       {/* Dados do cliente */}
-      <aside className="col-span-12 md:col-span-3 bg-gradient-to-b from-white to-[#f7faff] border border-[#2c348c]/20 rounded-xl p-4 flex flex-col space-y-3 min-h-0 overflow-y-auto shadow-[0_10px_24px_rgba(15,23,42,0.10)]">
+      <aside className="col-span-12 md:col-span-3 bg-gradient-to-b from-white to-slate-50 border border-sl-navy/15 rounded-xl p-4 flex flex-col space-y-3 min-h-0 overflow-y-auto shadow-[0_10px_24px_rgba(15,23,42,0.10)]">
         <div className="flex items-center justify-between mb-1">
           <div>
             <h2 className="title-ui-section">Dados do Cliente</h2>
@@ -1930,7 +1930,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                 'px-2 py-1 rounded-full border text-[9px] font-bold uppercase tracking-wide',
                 statusAtendimento === st
                   ? 'bg-emerald-600 text-white border-emerald-500'
-                  : 'bg-slate-50 text-slate-600 border-slate-200 hover:border-[#2c348c]/40'
+                  : 'bg-slate-50 text-slate-600 border-slate-200 hover:border-sl-navy/35'
               )}
             >
               {st === 'PENDENTE' && 'Pendente'}
@@ -1947,7 +1947,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
             className={clsx(
               'px-2 py-1 rounded-md',
               infoTab === 'detalhes'
-                ? 'bg-[#2c348c] text-white'
+                ? 'bg-sl-navy text-white'
                 : 'text-slate-600 hover:bg-slate-50'
             )}
           >
@@ -1959,7 +1959,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
             className={clsx(
               'px-2 py-1 rounded-md',
               infoTab === 'midia'
-                ? 'bg-[#2c348c] text-white'
+                ? 'bg-sl-navy text-white'
                 : 'text-slate-600 hover:bg-slate-50'
             )}
           >
@@ -1971,7 +1971,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
             className={clsx(
               'px-2 py-1 rounded-md',
               infoTab === 'resumo'
-                ? 'bg-[#2c348c] text-white'
+                ? 'bg-sl-navy text-white'
                 : 'text-slate-600 hover:bg-slate-50'
             )}
           >
@@ -2014,7 +2014,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
               <div className="space-y-1">
                 <label className="text-[11px] font-semibold text-slate-700">Telefone</label>
                 <input
-                  className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-900 outline-none focus:border-[#2c348c]/45 focus:ring-2 focus:ring-[#2c348c]/25"
+                  className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-900 outline-none focus:border-sl-navy/40 focus:ring-2 focus:ring-sl-navy/20"
                   value={clientePhone}
                   onChange={(e) => setClientePhone(e.target.value)}
                 />
@@ -2022,7 +2022,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
               <div className="space-y-1">
                 <label className="text-[11px] font-semibold text-slate-700">E-mail</label>
                 <input
-                  className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-900 outline-none focus:border-[#2c348c]/45 focus:ring-2 focus:ring-[#2c348c]/25"
+                  className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-900 outline-none focus:border-sl-navy/40 focus:ring-2 focus:ring-sl-navy/20"
                   value={clienteEmail}
                   onChange={(e) => setClienteEmail(e.target.value)}
                 />
@@ -2030,7 +2030,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
               <div className="space-y-1">
                 <label className="text-[11px] font-semibold text-slate-700">Observações</label>
                 <textarea
-                  className="min-h-[70px] w-full resize-none rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-900 outline-none focus:border-[#2c348c]/45 focus:ring-2 focus:ring-[#2c348c]/25"
+                  className="min-h-[70px] w-full resize-none rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-900 outline-none focus:border-sl-navy/40 focus:ring-2 focus:ring-sl-navy/20"
                   value={observacoes}
                   onChange={(e) => setObservacoes(e.target.value)}
                 />
@@ -2048,7 +2048,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
               <div className="space-y-1">
                 <label className="text-[11px] font-semibold text-slate-700">Unidade de destino</label>
                 <select
-                  className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-900 outline-none focus:border-[#2c348c]/45 focus:ring-2 focus:ring-[#2c348c]/25"
+                  className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-900 outline-none focus:border-sl-navy/40 focus:ring-2 focus:ring-sl-navy/20"
                   value={clienteDestino}
                   onChange={(e) => setClienteDestino(e.target.value)}
                 >
@@ -2062,7 +2062,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                 <div className="space-y-1">
                   <label className="text-[11px] font-semibold text-slate-700">Protocolo</label>
                   <input
-                    className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-900 outline-none focus:border-[#2c348c]/45 focus:ring-2 focus:ring-[#2c348c]/25"
+                    className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-900 outline-none focus:border-sl-navy/40 focus:ring-2 focus:ring-sl-navy/20"
                     value={leadProtocol}
                     onChange={(e) => setLeadProtocol(e.target.value)}
                   />
@@ -2070,7 +2070,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                 <div className="space-y-1">
                   <label className="text-[11px] font-semibold text-slate-700">Origem da rota</label>
                   <input
-                    className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-900 outline-none focus:border-[#2c348c]/45 focus:ring-2 focus:ring-[#2c348c]/25"
+                    className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-900 outline-none focus:border-sl-navy/40 focus:ring-2 focus:ring-sl-navy/20"
                     value={leadRouteOrigin}
                     onChange={(e) => setLeadRouteOrigin(e.target.value)}
                   />
@@ -2080,7 +2080,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                 <div className="space-y-1">
                   <label className="text-[11px] font-semibold text-slate-700">Origem</label>
                   <select
-                    className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-900 outline-none focus:border-[#2c348c]/45 focus:ring-2 focus:ring-[#2c348c]/25"
+                    className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-900 outline-none focus:border-sl-navy/40 focus:ring-2 focus:ring-sl-navy/20"
                     value={leadSource}
                     onChange={(e) => setLeadSource(e.target.value as any)}
                   >
@@ -2092,7 +2092,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                 <div className="space-y-1">
                   <label className="text-[11px] font-semibold text-slate-700">Prioridade</label>
                   <select
-                    className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-900 outline-none focus:border-[#2c348c]/45 focus:ring-2 focus:ring-[#2c348c]/25"
+                    className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-900 outline-none focus:border-sl-navy/40 focus:ring-2 focus:ring-sl-navy/20"
                     value={leadPriority}
                     onChange={(e) => setLeadPriority(e.target.value as any)}
                   >
@@ -2106,7 +2106,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                 <div className="space-y-1">
                   <label className="text-[11px] font-semibold text-slate-700">Tipo de atendimento</label>
                   <input
-                    className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-900 outline-none focus:border-[#2c348c]/45 focus:ring-2 focus:ring-[#2c348c]/25"
+                    className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-900 outline-none focus:border-sl-navy/40 focus:ring-2 focus:ring-sl-navy/20"
                     value={leadServiceType}
                     onChange={(e) => setLeadServiceType(e.target.value)}
                   />
@@ -2115,7 +2115,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                   <label className="text-[11px] font-semibold text-slate-700">Solicitação</label>
                   <input
                     type="datetime-local"
-                    className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-900 outline-none focus:border-[#2c348c]/45 focus:ring-2 focus:ring-[#2c348c]/25"
+                    className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-900 outline-none focus:border-sl-navy/40 focus:ring-2 focus:ring-sl-navy/20"
                     value={leadRequestedAt}
                     onChange={(e) => setLeadRequestedAt(e.target.value)}
                   />
@@ -2125,7 +2125,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                 <div className="space-y-1">
                   <label className="text-[11px] font-semibold text-slate-700">Status da carga</label>
                   <select
-                    className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-900 outline-none focus:border-[#2c348c]/45 focus:ring-2 focus:ring-[#2c348c]/25"
+                    className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-900 outline-none focus:border-sl-navy/40 focus:ring-2 focus:ring-sl-navy/20"
                     value={leadCargoStatus}
                     onChange={(e) => setLeadCargoStatus(e.target.value)}
                   >
@@ -2140,7 +2140,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                 <div className="space-y-1">
                   <label className="text-[11px] font-semibold text-slate-700">Status do cliente</label>
                   <select
-                    className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-900 outline-none focus:border-[#2c348c]/45 focus:ring-2 focus:ring-[#2c348c]/25"
+                    className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-900 outline-none focus:border-sl-navy/40 focus:ring-2 focus:ring-sl-navy/20"
                     value={leadCustomerStatus}
                     onChange={(e) => setLeadCustomerStatus(e.target.value)}
                   >
@@ -2155,7 +2155,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
               <div className="space-y-1">
                 <label className="text-[11px] font-semibold text-slate-700">Localização / rastreio</label>
                 <input
-                  className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-900 outline-none focus:border-[#2c348c]/45 focus:ring-2 focus:ring-[#2c348c]/25"
+                  className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-900 outline-none focus:border-sl-navy/40 focus:ring-2 focus:ring-sl-navy/20"
                   value={leadCurrentLocation}
                   onChange={(e) => setLeadCurrentLocation(e.target.value)}
                 />
@@ -2163,7 +2163,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
               <div className="space-y-1">
                 <label className="text-[11px] font-semibold text-slate-700">Canal preferido</label>
                 <select
-                  className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-900 outline-none focus:border-[#2c348c]/45 focus:ring-2 focus:ring-[#2c348c]/25"
+                  className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-900 outline-none focus:border-sl-navy/40 focus:ring-2 focus:ring-sl-navy/20"
                   value={clientePreferencia}
                   onChange={(e) => setClientePreferencia(e.target.value as any)}
                 >
@@ -2176,7 +2176,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                 type="button"
                 onClick={handleSaveClientData}
                 disabled={savingClientData || !selectedConversation?.leadId}
-                className="w-full mt-1 rounded-lg bg-[#2c348c] border border-slate-300 px-2 py-1.5 text-[11px] text-white hover:bg-[#e42424] disabled:opacity-60"
+                className="w-full mt-1 rounded-lg bg-sl-navy border border-slate-300 px-2 py-1.5 text-[11px] text-white hover:bg-sl-red disabled:opacity-60"
               >
                 {savingClientData ? 'Salvando dados...' : 'Salvar dados do cliente'}
               </button>
@@ -2281,7 +2281,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                 <button
                   type="button"
                   onClick={() => onOpenTracking(selectedConversation.cte || '', undefined)}
-                  className="mt-1 px-2 py-1 text-[11px] rounded bg-[#2c348c] text-white hover:bg-[#e42424]"
+                  className="mt-1 px-2 py-1 text-[11px] rounded bg-sl-navy text-white hover:bg-sl-red"
                 >
                   Abrir módulo operacional completo
                 </button>
@@ -2355,7 +2355,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                 Resumo incremental
               </p>
               <textarea
-                className="min-h-[100px] w-full resize-none rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-900 outline-none focus:border-[#2c348c]/45 focus:ring-2 focus:ring-[#2c348c]/25"
+                className="min-h-[100px] w-full resize-none rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-900 outline-none focus:border-sl-navy/40 focus:ring-2 focus:ring-sl-navy/20"
                 value={aiSummary}
                 onChange={(e) => setAiSummary(e.target.value)}
                 placeholder="Contexto geral, pendências e próximo passo (estilo resumo de e-mail)."
@@ -2363,7 +2363,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
               <button
                 type="button"
                 onClick={() => applyConversationUpdate({ aiSummary })}
-                className="rounded-lg bg-[#2c348c] border border-slate-300 px-2 py-1.5 text-[11px] text-white hover:bg-[#e42424]"
+                className="rounded-lg bg-sl-navy border border-slate-300 px-2 py-1.5 text-[11px] text-white hover:bg-sl-red"
               >
                 Salvar resumo IA
               </button>

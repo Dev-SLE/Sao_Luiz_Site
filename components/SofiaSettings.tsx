@@ -211,7 +211,7 @@ const SofiaSettings: React.FC = () => {
   return (
     <div className="space-y-6 animate-in fade-in duration-500 text-slate-900">
       <div className="flex items-center gap-3">
-        <div className="rounded-lg bg-slate-100 p-2 text-[#e42424] border border-slate-200 shadow-[0_0_18px_rgba(236,27,35,0.4)]">
+        <div className="rounded-lg bg-slate-100 p-2 text-sl-red border border-slate-200 shadow-[0_0_18px_rgba(236,27,35,0.4)]">
           <span className="text-sm font-black">IA</span>
         </div>
         <div>
@@ -242,7 +242,7 @@ const SofiaSettings: React.FC = () => {
       )}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <div className="space-y-3 rounded-xl border border-[#2c348c]/20 bg-gradient-to-b from-white to-[#f7faff] p-4 shadow-[0_10px_24px_rgba(15,23,42,0.10)]">
+        <div className="space-y-3 rounded-xl border border-sl-navy/20 bg-gradient-to-b from-white to-slate-50 p-4 shadow-[0_10px_24px_rgba(15,23,42,0.10)]">
           <h2 className="mb-1 text-sm font-bold text-slate-900">Identidade</h2>
           <div className="space-y-2">
             <div>
@@ -274,7 +274,7 @@ const SofiaSettings: React.FC = () => {
           </div>
         </div>
 
-        <div className="space-y-3 rounded-xl border border-[#2c348c]/20 bg-gradient-to-b from-white to-[#f7faff] p-4 shadow-[0_10px_24px_rgba(15,23,42,0.10)]">
+        <div className="space-y-3 rounded-xl border border-sl-navy/20 bg-gradient-to-b from-white to-slate-50 p-4 shadow-[0_10px_24px_rgba(15,23,42,0.10)]">
           <h2 className="mb-1 text-sm font-bold text-slate-900">Horários de Atendimento</h2>
           <p className="mb-2 text-[11px] text-slate-600">
             Selecione os dias em que a Sofia pode responder sozinha (sem intervenção humana).
@@ -296,7 +296,7 @@ const SofiaSettings: React.FC = () => {
                 className={
                   state.days[key]
                     ? 'px-3 py-2 rounded-lg bg-emerald-700 text-white border border-emerald-500 font-semibold'
-                    : 'px-3 py-2 rounded-lg bg-white text-slate-700 border border-slate-300 hover:border-[#2c348c]/45'
+                    : 'px-3 py-2 rounded-lg bg-white text-slate-700 border border-slate-300 hover:border-sl-navy/45'
                 }
               >
                 {label}
@@ -475,7 +475,7 @@ const SofiaSettings: React.FC = () => {
         </div>
       </div>
 
-      <div className="space-y-2 rounded-xl border border-[#2c348c]/20 bg-gradient-to-b from-white to-[#f7faff] p-4 shadow-[0_10px_24px_rgba(15,23,42,0.10)]">
+      <div className="space-y-2 rounded-xl border border-sl-navy/20 bg-gradient-to-b from-white to-slate-50 p-4 shadow-[0_10px_24px_rgba(15,23,42,0.10)]">
         <h2 className="mb-1 text-sm font-bold text-slate-900">Base de Conhecimento</h2>
         <p className="mb-2 text-[11px] text-slate-600">
           Cole aqui as regras de negócio, políticas de prazo, tipos de carga aceitos, instruções de

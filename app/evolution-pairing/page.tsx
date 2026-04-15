@@ -286,9 +286,9 @@ export default function EvolutionPairingPage() {
         </div>
       )}
 
-      {result && (
+      {result && process.env.NODE_ENV === 'development' && (
         <details className="mt-6 text-xs">
-          <summary className="cursor-pointer text-slate-500">Resposta bruta (debug)</summary>
+          <summary className="cursor-pointer text-slate-500">Resposta bruta (só em desenvolvimento)</summary>
           <pre className="mt-2 overflow-auto rounded bg-slate-900 p-3 text-slate-300">{JSON.stringify(result, null, 2)}</pre>
         </details>
       )}

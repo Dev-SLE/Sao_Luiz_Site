@@ -20,11 +20,12 @@ import {
 } from 'lucide-react';
 import clsx from 'clsx';
 import { COLORS } from '../constants';
+import { StatusBadge } from '@/components/workspace-ui';
 
 /** Paleta alinhada ao site institucional + tons serenos */
-const NAVY = '#06183e';
-const NAVY_MID = '#2c348c';
-const BRAND_RED = '#e42424';
+const NAVY = '#0a1628';
+const NAVY_MID = '#1a2d50';
+const BRAND_RED = '#c41230';
 
 const Dashboard: React.FC = () => {
   const { processedData, baseData } = useData();
@@ -361,7 +362,7 @@ const Dashboard: React.FC = () => {
         'group relative flex h-full w-full flex-col justify-between overflow-hidden rounded-xl border text-left transition-all duration-200',
         'border-slate-200/90 bg-white shadow-sm hover:border-slate-300 hover:shadow-md',
         selected &&
-          'ring-2 ring-[#e42424]/30 border-[#e42424]/45 bg-gradient-to-b from-red-50/80 to-white scale-[1.01]',
+          'ring-2 ring-sl-red/30 border-sl-red/45 bg-gradient-to-b from-red-50/80 to-white scale-[1.01]',
         dimmed && !selected && 'opacity-45 saturate-50 hover:opacity-90 hover:saturate-100',
       )}
       style={{
@@ -429,7 +430,7 @@ const Dashboard: React.FC = () => {
 
       {/* Cabeçalho + controles */}
       <section className={clsx(cardBase, 'overflow-hidden')}>
-        <div className="h-1 w-full bg-gradient-to-r from-[#06183e] via-[#2c348c] to-[#e42424]" />
+        <div className="h-1 w-full bg-gradient-to-r from-sl-navy via-sl-navy-light to-sl-red" />
         <div className="flex flex-col gap-6 p-5 md:flex-row md:items-end md:justify-between md:p-8">
           <div className="flex min-w-0 flex-1 items-start gap-4">
             <div
@@ -439,7 +440,10 @@ const Dashboard: React.FC = () => {
               <TrendingUp className="h-7 w-7 text-white" strokeWidth={2} />
             </div>
             <div className="min-w-0">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#2c348c]">Painel operacional</p>
+              <p className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-sl-navy">
+                <span>Painel operacional</span>
+                <StatusBadge variant="success">Indicadores ao vivo</StatusBadge>
+              </p>
               <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900 md:text-[1.75rem]">
                 Visão executiva de pendências
               </h1>
@@ -484,7 +488,7 @@ const Dashboard: React.FC = () => {
                   <select
                     value={selectedUnit}
                     onChange={(e) => setSelectedUnit(e.target.value)}
-                    className="w-full cursor-pointer appearance-none rounded-xl border border-slate-200 bg-white py-2.5 pl-4 pr-10 text-sm font-semibold text-slate-800 shadow-sm transition hover:border-slate-300 focus:border-[#2c348c] focus:outline-none focus:ring-2 focus:ring-[#2c348c]/20"
+                    className="w-full cursor-pointer appearance-none rounded-xl border border-slate-200 bg-white py-2.5 pl-4 pr-10 text-sm font-semibold text-slate-800 shadow-sm transition hover:border-slate-300 focus:border-sl-navy focus:outline-none focus:ring-2 focus:ring-sl-navy/20"
                   >
                     <option value="">Todas as unidades</option>
                     {availableUnits.map((u) => (
@@ -493,7 +497,7 @@ const Dashboard: React.FC = () => {
                       </option>
                     ))}
                   </select>
-                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-400 transition group-hover:text-[#2c348c]">
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-400 transition group-hover:text-sl-navy">
                     <Filter size={16} />
                   </div>
                 </div>
@@ -504,14 +508,14 @@ const Dashboard: React.FC = () => {
                   type="date"
                   value={draftDateFrom}
                   onChange={(e) => setDraftDateFrom(e.target.value)}
-                  className="min-w-[140px] flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 shadow-sm focus:border-[#2c348c] focus:outline-none focus:ring-2 focus:ring-[#2c348c]/15"
+                  className="min-w-[140px] flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 shadow-sm focus:border-sl-navy focus:outline-none focus:ring-2 focus:ring-sl-navy/15"
                   title="Data de emissão inicial"
                 />
                 <input
                   type="date"
                   value={draftDateTo}
                   onChange={(e) => setDraftDateTo(e.target.value)}
-                  className="min-w-[140px] flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 shadow-sm focus:border-[#2c348c] focus:outline-none focus:ring-2 focus:ring-[#2c348c]/15"
+                  className="min-w-[140px] flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 shadow-sm focus:border-sl-navy focus:outline-none focus:ring-2 focus:ring-sl-navy/15"
                   title="Data de emissão final"
                 />
                 <button
@@ -597,7 +601,7 @@ const Dashboard: React.FC = () => {
           className={clsx(cardBase, 'dashboard-kpi-main-card relative overflow-hidden p-6 lg:col-span-4')}
           style={{ background: `linear-gradient(135deg, #ffffff 0%, #f4f7fb 100%)` }}
         >
-          <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-[#2c348c]/[0.07]" />
+          <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-sl-navy/[0.07]" />
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Pendências no escopo</p>
@@ -647,13 +651,13 @@ const Dashboard: React.FC = () => {
                 </p>
                 <p className="text-sm font-semibold text-slate-700">
                   Ticket médio:
-                  <span className="ml-2 text-lg font-bold text-[#2c348c] tabular-nums">
+                  <span className="ml-2 text-lg font-bold text-sl-navy tabular-nums">
                     {formatCurrency(operationalKPIs.avgTicket)}
                   </span>
                 </p>
               </div>
             </div>
-            <div className="rounded-2xl border border-slate-200 bg-white p-3 text-[#2c348c] shadow-sm">
+            <div className="rounded-2xl border border-slate-200 bg-white p-3 text-sl-navy shadow-sm">
               <Activity className="h-7 w-7" strokeWidth={1.8} />
             </div>
           </div>

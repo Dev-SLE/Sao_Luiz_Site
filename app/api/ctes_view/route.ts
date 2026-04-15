@@ -10,6 +10,14 @@ const NORMALIZED_STATUS_SQL = `
   TRANSLATE(UPPER(COALESCE(c.status, '')), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇ', 'AAAAAEEEEIIIIOOOOOUUUUC')
 `;
 
+const VIEW_TAB_PERMISSION: Record<string, string> = {
+  pendencias: "tab.operacional.pendencias.view",
+  criticos: "tab.operacional.criticos.view",
+  em_busca: "tab.operacional.em_busca.view",
+  ocorrencias: "tab.operacional.ocorrencias.view",
+  concluidos: "tab.operacional.concluidos.view",
+};
+
 export async function GET(req: Request) {
   try {
     const session = await getSessionContext(req);
@@ -29,6 +37,10 @@ export async function GET(req: Request) {
 
     const rawViewKey = ["pendencias", "criticos", "em_busca", "ocorrencias", "tad", "concluidos"].includes(view) ? view : "pendencias";
     const viewKey = rawViewKey === "tad" ? "ocorrencias" : rawViewKey;
+    const tabPerm = VIEW_TAB_PERMISSION[viewKey];
+    if (tabPerm && !can(session, tabPerm)) {
+      return NextResponse.json({ error: "Sem permissão para esta visualização" }, { status: 403 });
+    }
     const hasOperationalGlobal =
       can(session, "scope.operacional.all") || can(session, "MANAGE_SETTINGS") || String(session.role || "").toLowerCase() === "admin";
     const linkedDestUnit = String(session.dest || "").trim();
@@ -61,6 +73,22 @@ export async function GET(req: Request) {
       `
       : ``;
 
+    /** Quem pode atribuir mas não vê operação global: não lista linhas já atribuídas a outro utilizador. */
+    const assignPoolNarrow =
+      assignmentAvailable &&
+      can(session, "ASSIGN_OPERATIONAL_PENDING") &&
+      !hasOperationalGlobal;
+    const sessionUser = String(session.username || "").trim();
+
+    const filterParams: unknown[] = [viewKey];
+    if (!hasOperationalGlobal && linkedDestUnit) filterParams.push(linkedDestUnit);
+    let assignFilterSql = "";
+    if (assignPoolNarrow) {
+      filterParams.push(sessionUser);
+      assignFilterSql = ` AND (COALESCE(TRIM(a.assigned_username), '') = '' OR LOWER(TRIM(a.assigned_username)) = LOWER(TRIM($${filterParams.length}::text))) `;
+    }
+    const countJoinPart = assignPoolNarrow ? assignmentJoin : "";
+
     const totalResult = await pool.query(
       `
         SELECT COUNT(*)::int AS total
@@ -68,6 +96,7 @@ export async function GET(req: Request) {
         LEFT JOIN pendencias.cte_view_index i
           ON i.cte = c.cte
           AND (i.serie = c.serie OR ltrim(i.serie, '0') = ltrim(c.serie, '0'))
+        ${countJoinPart}
         WHERE
           (
             $1 = 'concluidos'
@@ -110,12 +139,16 @@ export async function GET(req: Request) {
             AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'CANCELADO%'
           )
         ${opScopeFilterSql}
+        ${assignFilterSql}
       `,
-      hasOperationalGlobal || !linkedDestUnit ? [viewKey] : [viewKey, linkedDestUnit]
+      filterParams
     );
     const total = totalResult.rows?.[0]?.total || 0;
 
-    const paginationSql = hasOperationalGlobal || !linkedDestUnit ? "LIMIT $2 OFFSET $3" : "LIMIT $3 OFFSET $4";
+    const limitParam = filterParams.length + 1;
+    const offsetParam = filterParams.length + 2;
+    const paginationSql = `LIMIT $${limitParam} OFFSET $${offsetParam}`;
+    const dataParams = [...filterParams, limit, offset];
     const result = await pool.query(
       `
         SELECT
@@ -182,12 +215,11 @@ export async function GET(req: Request) {
             AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'CANCELADO%'
           )
         ${opScopeFilterSql}
+        ${assignFilterSql}
         ORDER BY c.data_emissao DESC
         ${paginationSql}
       `,
-      hasOperationalGlobal || !linkedDestUnit
-        ? [viewKey, limit, offset]
-        : [viewKey, linkedDestUnit, limit, offset]
+      dataParams
     );
 
     const rows = (result.rows || []).map((row: any) => ({

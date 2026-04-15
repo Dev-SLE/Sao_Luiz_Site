@@ -1,0 +1,42 @@
+import { parseWorkspacePath, moduleLabel } from '@/lib/workspace-routes';
+import { CRM_TABS } from '@/modules/crm/routes';
+import { COMERCIAL_TABS } from '@/modules/comercial/routes';
+import { OPERACIONAL_TABS, OPERACIONAL_UTILITY_TABS } from '@/modules/operacional/routes';
+
+/** Título curto só da vista atual (barra superior embutida). */
+export function getWorkspacePageTitle(pathname: string): string {
+  const clean = pathname.replace(/\/+$/, '') || '/';
+  const { module, rest } = parseWorkspacePath(clean);
+  const m = module ?? 'operacional';
+  const r0 = (rest[0] || '').toLowerCase();
+
+  if (m === 'operacional') {
+    const util = OPERACIONAL_UTILITY_TABS.find((t) => clean.endsWith(`/operacional/${t.slug}`));
+    if (util) {
+      if (util.slug === 'configuracoes') return 'Configurações';
+      if (util.slug === 'relatorios') return 'Relatórios';
+      if (util.slug === 'sofia-config') return 'Sofia';
+      if (util.slug === 'mudar-senha') return 'Alterar senha';
+    }
+    const slug = !r0 || r0 === 'dashboard' ? 'visao-geral' : r0;
+    const tab = OPERACIONAL_TABS.find((t) => t.slug === slug);
+    if (tab) return tab.label;
+    return 'Operacional';
+  }
+
+  if (m === 'crm') {
+    const slug = !r0 || r0 === 'dashboard' ? 'dashboard' : r0;
+    const hit = CRM_TABS.find((t) => t.slug === slug);
+    if (hit) return hit.label;
+    return 'CRM';
+  }
+
+  if (m === 'comercial') {
+    const slug = !r0 || r0 === 'auditoria' ? 'metas' : r0;
+    const hit = COMERCIAL_TABS.find((t) => t.slug === slug);
+    if (hit) return hit.label;
+    return 'Comercial';
+  }
+
+  return moduleLabel(m);
+}

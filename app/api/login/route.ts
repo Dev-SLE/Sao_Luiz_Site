@@ -7,6 +7,7 @@ import {
   encodeSession,
   SESSION_COOKIE_NAME,
 } from "../../../lib/server/session";
+import { recordAuditEvent } from "../../../lib/server/ensureFase1Infrastructure";
 
 export const runtime = "nodejs";
 
@@ -39,7 +40,15 @@ export async function POST(req: Request) {
     }
 
     const pool = getPool();
-    const result = await pool.query("SELECT * FROM pendencias.users WHERE username = $1", [username]);
+    const result = await pool.query(
+      `
+        SELECT u.*, p.permissions AS profile_permissions
+        FROM pendencias.users u
+        LEFT JOIN pendencias.profiles p ON LOWER(p.name) = LOWER(u.role)
+        WHERE u.username = $1
+      `,
+      [username]
+    );
     if (result.rows.length === 0) {
       return NextResponse.json({ success: false, message: "Credenciais inválidas" }, { status: 401 });
     }
@@ -74,8 +83,34 @@ export async function POST(req: Request) {
       username: String(username),
       data: { role: user.role, ip, userAgent },
     });
+    try {
+      await recordAuditEvent({
+        actorUsername: String(username),
+        action: "USER_LOGIN",
+        resourceType: "user",
+        resourceId: String(username),
+        payload: { role: String(user.role || "") },
+        ip,
+      });
+    } catch {
+      /* auditoria opcional até DB disponível */
+    }
+    let permissions: string[] = [];
+    const rawPerms = user.profile_permissions;
+    if (Array.isArray(rawPerms)) {
+      permissions = rawPerms.map((x: unknown) => String(x));
+    } else if (typeof rawPerms === "string") {
+      try {
+        const parsed = JSON.parse(rawPerms);
+        if (Array.isArray(parsed)) permissions = parsed.map((x: unknown) => String(x));
+      } catch {
+        permissions = rawPerms.split(",").map((x: string) => x.trim()).filter(Boolean);
+      }
+    }
+
     const response = NextResponse.json({
       success: true,
+      permissions,
       user: {
         username: user.username,
         role: user.role,
