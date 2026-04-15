@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import '../global_styles.css';
 import '../index.css';
 import '../styles/portal-theme.css';
@@ -17,6 +17,9 @@ export const metadata: Metadata = {
     title: 'SLE Workspace',
     statusBarStyle: 'default',
   },
+};
+
+export const viewport: Viewport = {
   themeColor: '#0a1628',
 };
 
