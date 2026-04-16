@@ -4,6 +4,9 @@ import { can, getSessionContext } from '@/lib/server/authorization';
 import { ensureCrmSchemaTables, ensureOccurrencesSchemaTables } from '@/lib/server/ensureSchema';
 import { ensureFase1InfrastructureTables } from '@/lib/server/ensureFase1Infrastructure';
 import type { GlobalSearchGroup } from '@/lib/global-search-types';
+import { bumpApiRoute } from '@/lib/server/apiHitMeter';
+import { readThroughCache } from '@/lib/server/readThroughCache';
+import { operationalCteUnitScopeAndClause } from '@/lib/server/operationalCteUnitScope';
 
 export const runtime = 'nodejs';
 
@@ -19,6 +22,9 @@ export async function GET(req: Request) {
       return NextResponse.json({ query: q, groups: [] as GlobalSearchGroup[] });
     }
 
+    bumpApiRoute('GET /api/global-search');
+    const cacheKey = `global-search:${session.username}:${q.toLowerCase()}`;
+    const body = await readThroughCache(cacheKey, 3500, async () => {
     const pool = getPool();
     const like = `%${q.replace(/%/g, '').replace(/_/g, '')}%`;
     const groups: GlobalSearchGroup[] = [];
@@ -29,10 +35,12 @@ export async function GET(req: Request) {
         can(session, 'MANAGE_SETTINGS') ||
         String(session.role || '').toLowerCase() === 'admin';
       const linkedDestUnit = String(session.dest || '').trim();
-      const scopeSql =
-        hasOperationalGlobal || !linkedDestUnit ? '' : ' AND c.entrega = $2 ';
+      const linkedOriginUnit = String(session.origin || '').trim();
+      const scopeNeeded =
+        !hasOperationalGlobal && (linkedDestUnit || linkedOriginUnit);
+      const scopeSql = scopeNeeded ? operationalCteUnitScopeAndClause(2, 3) : '';
       const params: unknown[] = [like];
-      if (scopeSql) params.push(linkedDestUnit);
+      if (scopeSql) params.push(linkedDestUnit || null, linkedOriginUnit || null);
 
       const r = await pool.query(
         `
@@ -193,7 +201,10 @@ export async function GET(req: Request) {
       /* opcional */
     }
 
-    return NextResponse.json({ query: q, groups: groups.filter((g) => g.items.length > 0) });
+    return { query: q, groups: groups.filter((g) => g.items.length > 0) };
+    });
+
+    return NextResponse.json(body);
   } catch (e) {
     console.error('global-search GET', e);
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 });

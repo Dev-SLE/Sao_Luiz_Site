@@ -2,12 +2,11 @@ import { NextResponse } from "next/server";
 import { getPool } from "../../../lib/server/db";
 import { ensureOperationalAssignmentsTable } from "../../../lib/server/ensureSchema";
 import { can, getSessionContext } from "../../../lib/server/authorization";
+import { OPERATIONAL_CTE_STATUS_NORM_SQL, operationalCteUnitScopeAndClause } from "../../../lib/server/operationalCteUnitScope";
 
 export const runtime = "nodejs";
 
-const NORMALIZED_STATUS_SQL = `
-  TRANSLATE(UPPER(COALESCE(c.status, '')), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇ', 'AAAAAEEEEIIIIOOOOOUUUUC')
-`;
+const NORMALIZED_STATUS_SQL = OPERATIONAL_CTE_STATUS_NORM_SQL;
 
 const VIEW_TAB_PERMISSION: Record<string, string> = {
   pendencias: "tab.operacional.pendencias.view",
@@ -37,7 +36,7 @@ export async function POST(req: Request) {
       noteFilter,
       filterTxEntrega,
       ignoreUnitFilter,
-      userLinkedDestUnit,
+      userLinkedOriginUnit,
       assignmentFilter,
       assignmentAgency,
       assignmentUser,
@@ -54,7 +53,11 @@ export async function POST(req: Request) {
     const hasOperationalGlobal =
       can(session, "scope.operacional.all") || can(session, "MANAGE_SETTINGS") || String(session.role || "").toLowerCase() === "admin";
     const serverLinkedUnit = hasOperationalGlobal ? "" : String(session.dest || "").trim();
-    const effectiveUnit = (ignoreUnitFilter ? "" : (unit || serverLinkedUnit || "")).trim();
+    const serverLinkedOrigin = hasOperationalGlobal ? "" : String(session.origin || "").trim();
+    const effectiveDest = (ignoreUnitFilter ? "" : (unit || serverLinkedUnit || "")).trim();
+    const effectiveOrigin = (
+      ignoreUnitFilter ? "" : (String(userLinkedOriginUnit || "").trim() || serverLinkedOrigin || "")
+    ).trim();
     const statusArr = Array.isArray(statusFilters) ? statusFilters.map(String) : [];
     const payArr = Array.isArray(paymentFilters) ? paymentFilters.map(String) : [];
     const note = String(noteFilter || "ALL");
@@ -110,7 +113,7 @@ export async function POST(req: Request) {
       !hasOperationalGlobal;
     const sessionUserForPool = String(session.username || "").trim();
     const extraAssignClause = assignmentAvailable
-      ? ` AND (NOT $10::boolean OR COALESCE(TRIM(a.assigned_username), '') = '' OR LOWER(TRIM(a.assigned_username)) = LOWER(TRIM($11::text))) `
+      ? ` AND (NOT $11::boolean OR COALESCE(TRIM(a.assigned_username), '') = '' OR LOWER(TRIM(a.assigned_username)) = LOWER(TRIM($12::text))) `
       : "";
 
     const sql = `
@@ -167,39 +170,39 @@ export async function POST(req: Request) {
             AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'CANCELADO%'
           )
         )
-          AND ($2::text IS NULL OR c.entrega = $2::text)
+          ${operationalCteUnitScopeAndClause(2, 3)}
           ${extraAssignClause}
           AND (
-            $5::text = 'ALL'
-            OR ($5::text = 'WITH' AND ${assignmentIdExpr} IS NOT NULL)
-            OR ($5::text = 'WITHOUT' AND ${assignmentIdExpr} IS NULL)
+            $6::text = 'ALL'
+            OR ($6::text = 'WITH' AND ${assignmentIdExpr} IS NOT NULL)
+            OR ($6::text = 'WITHOUT' AND ${assignmentIdExpr} IS NULL)
           )
-          AND ($6::text IS NULL OR $6::text = '' OR ${assignmentAgencyExpr} = $6::text)
-          AND ($7::text IS NULL OR $7::text = '' OR ${assignmentUserExpr} = $7::text)
-          AND (NOT $8::boolean OR ($9::text <> '' AND ${assignmentUserExpr} = $9::text))
+          AND ($7::text IS NULL OR $7::text = '' OR ${assignmentAgencyExpr} = $7::text)
+          AND ($8::text IS NULL OR $8::text = '' OR ${assignmentUserExpr} = $8::text)
+          AND (NOT $9::boolean OR ($10::text <> '' AND ${assignmentUserExpr} = $10::text))
       ),
       base_for_status AS (
         SELECT * FROM base b
-        WHERE (COALESCE(array_length($3::text[], 1), 0) = 0 OR b.frete_pago = ANY($3::text[]))
+        WHERE (COALESCE(array_length($4::text[], 1), 0) = 0 OR b.frete_pago = ANY($4::text[]))
           ${noteCond("b")}
           ${txCond("b")}
       ),
       base_for_payment AS (
         SELECT * FROM base b
-        WHERE (COALESCE(array_length($4::text[], 1), 0) = 0 OR b.status_key = ANY($4::text[]))
+        WHERE (COALESCE(array_length($5::text[], 1), 0) = 0 OR b.status_key = ANY($5::text[]))
           ${noteCond("b")}
           ${txCond("b")}
       ),
       base_for_note AS (
         SELECT * FROM base b
-        WHERE (COALESCE(array_length($3::text[], 1), 0) = 0 OR b.frete_pago = ANY($3::text[]))
-          AND (COALESCE(array_length($4::text[], 1), 0) = 0 OR b.status_key = ANY($4::text[]))
+        WHERE (COALESCE(array_length($4::text[], 1), 0) = 0 OR b.frete_pago = ANY($4::text[]))
+          AND (COALESCE(array_length($5::text[], 1), 0) = 0 OR b.status_key = ANY($5::text[]))
           ${txCond("b")}
       ),
       base_for_tx AS (
         SELECT * FROM base b
-        WHERE (COALESCE(array_length($3::text[], 1), 0) = 0 OR b.frete_pago = ANY($3::text[]))
-          AND (COALESCE(array_length($4::text[], 1), 0) = 0 OR b.status_key = ANY($4::text[]))
+        WHERE (COALESCE(array_length($4::text[], 1), 0) = 0 OR b.frete_pago = ANY($4::text[]))
+          AND (COALESCE(array_length($5::text[], 1), 0) = 0 OR b.status_key = ANY($5::text[]))
           ${noteCond("b")}
       )
       SELECT
@@ -231,7 +234,8 @@ export async function POST(req: Request) {
 
     const queryParams: unknown[] = [
       viewKey,
-      effectiveUnit || null,
+      effectiveDest || null,
+      effectiveOrigin || null,
       payArr,
       statusArr,
       assignmentMode,

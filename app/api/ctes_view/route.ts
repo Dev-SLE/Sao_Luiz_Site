@@ -3,12 +3,11 @@ import { getPool } from "../../../lib/server/db";
 import { formatDateTime } from "../../../lib/server/datetime";
 import { ensureOperationalAssignmentsTable } from "../../../lib/server/ensureSchema";
 import { can, getSessionContext } from "../../../lib/server/authorization";
+import { OPERATIONAL_CTE_STATUS_NORM_SQL, operationalCteUnitScopeAndClause } from "../../../lib/server/operationalCteUnitScope";
 
 export const runtime = "nodejs";
 
-const NORMALIZED_STATUS_SQL = `
-  TRANSLATE(UPPER(COALESCE(c.status, '')), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇ', 'AAAAAEEEEIIIIOOOOOUUUUC')
-`;
+const NORMALIZED_STATUS_SQL = OPERATIONAL_CTE_STATUS_NORM_SQL;
 
 const VIEW_TAB_PERMISSION: Record<string, string> = {
   pendencias: "tab.operacional.pendencias.view",
@@ -44,8 +43,8 @@ export async function GET(req: Request) {
     const hasOperationalGlobal =
       can(session, "scope.operacional.all") || can(session, "MANAGE_SETTINGS") || String(session.role || "").toLowerCase() === "admin";
     const linkedDestUnit = String(session.dest || "").trim();
-    const opScopeFilterSql =
-      hasOperationalGlobal || !linkedDestUnit ? "" : " AND c.entrega = $2 ";
+    const linkedOriginUnit = String(session.origin || "").trim();
+    let opScopeFilterSql = "";
 
     const pool = getPool();
     const assignmentReg = await pool.query(`SELECT to_regclass('pendencias.cte_assignments') AS reg`);
@@ -81,7 +80,10 @@ export async function GET(req: Request) {
     const sessionUser = String(session.username || "").trim();
 
     const filterParams: unknown[] = [viewKey];
-    if (!hasOperationalGlobal && linkedDestUnit) filterParams.push(linkedDestUnit);
+    if (!hasOperationalGlobal && (linkedDestUnit || linkedOriginUnit)) {
+      filterParams.push(linkedDestUnit || null, linkedOriginUnit || null);
+      opScopeFilterSql = operationalCteUnitScopeAndClause(2, 3);
+    }
     let assignFilterSql = "";
     if (assignPoolNarrow) {
       filterParams.push(sessionUser);

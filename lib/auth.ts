@@ -221,6 +221,7 @@ export class NeonDataClient {
     filterTxEntrega?: boolean;
     ignoreUnitFilter?: boolean;
     userLinkedDestUnit?: string;
+    userLinkedOriginUnit?: string;
     assignmentFilter?: 'ALL' | 'WITH' | 'WITHOUT';
     assignmentAgency?: string;
     assignmentUser?: string;
@@ -793,12 +794,17 @@ export class NeonDataClient {
     cte: string;
     serie?: string;
     finalizationStatus: string;
+    /** Envia o PDF finalizado para a pasta do processo no SharePoint. */
+    syncPdf?: boolean;
+    /** @deprecated use syncPdf */
     syncPdfToDrive?: boolean;
   }): Promise<any> {
+    const { syncPdfToDrive, syncPdf, ...rest } = payload;
+    const body = { ...rest, syncPdf: syncPdf ?? syncPdfToDrive };
     const response = await fetch(this.makeApiUrl("/dossie/finalize"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(body),
       credentials: "include",
     });
     if (!response.ok) throw await this.buildHttpError("Erro ao finalizar dossiê", response);

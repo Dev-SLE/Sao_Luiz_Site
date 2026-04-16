@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getPool } from "../../../lib/server/db";
 import { ensureAppLogsTable, ensureOperationalAssignmentsTable } from "../../../lib/server/ensureSchema";
 import { can, getSessionContext } from "../../../lib/server/authorization";
+import { operationalCteUnitScopeAndClause } from "../../../lib/server/operationalCteUnitScope";
+import type { Pool } from "pg";
 
 export const runtime = "nodejs";
 
@@ -9,6 +11,35 @@ const ASSIGNMENT_TYPE = "PENDENTE_AG_BAIXAR";
 
 const norm = (v: any) => String(v || "").trim();
 const normSerie = (v: any) => norm(v) || "0";
+
+async function operationalCteAccessible(
+  pool: Pool,
+  session: NonNullable<Awaited<ReturnType<typeof getSessionContext>>>,
+  cte: string,
+  serie: string
+) {
+  const hasOperationalGlobal =
+    can(session, "scope.operacional.all") ||
+    can(session, "MANAGE_SETTINGS") ||
+    String(session.role || "").toLowerCase() === "admin";
+  if (hasOperationalGlobal) return true;
+  const d = String(session.dest || "").trim();
+  const o = String(session.origin || "").trim();
+  if (!d && !o) return true;
+  const scope = operationalCteUnitScopeAndClause(3, 4);
+  const r = await pool.query(
+    `
+      SELECT 1
+      FROM pendencias.ctes c
+      WHERE c.cte = $1
+        AND (c.serie = $2 OR ltrim(c.serie::text, '0') = ltrim($2::text, '0'))
+        ${scope}
+      LIMIT 1
+    `,
+    [cte, serie, d || null, o || null]
+  );
+  return (r.rowCount ?? 0) > 0;
+}
 
 async function logAssignmentEvent(payload: {
   event: string;
@@ -58,7 +89,11 @@ export async function GET(req: Request) {
       `,
       [cte, serie]
     );
-    return NextResponse.json({ assignment: result.rows?.[0] || null });
+    let assignment = result.rows?.[0] || null;
+    if (assignment && !(await operationalCteAccessible(pool, session, cte, serie))) {
+      assignment = null;
+    }
+    return NextResponse.json({ assignment });
   } catch (error) {
     console.error("Erro ao buscar atribuição operacional:", error);
     return NextResponse.json({ error: "Erro interno" }, { status: 500 });
@@ -85,6 +120,9 @@ export async function POST(req: Request) {
     if (!assignedUsername) return NextResponse.json({ error: "assignedUsername é obrigatório" }, { status: 400 });
 
     const pool = getPool();
+    if (!(await operationalCteAccessible(pool, session, cte, serie))) {
+      return NextResponse.json({ error: "CTE fora do escopo da sua unidade" }, { status: 403 });
+    }
     const result = await pool.query(
       `
         INSERT INTO pendencias.cte_assignments (
@@ -139,6 +177,9 @@ export async function DELETE(req: Request) {
     if (!cte) return NextResponse.json({ error: "cte é obrigatório" }, { status: 400 });
     if (!reason) return NextResponse.json({ error: "Motivo da devolução é obrigatório" }, { status: 400 });
     const pool = getPool();
+    if (!(await operationalCteAccessible(pool, session, cte, serie))) {
+      return NextResponse.json({ error: "CTE fora do escopo da sua unidade" }, { status: 403 });
+    }
     const result = await pool.query(
       `
         UPDATE pendencias.cte_assignments

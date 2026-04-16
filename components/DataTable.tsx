@@ -8,6 +8,7 @@ import { useData } from '../context/DataContext';
 import clsx from 'clsx';
 import { COLORS } from '../constants';
 import { authClient } from '../lib/auth';
+import { operationalCteRowMatchesProfileUnits } from '../lib/operationalCteUnitMatch';
 import { AppMessageModal, type AppMessageVariant } from './AppOverlays';
 
 interface Props {
@@ -266,6 +267,7 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
           filterTxEntrega,
           ignoreUnitFilter,
           userLinkedDestUnit: user?.linkedDestUnit || undefined,
+          userLinkedOriginUnit: user?.linkedOriginUnit || undefined,
           assignmentFilter,
           assignmentAgency: assignmentAgencyFilter || undefined,
           assignmentUser: assignmentUserFilter || undefined,
@@ -291,7 +293,7 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
     return () => {
       cancelled = true;
     };
-  }, [serverView, selectedUnit, statusFilters.join('|'), paymentFilters.join('|'), noteFilter, filterTxEntrega, ignoreUnitFilter, user?.linkedDestUnit, user?.username, assignmentFilter, assignmentAgencyFilter, assignmentUserFilter, assignmentMineOnly, globalSearch, appliedDateFrom, appliedDateTo]);
+  }, [serverView, selectedUnit, statusFilters.join('|'), paymentFilters.join('|'), noteFilter, filterTxEntrega, ignoreUnitFilter, user?.linkedDestUnit, user?.linkedOriginUnit, user?.username, assignmentFilter, assignmentAgencyFilter, assignmentUserFilter, assignmentMineOnly, globalSearch, appliedDateFrom, appliedDateTo]);
 
   // Quando houver filtros, buscamos o "view" completo uma vez e aplicamos os filtros localmente,
   // para que o número de páginas e os resultados batam com os cards (ctes_view_counts).
@@ -388,10 +390,16 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
     } else {
       result = sourceRows;
     }
-    const userRestrictedUnit = (ignoreUnitFilter || isGlobalSearch) ? null : user?.linkedDestUnit;
-    const effectiveUnit = selectedUnit || userRestrictedUnit;
-    if (effectiveUnit) {
-      result = result.filter(d => d.ENTREGA === effectiveUnit || (d.IS_HISTORICAL && d.ENTREGA === 'ARQUIVO'));
+    const userRestrictedDest = (ignoreUnitFilter || isGlobalSearch) ? null : user?.linkedDestUnit;
+    const userRestrictedOrigin = (ignoreUnitFilter || isGlobalSearch) ? null : user?.linkedOriginUnit;
+    if (selectedUnit) {
+      result = result.filter(
+        (d) => d.ENTREGA === selectedUnit || (d.IS_HISTORICAL && d.ENTREGA === 'ARQUIVO')
+      );
+    } else if (userRestrictedDest || userRestrictedOrigin) {
+      result = result.filter((d) =>
+        operationalCteRowMatchesProfileUnits(d, userRestrictedDest, userRestrictedOrigin)
+      );
     }
     if (statusFilters.length > 0) {
       if (serverView === 'concluidos') {
@@ -459,6 +467,7 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
     appliedDateFrom,
     appliedDateTo,
     ignoreUnitFilter,
+    user?.linkedOriginUnit,
   ]);
   const sortedData = useMemo(() => {
     const sorted = [...filteredData];
@@ -834,9 +843,15 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
       let base = isGlobalSearch ? (shouldUseLocalPagination ? (allViewData ?? []) : fullData) : baseAll;
       if (isGlobalSearch) base = base.map(withAssignmentOverride);
       
-      const userRestrictedUnit = (ignoreUnitFilter || isGlobalSearch) ? null : user?.linkedDestUnit;
-      const effectiveUnit = selectedUnit || userRestrictedUnit;
-      if (effectiveUnit) base = base.filter(d => d.ENTREGA === effectiveUnit);
+      const userRestrictedDest = (ignoreUnitFilter || isGlobalSearch) ? null : user?.linkedDestUnit;
+      const userRestrictedOrigin = (ignoreUnitFilter || isGlobalSearch) ? null : user?.linkedOriginUnit;
+      if (selectedUnit) {
+        base = base.filter((d) => d.ENTREGA === selectedUnit);
+      } else if (userRestrictedDest || userRestrictedOrigin) {
+        base = base.filter((d) =>
+          operationalCteRowMatchesProfileUnits(d, userRestrictedDest, userRestrictedOrigin)
+        );
+      }
 
       if (filterType !== 'status' && statusFilters.length > 0) {
         if (serverView === 'concluidos') base = base.filter(d => statusFilters.includes(d.STATUS || ''));
