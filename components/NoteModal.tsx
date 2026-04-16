@@ -300,7 +300,7 @@ const NoteModal: React.FC<Props> = ({ cte, onClose }) => {
   };
 
   const encaminharTrilha = async (track: "INDENIZACAO" | "DOSSIE_DIRETO") => {
-    if (!formalOccurrenceId || !hasPermission("EDIT_NOTES")) return;
+    if (!formalOccurrenceId || !hasPermission("operacional.notes.edit")) return;
     setTrackActionLoading(true);
     try {
       await authClient.patchOccurrenceTrack({ id: formalOccurrenceId, track });
@@ -338,7 +338,7 @@ const NoteModal: React.FC<Props> = ({ cte, onClose }) => {
       });
       return;
     }
-    if (!hasPermission('EDIT_NOTES')) {
+    if (!hasPermission('operacional.notes.edit')) {
       setNoteNotice({
         title: 'Permissão',
         message: 'Seu perfil não possui permissão para registrar anotações.',
@@ -596,7 +596,7 @@ const NoteModal: React.FC<Props> = ({ cte, onClose }) => {
               <div className="mt-3 flex flex-wrap gap-2">
                 <button
                   type="button"
-                  disabled={trackActionLoading || isSending || !hasPermission("EDIT_NOTES")}
+                  disabled={trackActionLoading || isSending || !hasPermission("operacional.notes.edit")}
                   onClick={() => encaminharTrilha("INDENIZACAO")}
                   className="inline-flex items-center gap-2 rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-amber-900 shadow-sm hover:bg-amber-50 disabled:opacity-50"
                 >
@@ -604,7 +604,7 @@ const NoteModal: React.FC<Props> = ({ cte, onClose }) => {
                 </button>
                 <button
                   type="button"
-                  disabled={trackActionLoading || isSending || !hasPermission("EDIT_NOTES")}
+                  disabled={trackActionLoading || isSending || !hasPermission("operacional.notes.edit")}
                   onClick={() => encaminharTrilha("DOSSIE_DIRETO")}
                   className="inline-flex items-center gap-2 rounded-lg border border-indigo-300 bg-white px-3 py-2 text-xs font-bold text-indigo-900 shadow-sm hover:bg-indigo-50 disabled:opacity-50"
                 >
@@ -625,7 +625,7 @@ const NoteModal: React.FC<Props> = ({ cte, onClose }) => {
                     )}>
                         {resolveChecked && <Check size={14} className="text-white" strokeWidth={3} />}
                     </div>
-                    <input type="checkbox" className="hidden" checked={resolveChecked} onChange={e => { setResolveChecked(e.target.checked); if(e.target.checked) setShowConfirmResolve(true); }} disabled={isResolvido || isSending || !hasPermission('EDIT_NOTES')} />
+                    <input type="checkbox" className="hidden" checked={resolveChecked} onChange={e => { setResolveChecked(e.target.checked); if(e.target.checked) setShowConfirmResolve(true); }} disabled={isResolvido || isSending || !hasPermission('operacional.notes.edit')} />
                     <span>Marcar como <span className="text-emerald-600">LOCALIZADA</span></span>
                 </label>
              )}
@@ -639,7 +639,7 @@ const NoteModal: React.FC<Props> = ({ cte, onClose }) => {
                       )}>
                           {isSearch && <Check size={14} className="text-white" strokeWidth={3} />}
                       </div>
-                      <input type="checkbox" className="hidden" checked={isSearch} onChange={e => { setIsSearch(e.target.checked); if(e.target.checked) setIsOcorrencia(false); }} disabled={isSending || !hasPermission('EDIT_NOTES')} />
+                      <input type="checkbox" className="hidden" checked={isSearch} onChange={e => { setIsSearch(e.target.checked); if(e.target.checked) setIsOcorrencia(false); }} disabled={isSending || !hasPermission('operacional.notes.edit')} />
                       <span>Marcar <span className="text-red-600">EM BUSCA</span></span>
                     </label>
                     )}
@@ -650,7 +650,7 @@ const NoteModal: React.FC<Props> = ({ cte, onClose }) => {
                       )}>
                           {isOcorrencia && <Check size={14} className="text-white" strokeWidth={3} />}
                       </div>
-                      <input type="checkbox" className="hidden" checked={isOcorrencia} onChange={e => { setIsOcorrencia(e.target.checked); if(e.target.checked) setIsSearch(false); }} disabled={isSending || !hasPermission('EDIT_NOTES')} />
+                      <input type="checkbox" className="hidden" checked={isOcorrencia} onChange={e => { setIsOcorrencia(e.target.checked); if(e.target.checked) setIsSearch(false); }} disabled={isSending || !hasPermission('operacional.notes.edit')} />
                       <span>Marcar <span className="text-violet-700">OCORRÊNCIA</span></span>
                     </label>
                 </>
@@ -677,13 +677,13 @@ const NoteModal: React.FC<Props> = ({ cte, onClose }) => {
             <textarea 
                 value={text} onChange={e => setText(e.target.value)} 
                 placeholder={isOcorrencia ? "Descreva a ocorrência (obrigatório)..." : "Digite sua observação..."} 
-                rows={1} disabled={isSending || !hasPermission('EDIT_NOTES')}
+                rows={1} disabled={isSending || !hasPermission('operacional.notes.edit')}
                 className="flex-1 bg-slate-100 border border-slate-200 rounded-2xl px-4 py-2.5 text-sm text-slate-800 font-medium outline-none resize-none max-h-[100px] placeholder-gray-500 focus:bg-white focus:ring-2 focus:ring-sl-navy/25"
                 style={{ fieldSizing: 'content' } as any} 
             />
             <input type="file" multiple ref={fileInputRef} onChange={handleFileChange} className="hidden" />
-            <button type="button" onClick={handleUploadClick} disabled={isSending || !hasPermission('EDIT_NOTES')} className={clsx("p-2.5 rounded-full transition-colors", pendingFiles.length > 0 ? "bg-slate-100 text-sl-red shadow-sm" : "text-slate-500 hover:bg-slate-100")}><Paperclip size={20} /></button>
-            <button type="submit" disabled={isSending || !hasPermission('EDIT_NOTES') || (!text.trim() && pendingFiles.length === 0)} className="rounded-full bg-gradient-to-r from-sl-navy to-sl-navy-light p-2.5 text-white hover:opacity-95 disabled:opacity-50 shadow-[0_0_18px_rgba(26,27,98,0.8)] active:scale-95 transition-all">
+            <button type="button" onClick={handleUploadClick} disabled={isSending || !hasPermission('operacional.notes.edit')} className={clsx("p-2.5 rounded-full transition-colors", pendingFiles.length > 0 ? "bg-slate-100 text-sl-red shadow-sm" : "text-slate-500 hover:bg-slate-100")}><Paperclip size={20} /></button>
+            <button type="submit" disabled={isSending || !hasPermission('operacional.notes.edit') || (!text.trim() && pendingFiles.length === 0)} className="rounded-full bg-gradient-to-r from-sl-navy to-sl-navy-light p-2.5 text-white hover:opacity-95 disabled:opacity-50 shadow-[0_0_18px_rgba(26,27,98,0.8)] active:scale-95 transition-all">
               {isSending ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
             </button>
           </div>

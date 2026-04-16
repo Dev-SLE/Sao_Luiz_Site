@@ -23,8 +23,8 @@ function downloadCsv(filename: string, header: string[], rows: string[][]) {
 const CrmReports: React.FC = () => {
   const { hasPermission } = useData();
   const canDeepExport =
-    hasPermission('MANAGE_CRM_OPS') || hasPermission('MANAGE_SETTINGS') || hasPermission('VIEW_CRM_DASHBOARD');
-  const canConsentExport = hasPermission('MANAGE_CRM_OPS') || hasPermission('MANAGE_SETTINGS');
+    hasPermission('MANAGE_CRM_OPS') || hasPermission('VIEW_CRM_DASHBOARD') || hasPermission('tab.crm.dashboard.view');
+  const canConsentExport = hasPermission('MANAGE_CRM_OPS');
   const [productivity, setProductivity] = useState<any>(null);
   const [executive, setExecutive] = useState<any>(null);
   const [filterFrom, setFilterFrom] = useState('');

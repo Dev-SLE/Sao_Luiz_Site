@@ -22,9 +22,11 @@ import { AppConfirmModal, AppMessageModal, type AppMessageVariant } from './AppO
 import * as XLSX from 'xlsx';
 import {
   PERMISSION_CATALOG,
+  PERMISSION_GROUP_LABELS,
+  PERMISSION_GROUP_ORDER,
   PERMISSION_SECTION_LABELS,
   PERMISSION_SECTION_ORDER,
-  getProfileCheckboxEquivalence,
+  type PermissionGroup,
   type PermissionSectionId,
 } from '../lib/permissions';
 
@@ -33,91 +35,156 @@ type ProfilePermissionRow = {
   label: string;
   description: string;
   section: PermissionSectionId;
+  /** Subcamada dentro da secção (MODULO, ABA, …). */
+  group: PermissionGroup;
 };
 
-/** Permissões extras (telas legadas e admin) — sem duplicar o catálogo nem EDIT_NOTES / VIEW_PENDENCIAS etc. */
+/** Chaves legadas e administrativas que não estão no catálogo principal (evita duplicar entradas já em PERMISSION_CATALOG). */
 const EXTRA_PROFILE_PERMISSIONS: ProfilePermissionRow[] = [
   {
     key: 'VIEW_DASHBOARD',
     section: 'operacional',
-    label: 'Visão geral (Dashboard)',
-    description: 'Tela inicial do operacional. Use também o módulo operacional para o menu.',
+    group: 'LEGADO',
+    label: 'Visão geral (Dashboard) — legado',
+    description: 'Chave antiga equivalente à aba Visão geral. Prefira marcar a aba no catálogo.',
+  },
+  {
+    key: 'VIEW_PENDENCIAS',
+    section: 'operacional',
+    group: 'LEGADO',
+    label: 'Pendências — legado',
+    description: 'Chave antiga; use tab.operacional.pendencias.view no catálogo.',
+  },
+  {
+    key: 'VIEW_CRITICOS',
+    section: 'operacional',
+    group: 'LEGADO',
+    label: 'Críticos — legado',
+    description: 'Chave antiga; use tab.operacional.criticos.view.',
+  },
+  {
+    key: 'VIEW_EM_BUSCA',
+    section: 'operacional',
+    group: 'LEGADO',
+    label: 'Em busca — legado',
+    description: 'Chave antiga; use tab.operacional.em_busca.view.',
+  },
+  {
+    key: 'VIEW_OCORRENCIAS',
+    section: 'operacional',
+    group: 'LEGADO',
+    label: 'Ocorrências — legado',
+    description: 'Chave antiga; use tab.operacional.ocorrencias.view.',
+  },
+  {
+    key: 'VIEW_TAD',
+    section: 'operacional',
+    group: 'LEGADO',
+    label: 'TAD — legado',
+    description: 'Chave antiga ligada a ocorrências.',
+  },
+  {
+    key: 'VIEW_CONCLUIDOS',
+    section: 'operacional',
+    group: 'LEGADO',
+    label: 'Concluídos — legado',
+    description: 'Chave antiga; use tab.operacional.concluidos.view.',
   },
   {
     key: 'VIEW_RASTREIO_OPERACIONAL',
     section: 'operacional',
-    label: 'Rastreio operacional (tela)',
-    description: 'Abrir a tela de rastreio; a atualização manual exige a permissão “Atualizar rastreio” abaixo.',
+    group: 'LEGADO',
+    label: 'Rastreio operacional (tela) — legado',
+    description: 'Abrir a tela de rastreio; prefira tab.operacional.rastreio.view.',
   },
   {
     key: 'MANAGE_RASTREIO_OPERACIONAL',
     section: 'operacional',
+    group: 'ACAO',
     label: 'Atualizar rastreio operacional',
     description: 'Registrar paradas, ônibus, fotos e status de descarga.',
   },
   {
-    key: 'VIEW_RELATORIOS',
-    section: 'comercial',
-    label: 'Relatórios',
-    description: 'Acessar relatórios.',
+    key: 'EDIT_NOTES',
+    section: 'operacional',
+    group: 'LEGADO',
+    label: 'Editar notas — legado',
+    description: 'Chave antiga; prefira operacional.notes.edit no catálogo.',
   },
   {
-    key: 'VIEW_COMERCIAL_AUDITORIA',
-    section: 'comercial',
-    label: 'Comercial — Metas / auditoria',
-    description: 'Tela Comercial Metas.',
+    key: 'VIEW_CRM_DASHBOARD',
+    section: 'crm',
+    group: 'LEGADO',
+    label: 'CRM Dashboard — legado',
+    description: 'Chave antiga; use tab.crm.dashboard.view.',
   },
   {
-    key: 'VIEW_COMERCIAL_ROBO_SUPREMO',
-    section: 'comercial',
-    label: 'Comercial — Robô Supremo',
-    description: 'Ferramenta Robô Supremo.',
+    key: 'VIEW_CRM_FUNIL',
+    section: 'crm',
+    group: 'LEGADO',
+    label: 'CRM Funil — legado',
+    description: 'Chave antiga; use tab.crm.funil.view.',
+  },
+  {
+    key: 'VIEW_CRM_CHAT',
+    section: 'crm',
+    group: 'LEGADO',
+    label: 'CRM Chat — legado',
+    description: 'Chave antiga; use tab.crm.chat.view.',
   },
   {
     key: 'EXPORT_DATA',
     section: 'sistema',
+    group: 'ACAO',
     label: 'Exportar dados (Excel)',
     description: 'Exportar Excel nas tabelas.',
   },
   {
     key: 'EXPORT_SYSTEM_LOGS',
     section: 'sistema',
+    group: 'ACAO',
     label: 'Exportar logs do sistema',
     description: 'Exportar CSV/Excel na aba Logs.',
   },
   {
     key: 'VIEW_SETTINGS',
     section: 'sistema',
+    group: 'ADMIN',
     label: 'Visualizar configurações',
     description: 'Acesso de leitura à tela de configurações e perfis.',
   },
   {
     key: 'VIEW_USERS',
     section: 'sistema',
+    group: 'ADMIN',
     label: 'Visualizar usuários',
     description: 'Consultar lista de usuários sem alterar cadastro.',
   },
   {
     key: 'MANAGE_SETTINGS',
     section: 'sistema',
+    group: 'ADMIN',
     label: 'Configurações e logs',
     description: 'Acessar configurações e visualizar logs do sistema.',
   },
   {
     key: 'MANAGE_USERS',
     section: 'sistema',
+    group: 'ADMIN',
     label: 'Gerenciar usuários',
     description: 'Criar e remover usuários.',
   },
   {
     key: 'MANAGE_SOFIA',
     section: 'sistema',
+    group: 'ADMIN',
     label: 'Configurações Sofia',
     description: 'Ajustes da Sofia.',
   },
   {
     key: 'MANAGE_CRM_OPS',
     section: 'sistema',
+    group: 'ADMIN',
     label: 'Operação CRM (console técnico)',
     description:
       'Acesso ao menu Atendimento CRM → Operação CRM (times, WhatsApp, triagem, roteamento, SLA, automações).',
@@ -129,6 +196,7 @@ const CATALOG_ROWS: ProfilePermissionRow[] = PERMISSION_CATALOG.map((p) => ({
   label: p.label,
   description: p.description,
   section: p.section,
+  group: p.group,
 }));
 
 const PROFILE_PERMISSION_ROWS: ProfilePermissionRow[] = [...CATALOG_ROWS, ...EXTRA_PROFILE_PERMISSIONS];
@@ -141,10 +209,19 @@ function groupProfilePermissions(rows: ProfilePermissionRow[]): Record<Permissio
   for (const r of rows) {
     out[r.section].push(r);
   }
+  const rank = (g: PermissionGroup) => {
+    const i = PERMISSION_GROUP_ORDER.indexOf(g);
+    return i === -1 ? 999 : i;
+  };
+  for (const id of PERMISSION_SECTION_ORDER) {
+    out[id].sort((a, b) => {
+      const d = rank(a.group) - rank(b.group);
+      if (d !== 0) return d;
+      return a.label.localeCompare(b.label, 'pt');
+    });
+  }
   return out;
 }
-
-const PROFILE_PERMISSIONS_BY_SECTION = groupProfilePermissions(PROFILE_PERMISSION_ROWS);
 
 /** Modelos de permissão (chaves canónicas) — aplicar substitui a lista atual. */
 const PROFILE_PRESETS: { id: string; label: string; permissions: string[] }[] = [
@@ -191,7 +268,24 @@ const Settings: React.FC = () => {
   const [logFilterSerie, setLogFilterSerie] = useState('');
   const [logFilterEvent, setLogFilterEvent] = useState('');
   const [logLimit, setLogLimit] = useState(200);
+  const [profilePermSearch, setProfilePermSearch] = useState('');
   const canExportLogs = hasPermission('EXPORT_SYSTEM_LOGS') || hasPermission('MANAGE_SETTINGS');
+
+  const profilePermissionRowsFiltered = useMemo(() => {
+    const q = profilePermSearch.trim().toLowerCase();
+    if (!q) return PROFILE_PERMISSION_ROWS;
+    return PROFILE_PERMISSION_ROWS.filter(
+      (r) =>
+        r.key.toLowerCase().includes(q) ||
+        r.label.toLowerCase().includes(q) ||
+        r.description.toLowerCase().includes(q),
+    );
+  }, [profilePermSearch]);
+
+  const profilePermissionsBySection = useMemo(
+    () => groupProfilePermissions(profilePermissionRowsFiltered),
+    [profilePermissionRowsFiltered],
+  );
 
   const exportLogsCsv = () => {
     if (!canExportLogs || logs.length === 0) return;
@@ -325,20 +419,18 @@ const Settings: React.FC = () => {
       setEditingProfile(null);
   };
 
+  /** Uma chave = um checkbox; equivalências (legado ↔ novo) aplicam-se só em runtime ao verificar acesso. */
   const togglePermission = (perm: string) => {
     if (!editingProfile) return;
-    const eq = getProfileCheckboxEquivalence(perm);
     const current = editingProfile.permissions || [];
-    const has = current.some((p) => eq.has(p));
-    const newPerms = has ? current.filter((p) => !eq.has(p)) : [...current, perm];
+    const has = current.includes(perm);
+    const newPerms = has ? current.filter((p) => p !== perm) : [...current, perm];
     setEditingProfile({ ...editingProfile, permissions: newPerms });
   };
 
   const isPermissionChecked = (key: string) => {
     if (!editingProfile) return false;
-    const current = editingProfile.permissions || [];
-    const eq = getProfileCheckboxEquivalence(key);
-    return current.some((p) => eq.has(p));
+    return (editingProfile.permissions || []).includes(key);
   };
 
   useEffect(() => {
@@ -633,7 +725,16 @@ const Settings: React.FC = () => {
                               <h3 className="text-xl font-bold text-slate-900">
                                   {editingProfile.name ? `Editando: ${editingProfile.name}` : 'Criar Novo Perfil'}
                               </h3>
-                              <button onClick={() => setEditingProfile(null)} className="text-slate-500 hover:text-slate-700"><X size={24}/></button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setProfilePermSearch('');
+                                  setEditingProfile(null);
+                                }}
+                                className="text-slate-500 hover:text-slate-700"
+                              >
+                                <X size={24} />
+                              </button>
                           </div>
                           
                           <form onSubmit={handleSaveProfile} className="space-y-6">
@@ -685,46 +786,81 @@ const Settings: React.FC = () => {
                                   <label className="text-xs font-bold text-slate-600 uppercase mb-3 block">
                                     Permissões de acesso
                                   </label>
-                                  <p className="text-[11px] text-slate-500 mb-4">
-                                    Itens agrupados por módulo e camada. Cada opção alterna só o seu grupo canónico + legado direto (ex.:{' '}
-                                    <code className="text-[10px]">tab.operacional.pendencias.view</code> com{' '}
-                                    <code className="text-[10px]">VIEW_PENDENCIAS</code>), sem desmarcar outras permissões por engano.
+                                  <p className="text-[11px] text-slate-500 mb-3">
+                                    Cada caixa altera <strong>apenas uma chave</strong> no perfil. O sistema continua a aceitar chaves
+                                    legadas em perfis antigos (ex.: <code className="text-[10px]">VIEW_PENDENCIAS</code> e{' '}
+                                    <code className="text-[10px]">tab.operacional.pendencias.view</code> funcionam em conjunto ao
+                                    aceder às telas), mas aqui não selecionam várias de uma vez.
                                   </p>
+                                  <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center">
+                                    <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 sm:max-w-md sm:flex-1">
+                                      <Search size={16} className="shrink-0 text-slate-400" />
+                                      <input
+                                        type="search"
+                                        value={profilePermSearch}
+                                        onChange={(e) => setProfilePermSearch(e.target.value)}
+                                        placeholder="Pesquisar por nome, chave ou descrição…"
+                                        className="min-w-0 flex-1 border-0 bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-400"
+                                      />
+                                    </div>
+                                    {profilePermSearch.trim() ? (
+                                      <button
+                                        type="button"
+                                        className="text-xs font-bold text-sl-navy hover:underline"
+                                        onClick={() => setProfilePermSearch('')}
+                                      >
+                                        Limpar pesquisa
+                                      </button>
+                                    ) : null}
+                                  </div>
                                   <div className="space-y-8">
                                     {PERMISSION_SECTION_ORDER.map((sectionId) => {
-                                      const rows = PROFILE_PERMISSIONS_BY_SECTION[sectionId];
-                                      if (!rows.length) return null;
+                                      const sectionRows = profilePermissionsBySection[sectionId];
+                                      if (!sectionRows.length) return null;
                                       return (
-                                        <div key={sectionId} className="space-y-3">
+                                        <div key={sectionId} className="space-y-4">
                                           <h4 className="text-sm font-bold text-slate-900 border-b border-slate-200 pb-2 flex items-center gap-2">
                                             <span className="h-2 w-2 rounded-full bg-sl-navy" />
                                             {PERMISSION_SECTION_LABELS[sectionId]}
                                           </h4>
-                                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                            {rows.map(({ key, label, description }) => {
-                                              const isChecked = isPermissionChecked(key);
+                                          <div className="space-y-6">
+                                            {PERMISSION_GROUP_ORDER.map((groupId) => {
+                                              const rows = sectionRows.filter((r) => r.group === groupId);
+                                              if (!rows.length) return null;
                                               return (
-                                                <div
-                                                  key={key}
-                                                  onClick={() => togglePermission(key)}
-                                                  className={clsx(
-                                                    'flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all select-none',
-                                                    isChecked
-                                                      ? 'border-sl-navy/40 bg-slate-50 text-slate-900'
-                                                      : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-100',
-                                                  )}
-                                                >
-                                                  {isChecked ? (
-                                                    <CheckSquare size={20} className="text-sl-navy" />
-                                                  ) : (
-                                                    <Square size={20} />
-                                                  )}
-                                                  <div className="flex flex-col min-w-0">
-                                                    <span className="font-bold text-sm text-slate-800">{label}</span>
-                                                    <span className="text-[11px] text-slate-500">{description}</span>
-                                                    <span className="mt-1 font-mono text-[10px] text-sl-navy/80 break-all">
-                                                      {key}
-                                                    </span>
+                                                <div key={`${sectionId}-${groupId}`} className="space-y-2">
+                                                  <h5 className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                                                    {PERMISSION_GROUP_LABELS[groupId]}
+                                                  </h5>
+                                                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                                    {rows.map(({ key, label, description }) => {
+                                                      const isChecked = isPermissionChecked(key);
+                                                      return (
+                                                        <div
+                                                          key={key}
+                                                          onClick={() => togglePermission(key)}
+                                                          className={clsx(
+                                                            'flex cursor-pointer select-none items-center gap-3 rounded-lg border p-3 transition-all',
+                                                            isChecked
+                                                              ? 'border-sl-navy/40 bg-slate-50 text-slate-900'
+                                                              : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-100',
+                                                          )}
+                                                        >
+                                                          {isChecked ? (
+                                                            <CheckSquare size={20} className="shrink-0 text-sl-navy" />
+                                                          ) : (
+                                                            <Square size={20} className="shrink-0" />
+                                                          )}
+                                                          <div className="min-w-0 flex flex-col">
+                                                            <span className="text-sm font-bold text-slate-800">{label}</span>
+                                                            <span className="text-[11px] text-slate-500">{description}</span>
+                                                            <span className="mt-1 break-all font-mono text-[10px] text-sl-navy/80">
+                                                              {key}
+                                                            </span>
+                                                          </div>
+                                                        </div>
+                                                      );
+                                                    })}
                                                   </div>
                                                 </div>
                                               );

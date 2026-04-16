@@ -33,13 +33,34 @@ export const PERMISSION_SECTION_LABELS: Record<PermissionSectionId, string> = {
   sistema: "Administração do sistema, exportação e integrações",
 };
 
+export type PermissionGroup = "MODULO" | "ABA" | "ACAO" | "ESCOPO" | "ADMIN" | "LEGADO";
+
 export type PermissionDefinition = {
   key: string;
   label: string;
   description: string;
-  group: "MODULO" | "ABA" | "ACAO" | "ESCOPO" | "ADMIN" | "LEGADO";
+  group: PermissionGroup;
   /** Seção na UI de perfis */
   section: PermissionSectionId;
+};
+
+/** Ordem das subcamadas no editor de perfis (dentro de cada secção). */
+export const PERMISSION_GROUP_ORDER: PermissionGroup[] = [
+  "MODULO",
+  "ABA",
+  "ACAO",
+  "ESCOPO",
+  "ADMIN",
+  "LEGADO",
+];
+
+export const PERMISSION_GROUP_LABELS: Record<PermissionGroup, string> = {
+  MODULO: "Módulos e áreas",
+  ABA: "Abas e telas",
+  ACAO: "Ações",
+  ESCOPO: "Escopos de dados",
+  ADMIN: "Administração e integrações",
+  LEGADO: "Legado / compatibilidade",
 };
 
 export const PERMISSION_CATALOG: PermissionDefinition[] = [
@@ -154,6 +175,13 @@ export const PERMISSION_CATALOG: PermissionDefinition[] = [
     label: "Módulo CRM",
     description: "Acessar área CRM.",
     group: "MODULO",
+    section: "crm",
+  },
+  {
+    key: "module.crm.manage",
+    label: "CRM: gestão técnica (pipelines, templates)",
+    description: "Pipelines CRM, templates Sofia ligados ao CRM e outras rotas administrativas que exigem esta chave.",
+    group: "ADMIN",
     section: "crm",
   },
   {
@@ -379,7 +407,6 @@ const LEGACY_ALIAS: Record<string, string[]> = {
     "VIEW_CONCLUIDOS",
     "VIEW_SETTINGS",
     "VIEW_RELATORIOS",
-    "MANAGE_SETTINGS",
     "tab.operacional.visao_geral.view",
     "tab.operacional.pendencias.view",
     "tab.operacional.criticos.view",
@@ -393,11 +420,11 @@ const LEGACY_ALIAS: Record<string, string[]> = {
     "VIEW_CRM_DASHBOARD",
     "VIEW_CRM_FUNIL",
     "VIEW_CRM_CHAT",
-    "MANAGE_CRM_OPS",
     "tab.crm.dashboard.view",
     "tab.crm.funil.view",
     "tab.crm.chat.view",
   ],
+  "module.crm.manage": ["MANAGE_CRM_OPS"],
   "tab.operacional.visao_geral.view": ["VIEW_DASHBOARD"],
   "tab.operacional.rastreio.view": ["VIEW_RASTREIO_OPERACIONAL"],
   "tab.crm.chat.view": ["VIEW_CRM_CHAT"],
