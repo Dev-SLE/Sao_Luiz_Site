@@ -10,7 +10,7 @@ import { PortalFooter } from '@/components/portal/PortalFooter';
 import { isPortalPathAllowed, matchPortalRouteRule } from '@/lib/portal-route-permissions';
 
 export default function PortalLayoutClient({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth();
+  const { user, loading, logout } = useAuth();
   const { hasPermission, loading: dataLoading } = useData();
   const pathname = usePathname() || '/';
   const router = useRouter();
@@ -67,12 +67,15 @@ export default function PortalLayoutClient({ children }: { children: React.React
               Ir ao início
             </Link>
           ) : null}
-          <Link
-            href="/login"
+          <button
+            type="button"
             className="rounded-xl bg-sl-red px-5 py-2.5 text-sm font-bold text-white shadow-sm hover:brightness-105"
+            onClick={() => {
+              void logout();
+            }}
           >
             Trocar de conta
-          </Link>
+          </button>
         </div>
       </div>
     );

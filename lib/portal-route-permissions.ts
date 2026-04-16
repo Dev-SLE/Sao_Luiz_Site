@@ -1,4 +1,4 @@
-import { canEditPortalContent } from '@/lib/portalEditorAccess';
+import { canEditPortalContent, isSuperRole } from '@/lib/portalEditorAccess';
 
 export type PortalRouteRule =
   | { mode: 'perm'; permission: string }
@@ -38,6 +38,7 @@ export function isPortalPathAllowed(
 ): boolean {
   const rule = matchPortalRouteRule(pathname);
   if (!rule) return false;
+  if (isSuperRole(role)) return true;
   if (rule.mode === 'editor') return canEditPortalContent(hasPermission, { role });
   return hasPermission(rule.permission);
 }

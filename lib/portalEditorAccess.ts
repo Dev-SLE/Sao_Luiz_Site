@@ -5,11 +5,18 @@ export type PortalEditorAccessOpts = {
   role?: string | null;
 };
 
-function isSuperRole(role: string | null | undefined): boolean {
+/** Role de sessão com acesso total ao portal (não depende do array de permissões do perfil). */
+export function isSuperRole(role: string | null | undefined): boolean {
   const r = String(role ?? "")
     .trim()
     .toLowerCase();
-  return r === "admin" || r === "superadmin" || r === "administrador";
+  return (
+    r === "admin" ||
+    r === "superadmin" ||
+    r === "administrador" ||
+    r === "administrator" ||
+    r === "root"
+  );
 }
 
 /** Quem edita conteúdo do portal (UI + chamadas manage=1). */
