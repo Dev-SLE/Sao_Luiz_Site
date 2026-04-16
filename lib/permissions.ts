@@ -44,10 +44,10 @@ export type PermissionDefinition = {
 
 export const PERMISSION_CATALOG: PermissionDefinition[] = [
   {
-    key: "auth.google_drive.skip",
-    label: "Autenticação: pular vínculo obrigatório do Google Drive",
+    key: "auth.storage.microsoft_only",
+    label: "Autenticação: perfil SharePoint (sem Google Drive)",
     description:
-      "Quando marcado, o login não exige concluir o fluxo do Google Drive (útil para perfis que usam apenas o portal).",
+      "O login não abre o fluxo Google; use para quem opera só com anexos corporativos via Microsoft Graph/SharePoint.",
     group: "ADMIN",
     section: "sistema",
   },
@@ -477,12 +477,6 @@ export function hasPermissionWithAliases(userPermissions: string[] | null | unde
   const perms = (userPermissions || []).map((p) => String(p).trim()).filter(Boolean);
   if (!needed) return true;
   if (perms.includes("*") || perms.includes("admin.*")) return true;
-
-  /** Perfis sem nenhuma portal.* explícita mantêm acesso ao portal (compatibilidade com dados antigos). */
-  if (needed.startsWith("portal.")) {
-    const hasAnyPortal = perms.some((p) => String(p).startsWith("portal."));
-    if (!hasAnyPortal) return true;
-  }
 
   const [namespace] = needed.split(".");
   if (namespace && perms.includes(`${namespace}.*`)) return true;

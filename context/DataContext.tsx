@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useMemo, useState, useEffect } from 'react';
+import React, { createContext, useContext, useMemo, useState, useEffect, useCallback } from 'react';
 import { authClient } from '../lib/auth';
 import { hasPermissionWithAliases } from '../lib/permissions';
 import { CteData, NoteData, UserData, GlobalData, ProfileData, ProcessData } from '../types';
@@ -355,14 +355,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const getLatestNote = (_cte: string) => null;
 
-  const isCteOcorrencia = (cte: string, serie: string) => {
+  const isCteOcorrencia = useCallback((cte: string, serie: string) => {
     const normalize = (v: string) => String(v || '').replace(/^0+/, '') || '0';
     const row = baseData.find((c) => c.CTE === cte && normalize(c.SERIE || '0') === normalize(serie || '0'));
     const status = String(row?.STATUS || '').toUpperCase();
     return status.includes('OCORR');
-  };
+  }, [baseData]);
 
-  const isCteEmBusca = (_cte: string, _serie: string, originalStatus: string) => originalStatus === 'EM BUSCA';
+  const isCteEmBusca = useCallback((_cte: string, _serie: string, originalStatus: string) => originalStatus === 'EM BUSCA', []);
 
   // Com paginação server-side, `baseData/fullData/processedData` já chegam prontos (por aba)
   // e os counts vêm do backend. Mantemos os estados antigos por compatibilidade.

@@ -31,6 +31,50 @@ export async function GET(req: Request) {
     if (can(session, 'module.operacional.view')) {
       await ensureAckTable();
       const pool = getPool();
+      const destUnit = String(session.dest || '').trim();
+      if (destUnit) {
+        try {
+          const buscaRes = await pool.query(
+            `
+              SELECT c.cte::text AS cte, c.serie::text AS serie, c.updated_at
+              FROM pendencias.ctes c
+              INNER JOIN pendencias.cte_view_index i
+                ON i.cte = c.cte
+                AND (i.serie = c.serie OR ltrim(i.serie::text, '0') = ltrim(c.serie::text, '0'))
+              WHERE i.view = 'em_busca'
+                AND NOT EXISTS (
+                  SELECT 1 FROM pendencias.notes n
+                  WHERE n.cte = c.cte
+                    AND (n.serie = c.serie OR ltrim(n.serie::text, '0') = ltrim(c.serie::text, '0'))
+                    AND lower(n.usuario) = lower($1)
+                )
+              ORDER BY c.updated_at DESC NULLS LAST
+              LIMIT 12
+            `,
+            [session.username]
+          );
+          for (const row of buscaRes.rows || []) {
+            const cte = String((row as { cte: string }).cte || '');
+            const serie = String((row as { serie: string }).serie || '0');
+            const q = new URLSearchParams({ cte, serie });
+            notifications.push({
+              id: `embusca-${cte}-${serie}`,
+              kind: 'operational',
+              title: 'Mercadoria em busca',
+              subtitle: `CTE ${cte} · série ${serie}`,
+              createdAt: (row as { updated_at?: Date }).updated_at
+                ? new Date((row as { updated_at: Date }).updated_at).toISOString()
+                : null,
+              href: `/app/operacional/em-busca?${q.toString()}`,
+              read: false,
+              meta: { type: 'em_busca', cte, serie },
+            });
+          }
+        } catch {
+          /* opcional */
+        }
+      }
+
       const ackRes = await pool.query(
         `SELECT last_log_id FROM pendencias.operational_notification_acks WHERE LOWER(username) = LOWER($1) LIMIT 1`,
         [session.username]
@@ -51,6 +95,8 @@ export async function GET(req: Request) {
       for (const r of logsRes.rows || []) {
         const id = Number(r.id);
         const ev = String(r.event || '');
+        const cte = encodeURIComponent(String(r.cte || ''));
+        const serie = encodeURIComponent(String(r.serie || '0'));
         notifications.push({
           id: `op-${id}`,
           kind: 'operational',
@@ -58,7 +104,7 @@ export async function GET(req: Request) {
             ev === 'CTE_ASSIGNMENT_UPSERT' ? 'Atribuição criada/atualizada' : 'Atribuição devolvida',
           subtitle: `CTE ${r.cte || '-'} / Série ${r.serie || '-'}`,
           createdAt: r.created_at ? new Date(r.created_at).toISOString() : null,
-          href: '/app/operacional/pendencias',
+          href: `/app/operacional/pendencias?cte=${cte}&serie=${serie}`,
           read: false,
           meta: { sourceLogId: id, event: ev, type: 'pendencia_operacional' },
         });

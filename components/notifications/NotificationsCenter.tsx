@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { Bell } from 'lucide-react';
 import clsx from 'clsx';
 import type { UnifiedNotification } from '@/lib/notifications-types';
@@ -90,18 +91,40 @@ export function NotificationsCenter({ variant = 'workspace' }: Props) {
             Sem notificações.
           </div>
         ) : (
-          items.map((n) => (
-            <div
-              key={n.id}
-              className={clsx(
-                'border-b px-3 py-2 text-[11px]',
-                variant === 'portal' ? 'border-white/10 text-white/90' : 'border-slate-100 text-slate-700',
-              )}
-            >
-              <div className="font-semibold">{n.title}</div>
-              {n.subtitle && <div className="opacity-80">{n.subtitle}</div>}
-            </div>
-          ))
+          items.map((n) => {
+            const rowClass = clsx(
+              'block border-b px-3 py-2 text-left text-[11px] transition-colors',
+              variant === 'portal'
+                ? 'border-white/10 text-white/90 hover:bg-white/10'
+                : 'border-slate-100 text-slate-700 hover:bg-slate-50',
+              n.href && 'cursor-pointer',
+            );
+            const body = (
+              <>
+                <div className="font-semibold">{n.title}</div>
+                {n.subtitle ? <div className="opacity-80">{n.subtitle}</div> : null}
+                {n.href ? (
+                  <div
+                    className={clsx(
+                      'mt-1 text-[10px] font-bold',
+                      variant === 'portal' ? 'text-sl-red-light' : 'text-sl-navy',
+                    )}
+                  >
+                    Abrir →
+                  </div>
+                ) : null}
+              </>
+            );
+            return n.href ? (
+              <Link key={n.id} href={n.href} className={rowClass} onClick={() => setOpen(false)}>
+                {body}
+              </Link>
+            ) : (
+              <div key={n.id} className={rowClass}>
+                {body}
+              </div>
+            );
+          })
         )}
       </div>
     </>

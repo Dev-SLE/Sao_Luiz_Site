@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState, useRef } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { DataProvider as GlobalDataProvider } from './context/DataContext';
 import Login from './components/Login';
@@ -16,6 +16,28 @@ export type WorkspaceNavigationClient = {
   pathname: string;
   push: (href: string) => void;
 };
+
+function minimalCteFromQuery(cte: string, serie: string): CteData {
+  const s = serie || '0';
+  return {
+    CTE: cte,
+    SERIE: s,
+    CODIGO: '',
+    DATA_EMISSAO: '',
+    PRAZO_BAIXA_DIAS: '',
+    DATA_LIMITE_BAIXA: '',
+    STATUS: 'EM BUSCA',
+    COLETA: '',
+    ENTREGA: '',
+    VALOR_CTE: '',
+    TX_ENTREGA: '',
+    VOLUMES: '',
+    PESO: '',
+    FRETE_PAGO: '',
+    DESTINATARIO: '',
+    JUSTIFICATIVA: '',
+  };
+}
 
 /**
  * Área de trabalho sem providers — use dentro de `AppProviders` no layout Next. Passe `workspaceClient` a partir de
@@ -74,12 +96,36 @@ export const WorkspaceApp: React.FC<{ workspaceClient?: WorkspaceNavigationClien
     setCurrentPage((prev) => (prev !== p ? p : prev));
   }, [urlMode, workspaceClient]);
   const [selectedCte, setSelectedCte] = useState<CteData | null>(null);
+  const openedCteFromUrlRef = useRef<string | null>(null);
   const [selectedCrmLeadId, setSelectedCrmLeadId] = useState<string | null>(null);
   const [selectedTrackingCte, setSelectedTrackingCte] = useState<string | null>(null);
   const [selectedTrackingSerie, setSelectedTrackingSerie] = useState<string | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const [themeDark, setThemeDark] = useState(false);
   const isCrmModule = pathname.startsWith('/app/crm');
+
+  useEffect(() => {
+    if (!selectedCte) openedCteFromUrlRef.current = null;
+  }, [selectedCte]);
+
+  useEffect(() => {
+    if (!user || !urlMode || typeof window === 'undefined' || !workspaceClient) return;
+    const sp = new URLSearchParams(window.location.search);
+    const cte = sp.get('cte')?.trim();
+    const serie = sp.get('serie')?.trim() || '0';
+    if (!cte) return;
+    const sig = `${cte}|${serie}`;
+    if (openedCteFromUrlRef.current === sig) return;
+    openedCteFromUrlRef.current = sig;
+    setSelectedCte(minimalCteFromQuery(cte, serie));
+    const base = (workspaceClient.pathname || '/app').split('?')[0];
+    if (!base.includes('/em-busca') && !base.includes('/pendencias')) {
+      workspaceClient.push('/app/operacional/em-busca');
+    }
+    if (window.location.search) {
+      window.history.replaceState({}, '', base);
+    }
+  }, [user, urlMode, workspaceClient, pathname]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || urlMode) return;
