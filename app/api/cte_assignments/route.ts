@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getPool } from "../../../lib/server/db";
 import { ensureAppLogsTable, ensureOperationalAssignmentsTable } from "../../../lib/server/ensureSchema";
 import { can, getSessionContext } from "../../../lib/server/authorization";
+import { isAdminSuperRole } from "../../../lib/adminSuperRoles";
 import { operationalCteUnitScopeAndClause } from "../../../lib/server/operationalCteUnitScope";
 import type { Pool } from "pg";
 
@@ -18,10 +19,7 @@ async function operationalCteAccessible(
   cte: string,
   serie: string
 ) {
-  const hasOperationalGlobal =
-    can(session, "scope.operacional.all") ||
-    can(session, "MANAGE_SETTINGS") ||
-    String(session.role || "").toLowerCase() === "admin";
+  const hasOperationalGlobal = can(session, "scope.operacional.all") || isAdminSuperRole(session.role);
   if (hasOperationalGlobal) return true;
   const d = String(session.dest || "").trim();
   const o = String(session.origin || "").trim();

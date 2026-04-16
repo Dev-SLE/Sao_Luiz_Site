@@ -3,6 +3,7 @@ import { getPool } from "../../../../lib/server/db";
 import { ensureCrmSchemaTables } from "../../../../lib/server/ensureSchema";
 import { requireApiPermissions } from "../../../../lib/server/apiAuth";
 import { can } from "../../../../lib/server/authorization";
+import { isAdminSuperRole } from "../../../../lib/adminSuperRoles";
 
 export const runtime = "nodejs";
 
@@ -28,8 +29,7 @@ export async function GET(req: Request) {
     const session = guard.session!;
     const username = session.username || "";
 
-    const seeAll =
-      all && (can(session, "MANAGE_CRM_OPS") || can(session, "MANAGE_SETTINGS"));
+    const seeAll = all && (can(session, "MANAGE_CRM_OPS") || isAdminSuperRole(session.role));
 
     const params: any[] = [];
     let where = "1=1";
@@ -101,7 +101,7 @@ export async function POST(req: Request) {
       if (
         assignedUsername.toLowerCase() !== String(session.username || "").toLowerCase() &&
         !can(session, "MANAGE_CRM_OPS") &&
-        !can(session, "MANAGE_SETTINGS")
+        !isAdminSuperRole(session.role)
       ) {
         assignedUsername = String(session.username);
       }
@@ -135,7 +135,7 @@ export async function POST(req: Request) {
       const isOwner =
         String(row.assigned_username || "").toLowerCase() === uname ||
         String(row.created_by || "").toLowerCase() === uname;
-      if (!isOwner && !can(session, "MANAGE_CRM_OPS") && !can(session, "MANAGE_SETTINGS")) {
+      if (!isOwner && !can(session, "MANAGE_CRM_OPS") && !isAdminSuperRole(session.role)) {
         return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
       }
 
@@ -180,7 +180,7 @@ export async function POST(req: Request) {
       const isOwner =
         String(row.assigned_username || "").toLowerCase() === uname ||
         String(row.created_by || "").toLowerCase() === uname;
-      if (!isOwner && !can(session, "MANAGE_CRM_OPS") && !can(session, "MANAGE_SETTINGS")) {
+      if (!isOwner && !can(session, "MANAGE_CRM_OPS") && !isAdminSuperRole(session.role)) {
         return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
       }
       await pool.query(`DELETE FROM pendencias.crm_tasks WHERE id = $1::uuid`, [id]);

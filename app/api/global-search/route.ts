@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getPool } from '@/lib/server/db';
 import { can, getSessionContext } from '@/lib/server/authorization';
+import { isAdminSuperRole } from '@/lib/adminSuperRoles';
 import { ensureCrmSchemaTables, ensureOccurrencesSchemaTables } from '@/lib/server/ensureSchema';
 import { ensureFase1InfrastructureTables } from '@/lib/server/ensureFase1Infrastructure';
 import type { GlobalSearchGroup } from '@/lib/global-search-types';
@@ -30,10 +31,7 @@ export async function GET(req: Request) {
     const groups: GlobalSearchGroup[] = [];
 
     if (can(session, 'module.operacional.view')) {
-      const hasOperationalGlobal =
-        can(session, 'scope.operacional.all') ||
-        can(session, 'MANAGE_SETTINGS') ||
-        String(session.role || '').toLowerCase() === 'admin';
+      const hasOperationalGlobal = can(session, 'scope.operacional.all') || isAdminSuperRole(session.role);
       const linkedDestUnit = String(session.dest || '').trim();
       const linkedOriginUnit = String(session.origin || '').trim();
       const scopeNeeded =

@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   try {
-    const guard = await requireApiPermissions(req, ["MANAGE_SETTINGS", "module.crm.manage"]);
+    const guard = await requireApiPermissions(req, ["module.crm.manage"]);
     if (guard.denied) return guard.denied;
     await ensureCrmSchemaTables();
     const pool = getPool();

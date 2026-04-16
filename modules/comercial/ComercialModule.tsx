@@ -12,19 +12,29 @@ export function ComercialModule({ pathname }: { pathname: string }) {
   const { hasPermission } = useData();
   const page = pathToPage(pathname);
 
-  const can = hasPermission('VIEW_RELATORIOS') || hasPermission('MANAGE_SETTINGS');
-  if (!can) {
+  const canMetas = hasPermission('VIEW_COMERCIAL_AUDITORIA');
+  const canRobo = hasPermission('VIEW_COMERCIAL_ROBO_SUPREMO');
+  const canEnter = canMetas || canRobo || hasPermission('module.comercial.view');
+  if (!canEnter) {
     return <WorkspaceNoAccess message="Seu perfil não possui acesso ao módulo Comercial." />;
   }
 
   let body: React.ReactNode;
   switch (page) {
     case Page.COMERCIAL_ROBO_SUPREMO:
-      body = <ComercialRoboSupremo />;
+      if (!canRobo && !hasPermission('module.comercial.view')) {
+        body = <WorkspaceNoAccess message="Seu perfil não possui acesso ao Robô Supremo." />;
+      } else {
+        body = <ComercialRoboSupremo />;
+      }
       break;
     case Page.COMERCIAL_AUDITORIA:
     default:
-      body = <ComercialAuditoria />;
+      if (!canMetas && !hasPermission('module.comercial.view')) {
+        body = <WorkspaceNoAccess message="Seu perfil não possui acesso a Metas e auditoria." />;
+      } else {
+        body = <ComercialAuditoria />;
+      }
   }
 
   return (

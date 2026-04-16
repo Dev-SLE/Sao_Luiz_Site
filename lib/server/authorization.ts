@@ -1,6 +1,7 @@
 import { decodeSession, SESSION_COOKIE_NAME } from "./session";
 import { getPool } from "./db";
 import { hasPermissionWithAliases } from "../permissions";
+import { isAdminSuperRole } from "../adminSuperRoles";
 
 export type SessionContext = {
   username: string;
@@ -54,6 +55,6 @@ export async function getSessionContext(req: Request): Promise<SessionContext | 
 
 export function can(ctx: SessionContext | null, permission: string) {
   if (!ctx) return false;
-  if (String(ctx.role || "").toLowerCase() === "admin") return true;
+  if (isAdminSuperRole(ctx.role)) return true;
   return hasPermissionWithAliases(ctx.permissions, permission);
 }

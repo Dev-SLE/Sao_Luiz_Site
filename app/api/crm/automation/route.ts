@@ -43,7 +43,7 @@ export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => ({}));
     const action = String(body?.action || "").toUpperCase();
-    const guard = await requireApiPermissions(req, ["MANAGE_CRM_OPS", "MANAGE_SETTINGS"]);
+    const guard = await requireApiPermissions(req, ["MANAGE_CRM_OPS"]);
     if (guard.denied) return guard.denied;
     await ensureCrmSchemaTables();
     const pool = getPool();

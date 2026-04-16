@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getPool } from "../../../../lib/server/db";
 import { ensureCrmSchemaTables } from "../../../../lib/server/ensureSchema";
 import { requireApiPermissions } from "../../../../lib/server/apiAuth";
+import { bumpApiRoute } from "../../../../lib/server/apiHitMeter";
+import { defaultCrmReadCacheTtlMs, readThroughCache } from "../../../../lib/server/readThroughCache";
 
 export const runtime = "nodejs";
 
@@ -16,16 +18,17 @@ function parseDateRange(url: URL): { fromTs: string | null; toTs: string | null 
 
 export async function GET(req: Request) {
   try {
-    const guard = await requireApiPermissions(req, [
-      "module.crm.view",
-      "MANAGE_SETTINGS",
-      "VIEW_CRM_DASHBOARD",
-    ]);
+    const guard = await requireApiPermissions(req, ["module.crm.view", "VIEW_CRM_DASHBOARD"]);
     if (guard.denied) return guard.denied;
+    bumpApiRoute("GET /api/crm/productivity");
 
     await ensureCrmSchemaTables();
-    const pool = getPool();
     const url = new URL(req.url);
+    const cacheKey = `crm:productivity:${url.searchParams.toString()}`;
+    const ttl = defaultCrmReadCacheTtlMs();
+
+    const payload = await readThroughCache(cacheKey, ttl, async () => {
+    const pool = getPool();
     const { fromTs, toTs } = parseDateRange(url);
     const channel = url.searchParams.get("channel");
     const channelUpper = channel && channel.trim() ? String(channel).trim().toUpperCase() : null;
@@ -142,7 +145,7 @@ export async function GET(req: Request) {
       name: String(r.name),
     }));
 
-    return NextResponse.json({
+    return {
       filters: { from: fromTs ? url.searchParams.get("from") : null, to: toTs ? url.searchParams.get("to") : null, channel: channelUpper, teamId: teamUuid },
       channels,
       teams,
@@ -150,7 +153,10 @@ export async function GET(req: Request) {
       agents,
       sla: { tracked, breached, hitRate: slaHitRate },
       stageTimes,
+    };
     });
+
+    return NextResponse.json(payload);
   } catch (error) {
     console.error("CRM productivity GET error:", error);
     return NextResponse.json({ error: "Erro interno" }, { status: 500 });

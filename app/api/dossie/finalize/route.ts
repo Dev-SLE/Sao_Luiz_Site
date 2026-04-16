@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server";
-import { Readable } from "stream";
-import { google } from "googleapis";
 import { getPool } from "../../../../lib/server/db";
-import { ensureOccurrencesSchemaTables, ensureUserTokensTable } from "../../../../lib/server/ensureSchema";
+import { ensureOccurrencesSchemaTables, ensureStorageCatalogTables } from "../../../../lib/server/ensureSchema";
 import { can, getSessionContext } from "../../../../lib/server/authorization";
 import { buildDossiePdf } from "../../../../lib/server/dossiePdf";
-import { ensureDriveCaseFolder, getGoogleOAuthClient } from "../../../../lib/server/googleDrive";
+import { isSharePointGraphConfigured } from "../../../../lib/server/sharepointConfig";
+import { uploadFileToSharePoint } from "../../../../modules/storage/fileService";
 
 export const runtime = "nodejs";
 
@@ -31,6 +30,14 @@ export async function POST(req: Request) {
     const dossierId = dossRes.rows?.[0]?.id;
     if (!dossierId) return NextResponse.json({ error: "Dossiê não encontrado. Gere o dossiê antes de finalizar." }, { status: 400 });
 
+    const syncPdf = !!(body?.syncPdf ?? body?.syncPdfToDrive);
+    if (syncPdf && !isSharePointGraphConfigured()) {
+      return NextResponse.json(
+        { error: "PDF não pode ser sincronizado: configure SharePoint (GRAPH_* e SHAREPOINT_*)." },
+        { status: 503 }
+      );
+    }
+
     await pool.query(
       `UPDATE pendencias.dossiers SET
         finalization_status = $2,
@@ -52,48 +59,44 @@ export async function POST(req: Request) {
       ]
     );
 
-    let pdfDriveFileId: string | null = null;
-    if (body?.syncPdfToDrive) {
-      await ensureUserTokensTable();
-      const tokenResult = await pool.query("SELECT * FROM pendencias.user_tokens WHERE LOWER(username) = LOWER($1)", [
-        session.username,
-      ]);
-      const userToken = tokenResult.rows?.[0];
-      if (userToken?.access_token) {
-        const oAuth2Client = getGoogleOAuthClient();
-        oAuth2Client.setCredentials({
-          access_token: userToken.access_token,
-          refresh_token: userToken.refresh_token,
-          expiry_date: userToken.expiry_date,
-        });
-        const drive = google.drive({ version: "v3", auth: oAuth2Client });
-        const folderId = await ensureDriveCaseFolder(drive, cte, serie);
-        const pdfBytes = await buildDossiePdf(pool, cte, serie);
-        const buffer = Buffer.from(pdfBytes);
-        const fname = `Dossie_CTE_${cte}_SER_${serie}.pdf`;
-        const up = await drive.files.create({
-          requestBody: { name: fname, parents: [folderId] },
-          media: { mimeType: "application/pdf", body: Readable.from(buffer) },
-          fields: "id",
-        } as any);
-        pdfDriveFileId = up.data.id || null;
-        if (pdfDriveFileId) {
-          await pool.query(`UPDATE pendencias.dossiers SET pdf_drive_file_id = $2 WHERE id = $1::uuid`, [
-            dossierId,
-            pdfDriveFileId,
-          ]);
-          const url = `https://drive.google.com/file/d/${pdfDriveFileId}/view`;
-          await pool.query(
-            `INSERT INTO pendencias.dossier_attachments (dossier_id, category, label, url, drive_file_id, uploaded_by, created_at)
-             VALUES ($1::uuid, 'GERAL', $2, $3, $4, $5, NOW())`,
-            [dossierId, fname, url, pdfDriveFileId, session.username]
-          );
-        }
-      }
+    let pdfFileId: string | null = null;
+    if (syncPdf) {
+      const pdfBytes = await buildDossiePdf(pool, cte, serie);
+      const buffer = Buffer.from(pdfBytes);
+      const fname = `Dossie_CTE_${cte}_SER_${serie}.pdf`;
+      await ensureStorageCatalogTables();
+      const now = new Date();
+      const pad = (n: number) => String(n).padStart(2, "0");
+      const fileRow = await uploadFileToSharePoint({
+        pool,
+        module: "operacional",
+        entity: "dossier",
+        entityId: String(dossierId),
+        originalName: fname,
+        mimeType: "application/pdf",
+        buffer,
+        uploadedBy: session.username,
+        pathContext: {
+          year: String(now.getFullYear()),
+          month: pad(now.getMonth() + 1),
+          entity_id: String(dossierId),
+          dossier_id: String(dossierId),
+          cte,
+          serie,
+        },
+      });
+      pdfFileId = fileRow.id;
+      const viewUrl = `/api/files/${fileRow.id}/view`;
+      await pool.query(`UPDATE pendencias.dossiers SET pdf_file_id = $2 WHERE id = $1::uuid`, [dossierId, pdfFileId]);
+      await pool.query(
+        `INSERT INTO pendencias.dossier_attachments (dossier_id, category, label, url, file_id, uploaded_by, created_at)
+         VALUES ($1::uuid, 'GERAL', $2, $3, $4::uuid, $5, NOW())`,
+        [dossierId, fname, viewUrl, pdfFileId, session.username]
+      );
     }
 
     const d = await pool.query(`SELECT * FROM pendencias.dossiers WHERE id = $1::uuid`, [dossierId]);
-    return NextResponse.json({ dossier: d.rows?.[0] || null, pdfDriveFileId });
+    return NextResponse.json({ dossier: d.rows?.[0] || null, pdfFileId });
   } catch (e) {
     console.error("[dossie.finalize]", e);
     return NextResponse.json({ error: "Erro interno" }, { status: 500 });

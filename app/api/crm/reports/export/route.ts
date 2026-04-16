@@ -16,11 +16,7 @@ function range(url: URL): { from: string | null; to: string | null } {
 
 export async function GET(req: Request) {
   try {
-    const guard = await requireApiPermissions(req, [
-      "MANAGE_CRM_OPS",
-      "MANAGE_SETTINGS",
-      "VIEW_CRM_DASHBOARD",
-    ]);
+    const guard = await requireApiPermissions(req, ["MANAGE_CRM_OPS", "VIEW_CRM_DASHBOARD"]);
     if (guard.denied) return guard.denied;
 
     await ensureCrmSchemaTables();
@@ -113,7 +109,7 @@ export async function GET(req: Request) {
     }
 
     if (type === "consent_events") {
-      const guardStrict = await requireApiPermissions(req, ["MANAGE_CRM_OPS", "MANAGE_SETTINGS"]);
+      const guardStrict = await requireApiPermissions(req, ["MANAGE_CRM_OPS"]);
       if (guardStrict.denied) return guardStrict.denied;
       const res = await pool.query(
         `

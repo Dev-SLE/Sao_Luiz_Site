@@ -11,14 +11,15 @@
     "lint": "next build --no-lint",
     "test:smoke": "node scripts/smoke-crm.mjs",
     "test:load:plan": "node scripts/load-crm-plan.mjs",
-    "check": "npm run typecheck && npm run test:smoke"
+    "check": "npm run typecheck && npm run test:smoke",
+    "check:storage": "node scripts/check-sharepoint-env.mjs",
+    "test:sharepoint-graph": "node scripts/test-sharepoint-graph.mjs"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
     "date-fns": "^3.3.1",
-    "googleapis": "^171.4.0",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.344.0",
     "next": "^15.0.0",

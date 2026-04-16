@@ -163,7 +163,7 @@ function buildOperacionalChildren(
 
 function crmTabVisible(hasPermission: (perm: string) => boolean, tab: (typeof CRM_TABS)[number]): boolean {
   if (tab.permission === 'MANAGE_CRM_OPS') {
-    return hasPermission('MANAGE_CRM_OPS') || hasPermission('MANAGE_SETTINGS');
+    return hasPermission('MANAGE_CRM_OPS');
   }
   if (tab.slug === 'contato-360') {
     return (
@@ -183,8 +183,8 @@ function buildCrmChildren(hasPermission: (perm: string) => boolean): WorkspaceNa
   }));
 }
 
-function buildComercialChildren(): WorkspaceNavChild[] {
-  return COMERCIAL_TABS.map((t) => ({
+function buildComercialChildren(hasPermission: (perm: string) => boolean): WorkspaceNavChild[] {
+  return COMERCIAL_TABS.filter((t) => hasPermission(t.permission)).map((t) => ({
     label: t.label,
     href: comercialPath(t.slug),
     status: 'implemented' as const,
@@ -218,7 +218,7 @@ export function buildWorkspaceNavSections(input: {
 }): WorkspaceNavSection[] {
   const { hasPermission, counts } = input;
 
-  const hub = (key: string) => hasPermission(key) || hasPermission('MANAGE_SETTINGS');
+  const hub = (key: string) => hasPermission(key);
 
   const withHubHref = (
     page: Page,
@@ -229,6 +229,7 @@ export function buildWorkspaceNavSections(input: {
   };
 
   const showOperacional =
+    hasPermission('module.operacional.view') ||
     hasPermission('VIEW_DASHBOARD') ||
     hasPermission('VIEW_PENDENCIAS') ||
     hasPermission('VIEW_CRITICOS') ||
@@ -272,7 +273,7 @@ export function buildWorkspaceNavSections(input: {
     hasPermission('VIEW_CRM_FUNIL') ||
     hasPermission('VIEW_CRM_CHAT') ||
     hasPermission('MANAGE_CRM_OPS') ||
-    hasPermission('MANAGE_SETTINGS');
+    hasPermission('module.crm.view');
 
   const crmChildren = showCrm ? buildCrmChildren(hasPermission) : [];
 
@@ -291,8 +292,11 @@ export function buildWorkspaceNavSections(input: {
       crmChildren,
     );
 
-  const showComercial = hasPermission('VIEW_RELATORIOS') || hasPermission('MANAGE_SETTINGS');
-  const comercialChildren = showComercial ? buildComercialChildren() : [];
+  const showComercial =
+    hasPermission('module.comercial.view') ||
+    hasPermission('VIEW_COMERCIAL_AUDITORIA') ||
+    hasPermission('VIEW_COMERCIAL_ROBO_SUPREMO');
+  const comercialChildren = showComercial ? buildComercialChildren(hasPermission) : [];
 
   const comercialMod: WorkspaceNavItem | false =
     showComercial &&
@@ -415,7 +419,7 @@ export function buildWorkspaceNavSections(input: {
     };
 
   const cfgRelatoriosOp: WorkspaceNavItem | false =
-    (hasPermission('VIEW_RELATORIOS') || hasPermission('MANAGE_SETTINGS')) && {
+    hasPermission('VIEW_RELATORIOS') && {
       id: Page.RELATORIOS,
       label: 'Relatórios operacionais',
       icon: FileText,
@@ -448,7 +452,7 @@ export function buildWorkspaceNavSections(input: {
   };
 
   const cfgCrmOps: WorkspaceNavItem | false =
-    (hasPermission('MANAGE_CRM_OPS') || hasPermission('MANAGE_SETTINGS')) && {
+    hasPermission('MANAGE_CRM_OPS') && {
       id: Page.CRM_OPS,
       label: 'CRM — Operação',
       icon: SlidersHorizontal,
@@ -459,7 +463,7 @@ export function buildWorkspaceNavSections(input: {
     };
 
   const cfgCrmPrivacy: WorkspaceNavItem | false =
-    (hasPermission('MANAGE_CRM_OPS') || hasPermission('MANAGE_SETTINGS')) && {
+    hasPermission('MANAGE_CRM_OPS') && {
       id: Page.CRM_PRIVACY,
       label: 'CRM — Privacidade',
       icon: Shield,
@@ -470,7 +474,7 @@ export function buildWorkspaceNavSections(input: {
     };
 
   const cfgCrmReports: WorkspaceNavItem | false =
-    (hasPermission('VIEW_CRM_DASHBOARD') || hasPermission('MANAGE_CRM_OPS') || hasPermission('MANAGE_SETTINGS')) && {
+    (hasPermission('VIEW_CRM_DASHBOARD') || hasPermission('MANAGE_CRM_OPS')) && {
       id: Page.CRM_REPORTS,
       label: 'CRM — Relatórios',
       icon: BarChart3,

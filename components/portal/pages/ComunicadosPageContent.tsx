@@ -3,72 +3,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, Calendar, Search } from 'lucide-react';
 
-const categories = ['Todos', 'Institucional', 'Operações', 'RH', 'Segurança', 'TI'];
-
-const allPosts = [
-  {
-    id: 1,
-    image: '/portal-assets/team-warehouse.jpg',
-    category: 'Institucional',
-    title: 'São Luiz Express completa 25 anos conectando o Brasil',
-    summary: 'Uma trajetória de compromisso com a excelência logística e o cuidado com as pessoas que fazem tudo acontecer.',
-    date: '10 Abr 2026',
-    featured: true,
-  },
-  {
-    id: 2,
-    image: '/portal-assets/operations-center.jpg',
-    category: 'Operações',
-    title: 'Nova central de monitoramento já está em operação',
-    summary: 'Centro de controle permite acompanhamento em tempo real de toda a frota nacional.',
-    date: '09 Abr 2026',
-    featured: true,
-  },
-  {
-    id: 3,
-    category: 'RH',
-    title: 'Programa de desenvolvimento de líderes abre inscrições',
-    summary: 'Capacitação exclusiva para gestores com módulos presenciais e online. As vagas são limitadas.',
-    date: '08 Abr 2026',
-  },
-  {
-    id: 4,
-    category: 'Segurança',
-    title: 'SIPAT 2026 — Confira a programação completa',
-    summary: 'A Semana Interna de Prevenção de Acidentes traz palestras, atividades e premiações.',
-    date: '07 Abr 2026',
-  },
-  {
-    id: 5,
-    image: '/portal-assets/hero-trucks.jpg',
-    category: 'Operações',
-    title: 'Frota renovada: 30 novos veículos chegam às unidades',
-    summary: 'Investimento reforça compromisso com segurança e eficiência nas entregas.',
-    date: '06 Abr 2026',
-  },
-  {
-    id: 6,
-    category: 'RH',
-    title: 'Campanha de vacinação antigripal — locais e datas',
-    summary: 'Colaboradores podem se vacinar gratuitamente em qualquer unidade parceira.',
-    date: '05 Abr 2026',
-  },
-  {
-    id: 7,
-    category: 'TI',
-    title: 'Novo sistema de rastreamento entra em fase de testes',
-    summary: 'Plataforma moderna substituirá o sistema atual com funcionalidades avançadas.',
-    date: '04 Abr 2026',
-  },
-  {
-    id: 8,
-    category: 'Institucional',
-    title: 'São Luiz Express é reconhecida como uma das melhores empresas para trabalhar',
-    summary: 'Pesquisa GPTW coloca a empresa entre as top 50 do setor de logística.',
-    date: '03 Abr 2026',
-  },
-];
-
 type Post = {
   id: string | number;
   category: string;
@@ -83,39 +17,63 @@ export function ComunicadosPageContent() {
   const [activeCategory, setActiveCategory] = useState('Todos');
   const [searchQuery, setSearchQuery] = useState('');
   const [fromApi, setFromApi] = useState<Post[]>([]);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/portal/content?kind=comunicado')
-      .then((r) => r.json())
+    fetch('/api/content?type=news', { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((data) => {
         if (cancelled || !Array.isArray(data?.items)) return;
-        const mapped: Post[] = data.items.map(
-          (it: { id: string; title: string; body: string | null; published_at: string }) => ({
-            id: `api-${it.id}`,
-            category: 'Institucional',
+        const mapped: Post[] = (data.items as {
+          id: string;
+          title: string;
+          subtitle?: string | null;
+          description?: string | null;
+          category?: string | null;
+          cover_view_url?: string | null;
+          is_featured?: boolean;
+          publish_start?: string | null;
+          created_at?: string | null;
+        }[]).map((it) => {
+          const raw = it.publish_start || it.created_at;
+          const date = raw
+            ? new Date(raw).toLocaleDateString('pt-BR', {
+                day: '2-digit',
+                month: 'short',
+                year: 'numeric',
+              })
+            : '';
+          return {
+            id: `news-${it.id}`,
+            category: it.category?.trim() || 'Geral',
             title: it.title,
-            summary: it.body || 'Comunicado corporativo.',
-            date: it.published_at
-              ? new Date(it.published_at).toLocaleDateString('pt-BR', {
-                  day: '2-digit',
-                  month: 'short',
-                  year: 'numeric',
-                })
-              : '',
-          }),
-        );
+            summary: String(it.subtitle || it.description || '').trim() || '—',
+            date,
+            featured: !!it.is_featured,
+            image: it.cover_view_url || undefined,
+          };
+        });
         setFromApi(mapped);
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setLoaded(true);
+      });
     return () => {
       cancelled = true;
     };
   }, []);
 
-  const mergedPosts = useMemo(() => [...fromApi, ...(allPosts as Post[])], [fromApi]);
+  const categories = useMemo(() => {
+    const set = new Set<string>();
+    fromApi.forEach((p) => set.add(p.category));
+    return ['Todos', ...Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'))];
+  }, [fromApi]);
 
-  const filtered = mergedPosts.filter((post) => {
+  const posts = fromApi;
+
+  const filtered = posts.filter((post) => {
     const matchCategory = activeCategory === 'Todos' || post.category === activeCategory;
     const matchSearch =
       post.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -126,6 +84,12 @@ export function ComunicadosPageContent() {
   const featured = filtered.filter((p) => p.featured);
   const regular = filtered.filter((p) => !p.featured);
 
+  useEffect(() => {
+    if (activeCategory !== 'Todos' && !categories.includes(activeCategory)) {
+      setActiveCategory('Todos');
+    }
+  }, [activeCategory, categories]);
+
   return (
     <div className="min-h-screen bg-background">
       <div className="bg-sl-navy px-6 pb-12 pt-28">
@@ -135,7 +99,7 @@ export function ComunicadosPageContent() {
           </p>
           <h1 className="mb-4 font-heading text-4xl font-bold text-white md:text-5xl">Fique por dentro de tudo</h1>
           <p className="max-w-xl text-lg text-white/60">
-            Notícias, atualizações e informações importantes para o seu dia a dia.
+            Notícias e avisos publicados no CMS. Sem conteúdo publicado, esta página permanece vazia até o gestor cadastrar.
           </p>
 
           <div className="relative mt-8 max-w-xl">
@@ -171,11 +135,22 @@ export function ComunicadosPageContent() {
       </div>
 
       <div className="mx-auto max-w-7xl px-6 py-12">
+        {!loaded && <p className="text-sm text-muted-foreground">Carregando comunicados…</p>}
+
+        {loaded && posts.length === 0 && (
+          <div className="rounded-2xl border border-dashed border-border bg-muted/30 px-6 py-16 text-center">
+            <p className="text-muted-foreground">Nenhum comunicado publicado.</p>
+            <a href="/portal-edicao" className="mt-4 inline-block text-sm font-medium text-sl-red hover:text-sl-red-light">
+              Publicar em /portal-edicao
+            </a>
+          </div>
+        )}
+
         {featured.length > 0 && (
           <div className="mb-16 grid grid-cols-1 gap-8 md:grid-cols-2">
             {featured.map((post) => (
               <article key={post.id} className="group cursor-pointer">
-                {post.image && (
+                {post.image ? (
                   <div className="relative mb-5 aspect-[16/10] overflow-hidden rounded-2xl">
                     <img
                       src={post.image}
@@ -185,6 +160,12 @@ export function ComunicadosPageContent() {
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-sl-navy/60 to-transparent" />
                     <span className="absolute left-4 top-4 inline-flex items-center rounded-full bg-sl-red px-3 py-1 text-xs font-semibold text-white">
+                      {post.category}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="mb-5">
+                    <span className="inline-flex items-center rounded-full bg-sl-red px-3 py-1 text-xs font-semibold text-white">
                       {post.category}
                     </span>
                   </div>
@@ -233,9 +214,9 @@ export function ComunicadosPageContent() {
           ))}
         </div>
 
-        {filtered.length === 0 && (
+        {loaded && filtered.length === 0 && posts.length > 0 && (
           <div className="py-20 text-center">
-            <p className="text-lg text-muted-foreground">Nenhum comunicado encontrado.</p>
+            <p className="text-lg text-muted-foreground">Nenhum comunicado encontrado com estes filtros.</p>
           </div>
         )}
       </div>

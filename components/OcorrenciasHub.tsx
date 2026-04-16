@@ -80,7 +80,7 @@ const OcorrenciasHub: React.FC<Props> = ({ data, onNoteClick, serverPagination, 
   const [loadingDossierDetail, setLoadingDossierDetail] = useState(false);
   const [activeFolder, setActiveFolder] = useState<DossierFolderKey>("resumo");
   const [finalizeStatus, setFinalizeStatus] = useState("CONCLUIDO");
-  const [syncPdfToDrive, setSyncPdfToDrive] = useState(false);
+  const [syncPdf, setSyncPdf] = useState(false);
   const [finalizeMsg, setFinalizeMsg] = useState("");
   const [emailTo, setEmailTo] = useState("");
   const [emailSubject, setEmailSubject] = useState("");
@@ -297,7 +297,7 @@ const OcorrenciasHub: React.FC<Props> = ({ data, onNoteClick, serverPagination, 
         cte,
         serie: serie || "0",
         finalizationStatus: finalizeStatus,
-        syncPdfToDrive,
+        syncPdf,
       });
       setFinalizeMsg("Finalização registrada.");
       await refreshOpenDossier();
@@ -319,10 +319,10 @@ const OcorrenciasHub: React.FC<Props> = ({ data, onNoteClick, serverPagination, 
     if (attachLabel.trim()) fd.append("label", attachLabel.trim());
     try {
       await authClient.uploadDossierAttachment(fd);
-      setFinalizeMsg("Anexo enviado ao Drive do processo.");
+      setFinalizeMsg("Anexo enviado ao SharePoint (pasta do processo).");
       await refreshOpenDossier();
     } catch (e: any) {
-      setFinalizeMsg(e?.message || "Falha no anexo (Drive ou permissão).");
+      setFinalizeMsg(e?.message || "Falha no anexo (SharePoint ou permissão).");
     } finally {
       setAttachBusy(false);
     }
@@ -367,7 +367,7 @@ const OcorrenciasHub: React.FC<Props> = ({ data, onNoteClick, serverPagination, 
     { key: "ocorrencias", label: "Ocorrências", icon: <Scale size={18} />, hint: "Registros formais vinculados" },
     { key: "notas", label: "Notas / anexos", icon: <FileText size={18} />, hint: "Histórico de anotações" },
     { key: "processo", label: "Processo operacional", icon: <ChevronRight size={18} />, hint: "Linha do tempo em process_control" },
-    { key: "pdf", label: "PDF, anexos e encerramento", icon: <Mail size={18} />, hint: "PDF, Drive, e-mail SMTP e finalização" },
+    { key: "pdf", label: "PDF, anexos e encerramento", icon: <Mail size={18} />, hint: "PDF, SharePoint, e-mail SMTP e finalização" },
   ];
 
   const formatDossierWhen = (d: string | null | undefined) => {
@@ -797,11 +797,11 @@ const OcorrenciasHub: React.FC<Props> = ({ data, onNoteClick, serverPagination, 
                                       : ""}
                                   </p>
                                 ) : null}
-                                {dossierDetail.dossier?.pdf_drive_file_id ? (
+                                {dossierDetail.dossier?.pdf_file_id ? (
                                   <p>
-                                    <strong>PDF no Drive:</strong>{" "}
+                                    <strong>PDF (storage corporativo):</strong>{" "}
                                     <a
-                                      href={`https://drive.google.com/file/d/${dossierDetail.dossier.pdf_drive_file_id}/view`}
+                                      href={`/api/files/${dossierDetail.dossier.pdf_file_id}/view`}
                                       target="_blank"
                                       rel="noreferrer"
                                       className="text-sl-navy font-bold underline"
@@ -966,8 +966,8 @@ const OcorrenciasHub: React.FC<Props> = ({ data, onNoteClick, serverPagination, 
                                     ))}
                                   </select>
                                   <label className="flex items-center gap-2 text-[11px]">
-                                    <input type="checkbox" checked={syncPdfToDrive} onChange={(e) => setSyncPdfToDrive(e.target.checked)} />
-                                    Sincronizar PDF na pasta do processo no Drive (conta Google conectada)
+                                    <input type="checkbox" checked={syncPdf} onChange={(e) => setSyncPdf(e.target.checked)} />
+                                    Sincronizar PDF na pasta do processo no SharePoint
                                   </label>
                                   <button
                                     type="button"
@@ -978,7 +978,7 @@ const OcorrenciasHub: React.FC<Props> = ({ data, onNoteClick, serverPagination, 
                                   </button>
                                 </div>
                                 <div className="rounded-lg border border-indigo-200 bg-indigo-50/30 p-3 space-y-2">
-                                  <p className="text-[11px] font-bold text-indigo-900">Novo anexo (upload → pasta CTE no Drive)</p>
+                                  <p className="text-[11px] font-bold text-indigo-900">Novo anexo (upload → pasta CTE no SharePoint)</p>
                                   <div className="flex flex-wrap gap-2 items-center">
                                     <select
                                       className="rounded border border-slate-200 px-2 py-1 text-xs"

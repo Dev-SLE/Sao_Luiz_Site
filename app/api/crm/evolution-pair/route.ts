@@ -37,7 +37,7 @@ async function loadInbox(pool: any, inboxId: string) {
 /** POST: gerar QR / reconectar; opcional sync webhook. */
 export async function POST(req: Request) {
   try {
-    const guard = await requireApiPermissions(req, ["MANAGE_SETTINGS", "MANAGE_CRM_OPS"]);
+    const guard = await requireApiPermissions(req, ["MANAGE_CRM_OPS"]);
     if (guard.denied) return guard.denied;
     await ensureCrmSchemaTables();
     const pool = getPool();

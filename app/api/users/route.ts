@@ -10,7 +10,6 @@ export async function GET(req: Request) {
   try {
     const guard = await requireApiPermissions(req, [
       "MANAGE_USERS",
-      "MANAGE_SETTINGS",
       "VIEW_USERS",
       "VIEW_SETTINGS",
       /** Lista de utilizadores para atribuição operacional (sinónimo canónico `operacional.assignment.assign`). */
@@ -35,7 +34,7 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const guard = await requireApiPermissions(req, ["MANAGE_USERS", "MANAGE_SETTINGS"]);
+    const guard = await requireApiPermissions(req, ["MANAGE_USERS"]);
     if (guard.denied) return guard.denied;
     const body = await req.json();
     const username = String(body?.username || "").trim();
@@ -93,7 +92,7 @@ export async function POST(req: Request) {
 
 export async function DELETE(req: Request) {
   try {
-    const guard = await requireApiPermissions(req, ["MANAGE_USERS", "MANAGE_SETTINGS"]);
+    const guard = await requireApiPermissions(req, ["MANAGE_USERS"]);
     if (guard.denied) return guard.denied;
     const { searchParams } = new URL(req.url);
     const username = String(searchParams.get("username") || "").trim();

@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 
 export async function GET(req: Request) {
   try {
-    const guard = await requireApiPermissions(req, ["VIEW_RASTREIO_OPERACIONAL", "MANAGE_SETTINGS"]);
+    const guard = await requireApiPermissions(req, ["VIEW_RASTREIO_OPERACIONAL"]);
     if (guard.denied) return guard.denied;
     await ensureOperationalTrackingTables();
     const { searchParams } = new URL(req.url);

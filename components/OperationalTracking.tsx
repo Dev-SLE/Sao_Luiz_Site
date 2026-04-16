@@ -10,6 +10,7 @@ import {
   DESTINO_TO_MAPS_URL_BY_NORMALIZED,
   normalizeDestination,
 } from "../lib/maps/destinos";
+import { isApiFilesViewUrl, toAbsoluteMediaUrl } from "@/lib/mediaUrls";
 
 type TrackingItem = {
   CTE: string;
@@ -185,17 +186,6 @@ const extractMainLocation = (raw?: string | null) => {
   return s;
 };
 
-const getFileIdFromUrl = (url: string): string => {
-  if (!url) return "";
-  let match = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
-  if (match) return match[1];
-  match = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
-  if (match) return match[1];
-  match = url.match(/id=([a-zA-Z0-9_-]+)/);
-  if (match) return match[1];
-  return "";
-};
-
 const getMapsUrlForDestination = (name?: string | null) => {
   const raw = String(name || "");
   const n = normalizeDestination(raw);
@@ -226,8 +216,6 @@ const getMapsUrlForDestination = (name?: string | null) => {
 
   return "";
 };
-
-const isGoogleDriveUrl = (url: string) => !!getFileIdFromUrl(url);
 
 const normLogisticsStatus = (s: string) =>
   String(s || "")
@@ -375,9 +363,10 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
     runLifeSync();
     runCtesVehicleSync();
     const id = setInterval(() => {
+      if (typeof document !== "undefined" && document.hidden) return;
       runLifeSync();
       runCtesVehicleSync();
-    }, 60000);
+    }, 120000);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canManage]);
@@ -412,6 +401,24 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
     }
   };
 
+  const fetchItemsRef = useRef(fetchItems);
+  const fetchDetailRef = useRef(fetchDetail);
+  const selectedRef = useRef(selected);
+  fetchItemsRef.current = fetchItems;
+  fetchDetailRef.current = fetchDetail;
+  selectedRef.current = selected;
+
+  useEffect(() => {
+    const onVis = () => {
+      if (typeof document === "undefined" || document.hidden) return;
+      void fetchItemsRef.current();
+      const it = selectedRef.current?.item;
+      if (it?.CTE) void fetchDetailRef.current(it.CTE, it.SERIE);
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, []);
+
   useEffect(() => {
     if (initialCte) {
       fetchDetail(initialCte, initialSerie || "0");
@@ -421,9 +428,12 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
 
   useEffect(() => {
     if (!selected?.item?.CTE) return;
+    const cte = selected.item.CTE;
+    const serie = selected.item.SERIE;
     const id = setInterval(() => {
-      fetchDetail(selected.item.CTE, selected.item.SERIE);
-    }, 60000);
+      if (typeof document !== "undefined" && document.hidden) return;
+      fetchDetail(cte, serie);
+    }, 120000);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected?.item?.CTE, selected?.item?.SERIE]);
@@ -1441,15 +1451,15 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
                                 rel="noreferrer"
                                 className="inline-flex items-center justify-center w-16 h-16 rounded-xl bg-white border border-slate-200 overflow-hidden"
                               >
-                                {isGoogleDriveUrl(url) ? (
+                                {isApiFilesViewUrl(url) ? (
                                   <iframe
-                                    title="Drive preview"
+                                    title="Arquivo corporativo"
                                     loading="lazy"
                                     className="w-16 h-16"
-                                    src={`https://drive.google.com/file/d/${getFileIdFromUrl(url)}/preview`}
+                                    src={toAbsoluteMediaUrl(url)}
                                   />
                                 ) : (
-                                  <img src={url} alt="foto" className="w-full h-full object-cover" />
+                                  <img src={url} alt="foto" className="w-full h-full object-cover" loading="lazy" />
                                 )}
                               </a>
                             ))}
@@ -1687,15 +1697,15 @@ const OperationalTracking: React.FC<Props> = ({ initialCte, initialSerie }) => {
                         rel="noreferrer"
                         className="inline-flex items-center justify-center w-16 h-16 rounded-xl bg-white border border-slate-200 overflow-hidden"
                       >
-                        {isGoogleDriveUrl(url) ? (
+                        {isApiFilesViewUrl(url) ? (
                           <iframe
-                            title="Drive preview"
+                            title="Arquivo corporativo"
                             loading="lazy"
                             className="w-16 h-16"
-                            src={`https://drive.google.com/file/d/${getFileIdFromUrl(url)}/preview`}
+                            src={toAbsoluteMediaUrl(url)}
                           />
                         ) : (
-                          <img src={url} alt="foto" className="w-full h-full object-cover" />
+                          <img src={url} alt="foto" className="w-full h-full object-cover" loading="lazy" />
                         )}
                       </a>
                     ))}

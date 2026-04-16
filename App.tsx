@@ -200,14 +200,14 @@ export const WorkspaceApp: React.FC<{ workspaceClient?: WorkspaceNavigationClien
           <div
             className={
               isCrmModule
-                ? 'sle-app-main flex min-h-0 flex-1 flex-col overflow-hidden p-3 pt-2 md:p-4 md:pt-3'
+                ? 'sle-app-main flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden scroll-smooth p-3 pt-2 md:p-4 md:pt-3'
                 : 'sle-app-main flex min-h-0 flex-1 flex-col overflow-y-auto scroll-smooth p-3 pt-2 md:p-5 md:pt-3'
             }
           >
             <div
               className={
                 isCrmModule
-                  ? 'mx-auto flex h-full min-h-0 w-full flex-1 flex-col'
+                  ? 'mx-auto flex min-h-0 w-full min-w-0 flex-1 flex-col'
                   : 'mx-auto flex min-h-0 w-full max-w-[1600px] flex-1 flex-col'
               }
             >

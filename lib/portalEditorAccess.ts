@@ -1,3 +1,5 @@
+import { isAdminSuperRole } from "@/lib/adminSuperRoles";
+
 /** Cliente: quem pode abrir /portal-edicao e usar as mesmas APIs do CMS. */
 
 export type PortalEditorAccessOpts = {
@@ -7,16 +9,7 @@ export type PortalEditorAccessOpts = {
 
 /** Role de sessão com acesso total ao portal (não depende do array de permissões do perfil). */
 export function isSuperRole(role: string | null | undefined): boolean {
-  const r = String(role ?? "")
-    .trim()
-    .toLowerCase();
-  return (
-    r === "admin" ||
-    r === "superadmin" ||
-    r === "administrador" ||
-    r === "administrator" ||
-    r === "root"
-  );
+  return isAdminSuperRole(role);
 }
 
 /** Quem edita conteúdo do portal (UI + chamadas manage=1). */
@@ -25,6 +18,5 @@ export function canEditPortalContent(
   opts?: PortalEditorAccessOpts,
 ): boolean {
   if (isSuperRole(opts?.role)) return true;
-  if (hasPermission("MANAGE_SETTINGS")) return true;
   return hasPermission("portal.gestor.content.manage") || hasPermission("portal.colaborador.editor");
 }

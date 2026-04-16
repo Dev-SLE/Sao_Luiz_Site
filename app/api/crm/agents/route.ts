@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getPool } from "../../../../lib/server/db";
 import { ensureCrmSchemaTables } from "../../../../lib/server/ensureSchema";
 import { requireApiPermissions } from "../../../../lib/server/apiAuth";
+import { bumpApiRoute } from "../../../../lib/server/apiHitMeter";
+import { readThroughCache } from "../../../../lib/server/readThroughCache";
 
 export const runtime = "nodejs";
 
@@ -25,7 +27,10 @@ export async function GET(req: Request) {
   try {
     const guard = await requireApiPermissions(req, ["tab.crm.chat.view", "module.crm.view"]);
     if (guard.denied) return guard.denied;
+    bumpApiRoute("GET /api/crm/agents");
     await ensureCrmSchemaTables();
+
+    const payload = await readThroughCache("crm:agents:get", 45_000, async () => {
     const pool = getPool();
 
     const usersRes = await pool.query(
@@ -78,7 +83,7 @@ export async function GET(req: Request) {
       `
     );
 
-    return NextResponse.json({
+    return {
       agents,
       teams: (teamsRes.rows || []).map((t: any) => ({
         id: String(t.id),
@@ -86,7 +91,10 @@ export async function GET(req: Request) {
         description: t.description ? String(t.description) : null,
         isActive: !!t.is_active,
       })),
+    };
     });
+
+    return NextResponse.json(payload);
   } catch (error) {
     console.error("CRM agents GET error:", error);
     return NextResponse.json({ error: "Erro interno" }, { status: 500 });

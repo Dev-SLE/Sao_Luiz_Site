@@ -96,11 +96,19 @@ const CrmDashboard: React.FC = () => {
     };
     void run();
     const interval = window.setInterval(() => {
-      if (!cancelled) void loadData();
-    }, 8000);
+      if (cancelled) return;
+      if (typeof document !== "undefined" && document.hidden) return;
+      void loadData();
+    }, 12_000);
+    const onVis = () => {
+      if (cancelled || typeof document === "undefined" || document.hidden) return;
+      void loadData();
+    };
+    document.addEventListener("visibilitychange", onVis);
     return () => {
       cancelled = true;
       window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVis);
     };
   }, [loadData]);
 

@@ -1,32 +1,102 @@
 'use client';
 
-import { useState } from 'react';
-import { Search, FileText, Download, FolderOpen, ChevronRight, File, FileSpreadsheet, FileImage } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Search, FileText, Download, FolderOpen, ChevronRight, FileSpreadsheet, FileImage } from 'lucide-react';
 
-const folders = [
-  { id: 1, name: 'Políticas e Normas', icon: FolderOpen, count: 12, color: 'bg-blue-500/10 text-blue-600' },
-  { id: 2, name: 'Procedimentos Operacionais', icon: FolderOpen, count: 8, color: 'bg-emerald-500/10 text-emerald-600' },
-  { id: 3, name: 'Formulários', icon: FileSpreadsheet, count: 15, color: 'bg-purple-500/10 text-purple-600' },
-  { id: 4, name: 'Manuais e Guias', icon: FileText, count: 6, color: 'bg-amber-500/10 text-amber-600' },
-  { id: 5, name: 'Comunicados Oficiais', icon: File, count: 24, color: 'bg-cyan-500/10 text-cyan-600' },
-  { id: 6, name: 'Material de Treinamento', icon: FileImage, count: 10, color: 'bg-rose-500/10 text-rose-600' },
+type DocRow = {
+  id: string | number;
+  name: string;
+  type: string;
+  size: string;
+  folder: string;
+  date: string;
+  href: string | null;
+};
+
+const folderPalette = [
+  'bg-blue-500/10 text-blue-600',
+  'bg-emerald-500/10 text-emerald-600',
+  'bg-purple-500/10 text-purple-600',
+  'bg-amber-500/10 text-amber-600',
+  'bg-cyan-500/10 text-cyan-600',
+  'bg-rose-500/10 text-rose-600',
 ];
 
-const recentDocs = [
-  { id: 1, name: 'Política de Segurança Viária — 2026', type: 'PDF', size: '2.4 MB', folder: 'Políticas e Normas', date: '10 Abr 2026' },
-  { id: 2, name: 'Manual do Colaborador — Edição Atualizada', type: 'PDF', size: '5.1 MB', folder: 'Manuais e Guias', date: '08 Abr 2026' },
-  { id: 3, name: 'Formulário de Solicitação de Férias', type: 'XLSX', size: '156 KB', folder: 'Formulários', date: '07 Abr 2026' },
-  { id: 4, name: 'Procedimento — Checklist Pré-Viagem', type: 'PDF', size: '890 KB', folder: 'Procedimentos Operacionais', date: '05 Abr 2026' },
-  { id: 5, name: 'Código de Ética e Conduta', type: 'PDF', size: '1.8 MB', folder: 'Políticas e Normas', date: '03 Abr 2026' },
-  { id: 6, name: 'Formulário de Reembolso de Despesas', type: 'XLSX', size: '98 KB', folder: 'Formulários', date: '01 Abr 2026' },
-  { id: 7, name: 'Guia de Boas Práticas — Direção Defensiva', type: 'PDF', size: '3.2 MB', folder: 'Manuais e Guias', date: '28 Mar 2026' },
-  { id: 8, name: 'Regulamento Interno — Unidades Operacionais', type: 'PDF', size: '1.5 MB', folder: 'Políticas e Normas', date: '25 Mar 2026' },
-];
+function mimeLabel(m: string | null | undefined): string {
+  if (!m) return 'Arquivo';
+  if (m.includes('pdf')) return 'PDF';
+  if (m.includes('spreadsheet') || m.includes('excel') || m.endsWith('sheet')) return 'XLSX';
+  if (m.includes('word')) return 'DOCX';
+  if (m.startsWith('image/')) return 'Imagem';
+  return 'Arquivo';
+}
 
 export function DocumentosPageContent() {
   const [searchQuery, setSearchQuery] = useState('');
+  const [fromApi, setFromApi] = useState<DocRow[]>([]);
+  const [loaded, setLoaded] = useState(false);
 
-  const filteredDocs = recentDocs.filter(
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/content?type=document', { credentials: 'include' });
+        if (!res.ok) {
+          if (!cancelled) setLoaded(true);
+          return;
+        }
+        const data = await res.json();
+        const items = (data?.items || []) as {
+          id: string;
+          title: string;
+          category?: string | null;
+          main_download_url?: string | null;
+          main_mime?: string | null;
+          publish_start?: string | null;
+          created_at?: string | null;
+        }[];
+        if (cancelled) return;
+        setFromApi(
+          items.map((it) => {
+            const raw = it.publish_start || it.created_at;
+            const date = raw
+              ? new Date(raw).toLocaleDateString('pt-BR', {
+                  day: '2-digit',
+                  month: 'short',
+                  year: 'numeric',
+                })
+              : '';
+            return {
+              id: `doc-${it.id}`,
+              name: it.title,
+              type: mimeLabel(it.main_mime),
+              size: '—',
+              folder: it.category?.trim() || 'Documentos corporativos',
+              date,
+              href: it.main_download_url || null,
+            };
+          }),
+        );
+      } catch {
+        /* ignore */
+      } finally {
+        if (!cancelled) setLoaded(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const docList = useMemo(() => fromApi, [fromApi]);
+
+  const folderNames = useMemo(() => {
+    const s = new Set<string>();
+    docList.forEach((d) => s.add(d.folder));
+    return Array.from(s).slice(0, 6);
+  }, [docList]);
+
+  const filteredDocs = docList.filter(
     (doc) =>
       doc.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       doc.folder.toLowerCase().includes(searchQuery.toLowerCase()),
@@ -38,8 +108,9 @@ export function DocumentosPageContent() {
         <div className="mx-auto max-w-4xl text-center">
           <p className="mb-3 font-heading text-sm font-semibold uppercase tracking-widest text-sl-red-light">Documentos</p>
           <h1 className="mb-4 font-heading text-4xl font-bold text-white md:text-5xl">Biblioteca de documentos</h1>
-          <p className="mx-auto mb-10 max-w-lg text-lg text-white/60">
-            Encontre políticas, formulários, manuais e tudo que você precisa.
+          <p className="mx-auto mb-4 max-w-lg text-lg text-white/60">
+            Arquivos publicados no SharePoint em <span className="font-mono text-white/90">PortalMidia/documentos</span> aparecem aqui
+            automaticamente após cadastro no gestor.
           </p>
 
           <div className="relative mx-auto max-w-2xl">
@@ -56,27 +127,40 @@ export function DocumentosPageContent() {
       </div>
 
       <div className="mx-auto max-w-7xl px-6 py-12">
-        <h2 className="mb-6 font-heading text-xl font-bold text-foreground">Categorias</h2>
-        <div className="mb-16 grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
-          {folders.map((folder) => {
-            const Icon = folder.icon;
-            return (
-              <button
-                key={folder.id}
-                type="button"
-                className="group flex flex-col items-center rounded-2xl border border-border bg-card p-6 text-center transition-all duration-300 hover:translate-y-[-2px] hover:border-sl-navy/20 hover:shadow-lg"
-              >
-                <div className={`mb-3 flex h-12 w-12 items-center justify-center rounded-xl ${folder.color}`}>
-                  <Icon className="h-5 w-5" />
-                </div>
-                <span className="font-heading text-xs font-semibold leading-tight text-foreground">{folder.name}</span>
-                <span className="mt-1 text-xs text-muted-foreground">{folder.count} arquivos</span>
-              </button>
-            );
-          })}
-        </div>
+        {!loaded && <p className="mb-8 text-sm text-muted-foreground">Carregando documentos…</p>}
 
-        <h2 className="mb-6 font-heading text-xl font-bold text-foreground">Documentos recentes</h2>
+        {loaded && docList.length === 0 && (
+          <div className="mb-16 rounded-2xl border border-dashed border-border bg-muted/30 px-6 py-14 text-center">
+            <p className="text-muted-foreground">Nenhum documento publicado no catálogo.</p>
+            <a href="/portal-edicao" className="mt-4 inline-block text-sm font-medium text-sl-red hover:text-sl-red-light">
+              Cadastrar em /portal-edicao
+            </a>
+          </div>
+        )}
+
+        {folderNames.length > 0 && (
+          <>
+            <h2 className="mb-6 font-heading text-xl font-bold text-foreground">Categorias</h2>
+            <div className="mb-16 grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
+              {folderNames.map((name, i) => {
+                const color = folderPalette[i % folderPalette.length];
+                return (
+                  <div
+                    key={name}
+                    className="group flex flex-col items-center rounded-2xl border border-border bg-card p-6 text-center transition-all duration-300 hover:translate-y-[-2px] hover:border-sl-navy/20 hover:shadow-lg"
+                  >
+                    <div className={`mb-3 flex h-12 w-12 items-center justify-center rounded-xl ${color}`}>
+                      <FolderOpen className="h-5 w-5" />
+                    </div>
+                    <span className="font-heading text-xs font-semibold leading-tight text-foreground">{name}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+
+        <h2 className="mb-6 font-heading text-xl font-bold text-foreground">Documentos publicados</h2>
         <div className="overflow-hidden rounded-2xl border border-border bg-card">
           {filteredDocs.map((doc, index) => (
             <div
@@ -86,20 +170,36 @@ export function DocumentosPageContent() {
               }`}
             >
               <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-sl-red/10">
-                <FileText className="h-5 w-5 text-sl-red" />
+                {doc.type === 'XLSX' ? (
+                  <FileSpreadsheet className="h-5 w-5 text-sl-red" />
+                ) : doc.type === 'Imagem' ? (
+                  <FileImage className="h-5 w-5 text-sl-red" />
+                ) : (
+                  <FileText className="h-5 w-5 text-sl-red" />
+                )}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-foreground transition-colors group-hover:text-sl-navy-light">
-                  {doc.name}
-                </p>
+                <p className="truncate text-sm font-medium text-foreground transition-colors group-hover:text-sl-navy-light">{doc.name}</p>
                 <p className="text-xs text-muted-foreground">
                   {doc.folder} · {doc.type} · {doc.size}
                 </p>
               </div>
               <span className="hidden text-xs text-muted-foreground sm:block">{doc.date}</span>
-              <button type="button" className="p-2 text-muted-foreground transition-colors hover:text-sl-red">
-                <Download className="h-4 w-4" />
-              </button>
+              {doc.href ? (
+                <a
+                  href={doc.href}
+                  className="p-2 text-muted-foreground transition-colors hover:text-sl-red"
+                  title="Baixar"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <Download className="h-4 w-4" />
+                </a>
+              ) : (
+                <span className="p-2 text-muted-foreground/40">
+                  <Download className="h-4 w-4" />
+                </span>
+              )}
               <ChevronRight className="h-4 w-4 text-muted-foreground transition-all group-hover:translate-x-0.5 group-hover:text-sl-red" />
             </div>
           ))}

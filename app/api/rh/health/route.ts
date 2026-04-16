@@ -7,7 +7,7 @@ export const runtime = 'nodejs';
 export async function GET(req: Request) {
   const session = await getSessionContext(req);
   if (!session) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-  if (!can(session, 'module.rh.view') && !can(session, 'MANAGE_SETTINGS')) {
+  if (!can(session, 'module.rh.view')) {
     return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
   }
   return NextResponse.json({ module: 'rh', ok: true });

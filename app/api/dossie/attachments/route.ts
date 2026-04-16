@@ -1,12 +1,15 @@
 import { NextResponse } from "next/server";
-import { Readable } from "stream";
-import { google } from "googleapis";
 import { getPool } from "../../../../lib/server/db";
-import { ensureOccurrencesSchemaTables, ensureUserTokensTable } from "../../../../lib/server/ensureSchema";
+import { ensureOccurrencesSchemaTables, ensureStorageCatalogTables } from "../../../../lib/server/ensureSchema";
 import { can, getSessionContext } from "../../../../lib/server/authorization";
-import { ensureDriveCaseFolder, getGoogleOAuthClient } from "../../../../lib/server/googleDrive";
+import { isSharePointGraphConfigured } from "../../../../lib/server/sharepointConfig";
+import { uploadFileToSharePoint } from "../../../../modules/storage/fileService";
 
 export const runtime = "nodejs";
+
+function pad2(n: number) {
+  return String(n).padStart(2, "0");
+}
 
 export async function POST(req: Request) {
   try {
@@ -28,8 +31,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Sem permissão para anexos de pagamento" }, { status: 403 });
     }
 
+    if (!isSharePointGraphConfigured()) {
+      return NextResponse.json(
+        { error: "SharePoint não configurado. Defina GRAPH_* e SHAREPOINT_* no ambiente." },
+        { status: 503 }
+      );
+    }
+
     await ensureOccurrencesSchemaTables();
-    await ensureUserTokensTable();
     const pool = getPool();
 
     const dossRes = await pool.query(
@@ -50,58 +59,42 @@ export async function POST(req: Request) {
       dossierId = ins.rows?.[0]?.id;
     }
 
-    const tokenResult = await pool.query("SELECT * FROM pendencias.user_tokens WHERE LOWER(username) = LOWER($1)", [
-      session.username,
-    ]);
-    const userToken = tokenResult.rows?.[0];
-    if (!userToken?.access_token) {
-      return NextResponse.json({ error: "Conecte o Google Drive para enviar anexos ao processo." }, { status: 401 });
-    }
-
-    const oAuth2Client = getGoogleOAuthClient();
-    oAuth2Client.setCredentials({
-      access_token: userToken.access_token,
-      refresh_token: userToken.refresh_token,
-      expiry_date: userToken.expiry_date,
-    });
-    const drive = google.drive({ version: "v3", auth: oAuth2Client });
-    const folderId = await ensureDriveCaseFolder(drive, cte, serie);
-
     const f = file as File;
     const buffer = Buffer.from(await f.arrayBuffer());
-    const up = await drive.files.create({
-      requestBody: { name: f.name, parents: [folderId] },
-      media: { mimeType: f.type || "application/octet-stream", body: Readable.from(buffer) },
-      fields: "id",
-    } as any);
-    const fileId = up.data.id;
-    if (!fileId) return NextResponse.json({ error: "Falha no upload Drive" }, { status: 500 });
 
-    await drive.permissions.create({
-      fileId,
-      requestBody: { role: "reader", type: "anyone" },
+    await ensureStorageCatalogTables();
+    const now = new Date();
+    const fileRow = await uploadFileToSharePoint({
+      pool,
+      module: "operacional",
+      entity: "dossier",
+      entityId: String(dossierId),
+      originalName: f.name,
+      mimeType: f.type || "application/octet-stream",
+      buffer,
+      uploadedBy: session.username,
+      pathContext: {
+        year: String(now.getFullYear()),
+        month: pad2(now.getMonth() + 1),
+        entity_id: String(dossierId),
+        dossier_id: String(dossierId),
+        cte,
+        serie,
+      },
     });
-
-    const url = `https://drive.google.com/file/d/${fileId}/view`;
+    const viewUrl = `/api/files/${fileRow.id}/view`;
     const att = await pool.query(
-      `INSERT INTO pendencias.dossier_attachments (dossier_id, category, label, url, drive_file_id, uploaded_by, created_at)
-       VALUES ($1::uuid, $2, $3, $4, $5, $6, NOW())
+      `INSERT INTO pendencias.dossier_attachments (dossier_id, category, label, url, file_id, uploaded_by, created_at)
+       VALUES ($1::uuid, $2, $3, $4, $5::uuid, $6, NOW())
        RETURNING *`,
-      [dossierId, category, label, url, fileId, session.username]
+      [dossierId, category, label, viewUrl, fileRow.id, session.username]
     );
-
     await pool.query(
       `INSERT INTO pendencias.dossier_events (dossier_id, event_type, actor, description, metadata)
        VALUES ($1::uuid, 'ANEXO', $2, $3, $4::jsonb)`,
-      [
-        dossierId,
-        session.username,
-        `Anexo: ${f.name} (${category})`,
-        JSON.stringify({ driveFileId: fileId, category }),
-      ]
+      [dossierId, session.username, `Anexo: ${f.name} (${category})`, JSON.stringify({ fileId: fileRow.id, category })],
     );
-
-    return NextResponse.json({ item: att.rows?.[0] || null, url });
+    return NextResponse.json({ item: att.rows?.[0] || null, url: viewUrl });
   } catch (e) {
     console.error("[dossie.attachments]", e);
     return NextResponse.json({ error: "Erro interno" }, { status: 500 });

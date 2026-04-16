@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 
 export async function GET(req: Request) {
   try {
-    const guard = await requireApiPermissions(req, ["MANAGE_SOFIA", "MANAGE_SETTINGS"]);
+    const guard = await requireApiPermissions(req, ["MANAGE_SOFIA"]);
     if (guard.denied) return guard.denied;
     await ensureCrmSchemaTables();
     const pool = getPool();
@@ -69,7 +69,7 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const guard = await requireApiPermissions(req, ["MANAGE_SOFIA", "MANAGE_SETTINGS"]);
+    const guard = await requireApiPermissions(req, ["MANAGE_SOFIA"]);
     if (guard.denied) return guard.denied;
     await ensureCrmSchemaTables();
     const pool = getPool();

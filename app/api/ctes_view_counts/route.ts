@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getPool } from "../../../lib/server/db";
 import { ensureOperationalAssignmentsTable } from "../../../lib/server/ensureSchema";
 import { can, getSessionContext } from "../../../lib/server/authorization";
+import { isAdminSuperRole } from "../../../lib/adminSuperRoles";
 import { OPERATIONAL_CTE_STATUS_NORM_SQL, operationalCteUnitScopeAndClause } from "../../../lib/server/operationalCteUnitScope";
 
 export const runtime = "nodejs";
@@ -50,8 +51,7 @@ export async function POST(req: Request) {
     if (tabPerm && !can(session, tabPerm)) {
       return NextResponse.json({ error: "Sem permissão para esta visualização" }, { status: 403 });
     }
-    const hasOperationalGlobal =
-      can(session, "scope.operacional.all") || can(session, "MANAGE_SETTINGS") || String(session.role || "").toLowerCase() === "admin";
+    const hasOperationalGlobal = can(session, "scope.operacional.all") || isAdminSuperRole(session.role);
     const serverLinkedUnit = hasOperationalGlobal ? "" : String(session.dest || "").trim();
     const serverLinkedOrigin = hasOperationalGlobal ? "" : String(session.origin || "").trim();
     const effectiveDest = (ignoreUnitFilter ? "" : (unit || serverLinkedUnit || "")).trim();

@@ -2,14 +2,24 @@ import { NextResponse } from "next/server";
 import { getPool } from "../../../../lib/server/db";
 import { ensureCrmSchemaTables } from "../../../../lib/server/ensureSchema";
 import { requireApiPermissions } from "../../../../lib/server/apiAuth";
+import { bumpApiRoute } from "../../../../lib/server/apiHitMeter";
+import { invalidateReadCacheKey, readThroughCache } from "../../../../lib/server/readThroughCache";
+
+function bustCrmTeamCaches() {
+  invalidateReadCacheKey("crm:teams:get");
+  invalidateReadCacheKey("crm:agents:get");
+}
 
 export const runtime = "nodejs";
 
 export async function GET(req: Request) {
   try {
-    const guard = await requireApiPermissions(req, ["MANAGE_CRM_OPS", "MANAGE_SETTINGS"]);
+    const guard = await requireApiPermissions(req, ["MANAGE_CRM_OPS"]);
     if (guard.denied) return guard.denied;
+    bumpApiRoute("GET /api/crm/teams");
     await ensureCrmSchemaTables();
+
+    const payload = await readThroughCache("crm:teams:get", 45_000, async () => {
     const pool = getPool();
 
     const teamsRes = await pool.query(
@@ -41,7 +51,7 @@ export async function GET(req: Request) {
       });
     }
 
-    return NextResponse.json({
+    return {
       teams: (teamsRes.rows || []).map((t: any) => ({
         id: String(t.id),
         name: String(t.name),
@@ -49,7 +59,10 @@ export async function GET(req: Request) {
         isActive: !!t.is_active,
         members: membersByTeam.get(String(t.id)) || [],
       })),
+    };
     });
+
+    return NextResponse.json(payload);
   } catch (error) {
     console.error("CRM teams GET error:", error);
     return NextResponse.json({ error: "Erro interno" }, { status: 500 });
@@ -58,7 +71,7 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const guard = await requireApiPermissions(req, ["MANAGE_CRM_OPS", "MANAGE_SETTINGS"]);
+    const guard = await requireApiPermissions(req, ["MANAGE_CRM_OPS"]);
     if (guard.denied) return guard.denied;
     await ensureCrmSchemaTables();
     const pool = getPool();
@@ -81,6 +94,7 @@ export async function POST(req: Request) {
           `,
           [name, description, isActive]
         );
+        bustCrmTeamCaches();
         return NextResponse.json({ id: created.rows?.[0]?.id, success: true });
       }
 
@@ -92,6 +106,7 @@ export async function POST(req: Request) {
         `,
         [id, name, description, isActive]
       );
+      bustCrmTeamCaches();
       return NextResponse.json({ id, success: true });
     }
 
@@ -99,6 +114,7 @@ export async function POST(req: Request) {
       const id = body?.id ? String(body.id) : null;
       if (!id) return NextResponse.json({ error: "id obrigatório" }, { status: 400 });
       await pool.query("DELETE FROM pendencias.crm_teams WHERE id = $1", [id]);
+      bustCrmTeamCaches();
       return NextResponse.json({ success: true });
     }
 
@@ -123,6 +139,7 @@ export async function POST(req: Request) {
           `,
           [teamId, username, memberRole, isActive]
         );
+        bustCrmTeamCaches();
         return NextResponse.json({ id: created.rows?.[0]?.id, success: true });
       }
 
@@ -134,6 +151,7 @@ export async function POST(req: Request) {
         `,
         [id, teamId, username, memberRole, isActive]
       );
+      bustCrmTeamCaches();
       return NextResponse.json({ id, success: true });
     }
 
@@ -141,6 +159,7 @@ export async function POST(req: Request) {
       const id = body?.id ? String(body.id) : null;
       if (!id) return NextResponse.json({ error: "id obrigatório" }, { status: 400 });
       await pool.query("DELETE FROM pendencias.crm_team_members WHERE id = $1", [id]);
+      bustCrmTeamCaches();
       return NextResponse.json({ success: true });
     }
 
@@ -183,6 +202,7 @@ export async function POST(req: Request) {
         `,
         [username]
       );
+      bustCrmTeamCaches();
       return NextResponse.json({ success: true });
     }
 

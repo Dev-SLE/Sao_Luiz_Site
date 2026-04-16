@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getPool } from "../../../../lib/server/db";
 import { ensureCrmSchemaTables } from "../../../../lib/server/ensureSchema";
 import { can, getSessionContext } from "../../../../lib/server/authorization";
+import { bumpApiRoute } from "../../../../lib/server/apiHitMeter";
+import { readThroughCache } from "../../../../lib/server/readThroughCache";
 
 export const runtime = "nodejs";
 
@@ -173,13 +175,22 @@ export async function GET(req: Request) {
     const pipelineId = await ensureDefaultPipeline(pool);
     await ensureOperationalStages(pool, pipelineId);
 
-    const pipelineRes = await pool.query(
+    bumpApiRoute("GET /api/crm/board");
+    const boardCacheKey = `crm:board:${requestUsername}:${mineOnly}:${teamId || ""}:${scope}:${teamIds
+      .slice()
+      .sort()
+      .join(",")}:${pipelineId}`;
+
+    const payload = await readThroughCache(boardCacheKey, 8000, async () => {
+      const poolInner = getPool();
+
+    const pipelineRes = await poolInner.query(
       "SELECT id, name FROM pendencias.crm_pipelines WHERE id = $1",
       [pipelineId]
     );
     const pipeline = pipelineRes.rows?.[0] || null;
 
-    const stagesRes = await pool.query(
+    const stagesRes = await poolInner.query(
       `
         SELECT id, name, position
         FROM pendencias.crm_stages
@@ -194,7 +205,7 @@ export async function GET(req: Request) {
       position: Number(r.position || 0),
     }));
 
-    const agenciesRes = await pool.query(
+    const agenciesRes = await poolInner.query(
       `
         SELECT
           id, name, city, state, phone, whatsapp, contact_name,
@@ -206,7 +217,7 @@ export async function GET(req: Request) {
       `
     );
 
-    const leadsRes = await pool.query(
+    const leadsRes = await poolInner.query(
       `
       SELECT
         l.id,
@@ -325,7 +336,7 @@ export async function GET(req: Request) {
       logs: parseJsonbArray(r.logs),
     }));
 
-    return NextResponse.json({
+    return {
       pipeline: pipeline
         ? { id: pipeline.id as string, name: pipeline.name as string }
         : null,
@@ -344,7 +355,10 @@ export async function GET(req: Request) {
         internalRating: r.internal_rating != null ? Number(r.internal_rating) : null,
         notes: r.notes ? String(r.notes) : null,
       })),
+    };
     });
+
+    return NextResponse.json(payload);
   } catch (error) {
     console.error("CRM board GET error:", error);
     return NextResponse.json({ error: "Erro interno" }, { status: 500 });

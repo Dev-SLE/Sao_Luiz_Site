@@ -1,16 +1,57 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+
 export function HeroSection() {
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite';
+  const [heroUrl, setHeroUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/content?type=banner', { credentials: 'include' });
+        if (!res.ok) return;
+        const data = await res.json();
+        const items = (data?.items || []) as { cover_view_url?: string | null; is_featured?: boolean; display_order?: number }[];
+        if (!items.length) return;
+        const sorted = [...items].sort((a, b) => {
+          const af = a.is_featured ? 1 : 0;
+          const bf = b.is_featured ? 1 : 0;
+          if (bf !== af) return bf - af;
+          return (a.display_order ?? 0) - (b.display_order ?? 0);
+        });
+        const first = sorted.find((x) => x.cover_view_url);
+        if (!cancelled && first?.cover_view_url) {
+          const u = String(first.cover_view_url);
+          setHeroUrl(u.startsWith('/') ? u : `/${u}`);
+        }
+      } catch {
+        /* mantém fundo em gradiente */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <section className="relative flex min-h-[600px] h-[85vh] items-end overflow-hidden">
-      <img
-        src="/portal-assets/hero-trucks.jpg"
-        alt="Frota São Luiz Express na estrada"
-        className="absolute inset-0 h-full w-full object-cover"
-        width={1920}
-        height={1080}
-      />
+      {heroUrl ? (
+        <img
+          src={heroUrl}
+          alt=""
+          className="absolute inset-0 h-full w-full object-cover"
+          width={1920}
+          height={1080}
+        />
+      ) : (
+        <div
+          className="absolute inset-0 bg-gradient-to-br from-sl-navy via-sl-navy to-sl-red/25"
+          aria-hidden
+        />
+      )}
 
       <div className="overlay-dark-strong absolute inset-0" />
 

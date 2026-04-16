@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   try {
-    const guard = await requireApiPermissions(req, ["MANAGE_RASTREIO_OPERACIONAL", "MANAGE_SETTINGS"]);
+    const guard = await requireApiPermissions(req, ["MANAGE_RASTREIO_OPERACIONAL"]);
     if (guard.denied) return guard.denied;
     await ensureOperationalTrackingTables();
     const pool = getPool();

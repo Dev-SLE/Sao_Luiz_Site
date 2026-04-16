@@ -61,7 +61,7 @@ async function sendWhatsAppText(args: { toE164: string; body: string }) {
 export async function POST(req: Request) {
   try {
     if (!verifyCronSecret(req)) {
-      const guard = await requireApiPermissions(req, ["MANAGE_CRM_OPS", "MANAGE_SETTINGS"]);
+      const guard = await requireApiPermissions(req, ["MANAGE_CRM_OPS"]);
       if (guard.denied) return guard.denied;
     }
 

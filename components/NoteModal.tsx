@@ -7,29 +7,13 @@ import clsx from 'clsx';
 import { Package, Scale, Coins, Tag } from 'lucide-react';
 import { authClient } from '../lib/auth';
 import { AppMessageModal, type AppMessageVariant } from './AppOverlays';
+import { isApiFilesViewUrl, toAbsoluteMediaUrl } from '@/lib/mediaUrls';
 
 // --- Helpers ---
-
-const getFileIdFromUrl = (url: string): string => {
-  if (!url) return '';
-  let match = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
-  if (match) return match[1];
-  match = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
-  if (match) return match[1];
-  match = url.match(/id=([a-zA-Z0-9_-]+)/);
-  if (match) return match[1];
-  return '';
-};
-
-const isGoogleDriveUrl = (url: string): boolean => {
-  const u = String(url || "").toLowerCase();
-  return u.includes("drive.google.com") || u.includes("docs.google.com");
-};
 
 const detectMimeType = (url: string): string => {
   if (!url) return '';
   const u = url.toLowerCase();
-  if (getFileIdFromUrl(url)) return 'application/vnd.google-apps.file';
   if (u.startsWith('data:image')) return 'image/jpeg';
   if (u.startsWith('data:application/pdf')) return 'application/pdf';
   if (u.includes('audio') || u.endsWith('.mp3') || u.endsWith('.wav') || u.endsWith('.ogg') || u.endsWith('.m4a') || u.endsWith('.aac')) return 'audio/mpeg';
@@ -94,29 +78,23 @@ interface MediaAttachmentProps {
 }
 
 const MediaAttachment: React.FC<MediaAttachmentProps> = ({ url, onImageClick }) => {
-  const fileId = getFileIdFromUrl(url);
   const mimeType = detectMimeType(url);
-  const isGoogleDrive = !!fileId || isGoogleDriveUrl(url);
 
-  if (isGoogleDrive) {
-      return (
-          <div className="media-container drive-container bg-white p-2 rounded-lg border border-slate-200 mt-2">
-               <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2 text-slate-800 font-bold text-xs uppercase tracking-wide">
-                      <FileIcon size={14} className="text-primary-400" /> Arquivo no Drive
-                  </div>
-                  <a href={url} target="_blank" rel="noreferrer" className="text-sky-400 hover:text-sky-300" title="Abrir em nova aba">
-                      <ExternalLink size={14} />
-                  </a>
-               </div>
-               <div className="rounded border border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-600">
-                 A visualização incorporada do Google Drive pode ser bloqueada por políticas de segurança do navegador.
-                 <a href={url} target="_blank" rel="noreferrer" className="ml-1 font-bold text-sl-navy underline">
-                   Abrir arquivo no Drive
-                 </a>
-               </div>
+  if (isApiFilesViewUrl(url)) {
+    const abs = toAbsoluteMediaUrl(url);
+    return (
+      <div className="media-container bg-white p-2 rounded-lg border border-slate-200 mt-2">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2 text-slate-800 font-bold text-xs uppercase tracking-wide">
+            <FileIcon size={14} className="text-primary-400" /> Arquivo corporativo
           </div>
-      );
+          <a href={abs} target="_blank" rel="noreferrer" className="text-sky-400 hover:text-sky-300" title="Abrir em nova aba">
+            <ExternalLink size={14} />
+          </a>
+        </div>
+        <iframe title="Pré-visualização" className="w-full min-h-[200px] rounded border border-slate-200 bg-slate-50" src={abs} />
+      </div>
+    );
   }
 
   if (mimeType.startsWith('image/')) {

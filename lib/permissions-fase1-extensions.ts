@@ -144,6 +144,21 @@ export const FASE1_EXTRA_PERMISSIONS = [
     section: 'portal',
   },
   {
+    key: 'portal.gestor.content.manage',
+    label: 'Portal gestor: CMS (banners, campanhas, notícias)',
+    description: 'Cadastrar e publicar conteúdo dinâmico do portal (content_items + arquivos SharePoint).',
+    group: 'ACAO',
+    section: 'portal',
+  },
+  {
+    key: 'portal.colaborador.editor',
+    label: 'Portal: editor de conteúdo (comunicação)',
+    description:
+      'Publicar e trocar banners, comunicados, treinamentos, documentos e agenda pelo portal (/portal-edicao), sem precisar da área Gestor nem do SharePoint manual.',
+    group: 'ACAO',
+    section: 'portal',
+  },
+  {
     key: 'scope.admin.setor',
     label: 'Escopo: dados do próprio setor (gestão)',
     description: 'Limita indicadores e listas do portal gestor ao setor do usuário.',

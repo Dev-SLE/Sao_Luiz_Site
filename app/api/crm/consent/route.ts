@@ -57,7 +57,7 @@ async function upsertPrefs(pool: any, args: {
 
 export async function GET(req: Request) {
   try {
-    const guard = await requireApiPermissions(req, ["MANAGE_CRM_OPS", "MANAGE_SETTINGS"]);
+    const guard = await requireApiPermissions(req, ["MANAGE_CRM_OPS"]);
     if (guard.denied) return guard.denied;
     await ensureCrmSchemaTables();
     const pool = getPool();
@@ -102,7 +102,7 @@ export async function POST(req: Request) {
     const pool = getPool();
     const body = await req.json().catch(() => ({}));
     const action = String(body?.action || "").toUpperCase();
-    const guardFull = await requireApiPermissions(req, ["MANAGE_CRM_OPS", "MANAGE_SETTINGS"]);
+    const guardFull = await requireApiPermissions(req, ["MANAGE_CRM_OPS"]);
 
     if (action === "UPSERT_PREFS") {
       if (guardFull.denied) return guardFull.denied;

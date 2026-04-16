@@ -164,6 +164,27 @@ export const PERMISSION_CATALOG: PermissionDefinition[] = [
     section: "comercial",
   },
   {
+    key: "VIEW_RELATORIOS",
+    label: "Comercial — relatórios (legado)",
+    description: "Chave legada; equivale a acesso às metas/auditoria no comercial.",
+    group: "LEGADO",
+    section: "comercial",
+  },
+  {
+    key: "VIEW_COMERCIAL_AUDITORIA",
+    label: "Comercial — Metas e auditoria",
+    description: "Acessar a tela de metas e auditoria.",
+    group: "MODULO",
+    section: "comercial",
+  },
+  {
+    key: "VIEW_COMERCIAL_ROBO_SUPREMO",
+    label: "Comercial — Robô Supremo",
+    description: "Acessar a ferramenta Robô Supremo.",
+    group: "MODULO",
+    section: "comercial",
+  },
+  {
     key: "module.admin.view",
     label: "Módulo Administração",
     description: "Acessar área de administração (quando aplicável ao produto).",
@@ -338,42 +359,13 @@ export const PERMISSION_CATALOG: PermissionDefinition[] = [
 ];
 
 const LEGACY_ALIAS: Record<string, string[]> = {
-  "workspace.app.view": [
-    "module.operacional.view",
-    "module.crm.view",
-    "module.comercial.view",
-    "module.admin.view",
-    "module.manifestos.view",
-    "module.clientes.view",
-    "module.patrimonio.view",
-    "module.financeiro.view",
-    "module.fiscal.view",
-    "module.rh.view",
-    "module.compras.view",
-    "module.juridico.view",
-    "module.gerencial.view",
-    "module.auditoria.view",
-    "VIEW_DASHBOARD",
-    "VIEW_PENDENCIAS",
-    "VIEW_CRITICOS",
-    "VIEW_EM_BUSCA",
-    "VIEW_OCORRENCIAS",
-    "VIEW_TAD",
-    "VIEW_RASTREIO_OPERACIONAL",
-    "VIEW_CONCLUIDOS",
-    "VIEW_SETTINGS",
-    "VIEW_RELATORIOS",
-    "VIEW_CRM_DASHBOARD",
-    "VIEW_CRM_FUNIL",
-    "VIEW_CRM_CHAT",
-    "tab.operacional.visao_geral.view",
-    "tab.operacional.pendencias.view",
-    "tab.operacional.criticos.view",
-    "tab.operacional.em_busca.view",
-    "tab.operacional.ocorrencias.view",
-    "tab.operacional.concluidos.view",
-    "tab.operacional.rastreio.view",
-  ],
+  /**
+   * Apenas o atalho /app e gates que checam explicitamente `workspace.app.view`.
+   * Módulos (operacional, CRM, comercial, etc.) exigem permissões próprias.
+   */
+  "workspace.app.view": [],
+  "module.comercial.view": ["VIEW_RELATORIOS", "VIEW_COMERCIAL_AUDITORIA", "VIEW_COMERCIAL_ROBO_SUPREMO"],
+  "VIEW_COMERCIAL_AUDITORIA": ["VIEW_RELATORIOS"],
   /** Quem tem qualquer vista operacional legada ou aba nova deve passar no gate da API `module.operacional.view`. */
   "module.operacional.view": [
     "workspace.app.view",
@@ -427,8 +419,8 @@ const LEGACY_ALIAS: Record<string, string[]> = {
 };
 
 /**
- * Expansão ampla para checagem em runtime: `workspace.app.view` e `module.operacional.view` agregam várias chaves
- * legadas para compatibilidade de perfis antigos.
+ * Expansão para checagem em runtime: chaves legadas e módulos (`module.operacional.view`, etc.).
+ * `workspace.app.view` não concede módulos inteiros — só o shell / rotas que pedem essa chave explicitamente.
  */
 export function expandAuthPermissionMatch(needed: string): Set<string> {
   const p = String(needed).trim();

@@ -8,6 +8,8 @@ import {
   normalizePhoneLast10,
   resolveCrmListScope,
 } from "../../../../lib/server/crmAccess";
+import { bumpApiRoute } from "../../../../lib/server/apiHitMeter";
+import { readThroughCache } from "../../../../lib/server/readThroughCache";
 
 export const runtime = "nodejs";
 
@@ -66,8 +68,13 @@ export async function GET(req: Request) {
       });
     }
 
+    bumpApiRoute("GET /api/crm/contact-360");
+    const c360Key = `crm:contact-360:${session.username}:${visibleIds.slice().sort().join(",")}`;
+
+    const payload = await readThroughCache(c360Key, 5000, async () => {
+    const poolInner = getPool();
     const [leads, conversations, timeline, tasks, prefs, events] = await Promise.all([
-      pool.query(
+      poolInner.query(
         `
         SELECT
           l.id, l.title, l.contact_phone, l.contact_email,
@@ -143,7 +150,7 @@ export async function GET(req: Request) {
       ),
     ]);
 
-    return NextResponse.json({
+    return {
       phoneLast10: phone10,
       emailNormalized: email,
       leads: leads.rows || [],
@@ -152,7 +159,10 @@ export async function GET(req: Request) {
       tasks: tasks.rows || [],
       prefs: prefs.rows?.[0] || null,
       consentEvents: events.rows || [],
+    };
     });
+
+    return NextResponse.json(payload);
   } catch (e) {
     console.error("[crm.contact360]", e);
     return NextResponse.json({ error: "Erro interno" }, { status: 500 });

@@ -42,6 +42,21 @@ export async function ensureFase1InfrastructureTables() {
     );
 
     await pool.query(`
+      CREATE TABLE IF NOT EXISTS pendencias.portal_submissions (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        created_at timestamptz NOT NULL DEFAULT NOW(),
+        channel text NOT NULL,
+        username text,
+        status text NOT NULL DEFAULT 'received',
+        payload jsonb NOT NULL DEFAULT '{}'::jsonb
+      )
+    `);
+    await pool.query(
+      `CREATE INDEX IF NOT EXISTS idx_portal_submissions_channel_created ON pendencias.portal_submissions (channel, created_at DESC)`,
+    );
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_portal_submissions_username ON pendencias.portal_submissions (username)`);
+
+    await pool.query(`
       CREATE TABLE IF NOT EXISTS pendencias.unified_notification_state (
         id bigserial PRIMARY KEY,
         username text NOT NULL,
@@ -52,19 +67,6 @@ export async function ensureFase1InfrastructureTables() {
     await pool.query(
       `CREATE UNIQUE INDEX IF NOT EXISTS idx_unified_notification_state_user_id ON pendencias.unified_notification_state (LOWER(username), notification_id)`,
     );
-
-    const cnt = await pool.query(`SELECT COUNT(*)::int AS n FROM pendencias.portal_content`);
-    if (Number(cnt.rows?.[0]?.n || 0) === 0) {
-      await pool.query(
-        `
-          INSERT INTO pendencias.portal_content (kind, title, body, href, created_by)
-          VALUES
-            ('comunicado', 'Boas-vindas à plataforma unificada', 'Portal e sistema no mesmo ambiente.', '/comunicados', 'system'),
-            ('documento', 'Código de ética (exemplo)', 'Documento institucional.', '/documentos', 'system'),
-            ('treinamento', 'Segurança no trânsito — introdutório', 'Treinamento obrigatório.', '/treinamentos', 'system')
-        `,
-      );
-    }
 
     fase1TablesReady = true;
   })();

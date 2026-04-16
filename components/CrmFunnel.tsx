@@ -343,7 +343,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
   }, []);
 
   useEffect(() => {
-    const t = window.setInterval(() => setNowTick(Date.now()), 30_000);
+    const t = window.setInterval(() => setNowTick(Date.now()), 60_000);
     return () => window.clearInterval(t);
   }, []);
 

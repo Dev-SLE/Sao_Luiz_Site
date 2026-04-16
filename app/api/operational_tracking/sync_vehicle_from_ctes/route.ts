@@ -13,7 +13,7 @@ export const runtime = "nodejs";
 export async function POST(req: Request) {
   try {
     if (!verifyCronSecret(req)) {
-      const guard = await requireApiPermissions(req, ["MANAGE_RASTREIO_OPERACIONAL", "MANAGE_SETTINGS"]);
+      const guard = await requireApiPermissions(req, ["MANAGE_RASTREIO_OPERACIONAL"]);
       if (guard.denied) return guard.denied;
     }
 

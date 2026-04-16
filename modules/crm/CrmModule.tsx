@@ -34,11 +34,11 @@ export function CrmModule({
   const page = pathToPage(pathname);
 
   const canEnterCrm =
+    hasPermission('module.crm.view') ||
     hasPermission('VIEW_CRM_DASHBOARD') ||
     hasPermission('VIEW_CRM_FUNIL') ||
     hasPermission('VIEW_CRM_CHAT') ||
-    hasPermission('MANAGE_CRM_OPS') ||
-    hasPermission('MANAGE_SETTINGS');
+    hasPermission('MANAGE_CRM_OPS');
 
   if (!canEnterCrm) {
     return <WorkspaceNoAccess message="Seu perfil não possui acesso ao módulo CRM." />;
@@ -69,11 +69,11 @@ export function CrmModule({
       }
       break;
     case Page.CRM_OPS:
-      if (!hasPermission('MANAGE_CRM_OPS') && !hasPermission('MANAGE_SETTINGS')) {
+      if (!hasPermission('MANAGE_CRM_OPS')) {
         body = <WorkspaceNoAccess message="Seu perfil não possui acesso à Operação CRM." />;
       } else {
         body = (
-          <div className="max-w-6xl space-y-4">
+          <div className="max-w-6xl min-h-0 w-full flex-1 space-y-4 pb-6">
             <p className="text-xs text-slate-600">
               Times, caixas WhatsApp (Evolution), triagem de contatos, roteamento, SLA, cadências e campanhas. A
               privacidade e trilha de consentimento ficam em <strong>Privacidade CRM</strong> no menu.
@@ -109,7 +109,7 @@ export function CrmModule({
       }
       break;
     case Page.CRM_PRIVACY:
-      if (!hasPermission('MANAGE_CRM_OPS') && !hasPermission('MANAGE_SETTINGS')) {
+      if (!hasPermission('MANAGE_CRM_OPS')) {
         body = <WorkspaceNoAccess message="Seu perfil não possui acesso ao módulo de privacidade CRM." />;
       } else {
         body = <CrmPrivacyHub />;
@@ -146,9 +146,11 @@ export function CrmModule({
   return (
     <div
       key={pathname}
-      className={clsx(isDense ? 'flex h-full min-h-0 flex-col' : '', 'min-h-0 flex-1')}
+      className={clsx(
+        isDense ? 'flex h-full min-h-0 flex-col' : 'flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden',
+      )}
     >
-      <div className={clsx(isDense ? 'flex h-full min-h-0 flex-col' : '')}>
+      <div className={clsx(isDense ? 'flex h-full min-h-0 flex-col' : 'flex min-h-0 min-w-0 flex-1 flex-col')}>
         {body}
         {funnelChat}
       </div>

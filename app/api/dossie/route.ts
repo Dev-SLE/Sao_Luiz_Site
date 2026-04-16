@@ -75,7 +75,7 @@ export async function GET(req: Request) {
       );
       dossierEvents = ev.rows || [];
       const att = await pool.query(
-        `SELECT id, category, label, url, drive_file_id, uploaded_by, created_at
+        `SELECT id, category, label, url, file_id, uploaded_by, created_at
          FROM pendencias.dossier_attachments
          WHERE dossier_id = $1::uuid
          ORDER BY created_at DESC`,

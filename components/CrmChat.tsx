@@ -1160,7 +1160,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
     tick();
     const interval = window.setInterval(() => {
       void tick();
-    }, document.hidden ? 12000 : 4000);
+    }, document.hidden ? 22_000 : 7500);
 
     return () => window.clearInterval(interval);
   }, [selectedConversationId]);
@@ -1191,7 +1191,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
       } finally {
         conversationsPollInFlight.current = false;
       }
-    }, 30000);
+    }, 45_000);
     return () => window.clearInterval(interval);
   }, [leadId, selectedConversationId, user?.username, user?.role]);
 

@@ -31,6 +31,7 @@ export function OperacionalModule({ pathname, onNoteClick, navigateToPage, track
   const r0 = rest[0]?.toLowerCase() ?? '';
 
   const canEnterOperacional =
+    hasPermission('module.operacional.view') ||
     hasPermission('VIEW_DASHBOARD') ||
     hasPermission('VIEW_PENDENCIAS') ||
     hasPermission('VIEW_CRITICOS') ||
@@ -38,7 +39,6 @@ export function OperacionalModule({ pathname, onNoteClick, navigateToPage, track
     hasPermission('tab.operacional.ocorrencias.view') ||
     hasPermission('VIEW_RASTREIO_OPERACIONAL') ||
     hasPermission('VIEW_CONCLUIDOS') ||
-    hasPermission('MANAGE_SETTINGS') ||
     hasPermission('VIEW_SETTINGS') ||
     hasPermission('VIEW_RELATORIOS') ||
     hasPermission('MANAGE_SOFIA');
@@ -56,7 +56,7 @@ export function OperacionalModule({ pathname, onNoteClick, navigateToPage, track
       body = <Settings />;
     }
   } else if (pathname.endsWith('/relatorios')) {
-    if (!hasPermission('VIEW_RELATORIOS') && !hasPermission('MANAGE_SETTINGS')) {
+    if (!hasPermission('VIEW_RELATORIOS')) {
       body = <WorkspaceNoAccess message="Seu perfil não possui acesso aos Relatórios." />;
     } else {
       body = <Reports />;

@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { MessageSquare, Shield, AlertTriangle, HelpCircle, Send, Lock, ChevronDown } from 'lucide-react';
 
 const categories = [
@@ -10,34 +11,81 @@ const categories = [
   { id: 'elogio', label: 'Elogio', icon: Shield, description: 'Reconhecimento de atitudes positivas de colegas' },
 ];
 
-const faqs = [
-  {
-    q: 'Minha identidade será protegida?',
-    a: 'Sim. Todos os relatos podem ser feitos de forma anônima. Nosso sistema garante total sigilo e confidencialidade.',
-  },
-  {
-    q: 'Qual o prazo de resposta?',
-    a: 'Nos comprometemos a analisar e responder em até 5 dias úteis. Denúncias graves são tratadas com prioridade.',
-  },
-  {
-    q: 'Quem tem acesso aos relatos?',
-    a: 'Apenas o comitê de ética e a ouvidoria interna têm acesso. Gestores diretos não visualizam os registros.',
-  },
-  {
-    q: 'Posso acompanhar meu chamado?',
-    a: 'Sim. Ao enviar, você recebe um protocolo para acompanhar o andamento sem precisar se identificar.',
-  },
-];
+type FaqItem = { id: string; title: string; description?: string | null };
 
 export function SuportePageContent() {
   const [selected, setSelected] = useState<string | null>(null);
   const [anonymous, setAnonymous] = useState(true);
-  const [openFaq, setOpenFaq] = useState<number | null>(null);
+  const [openFaqId, setOpenFaqId] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
+  const [protocol, setProtocol] = useState<string | null>(null);
+  const [protocolShort, setProtocolShort] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [faqs, setFaqs] = useState<FaqItem[]>([]);
+  const [faqsLoaded, setFaqsLoaded] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const [name, setName] = useState('');
+  const [sector, setSector] = useState('');
+  const [subject, setSubject] = useState('');
+  const [description, setDescription] = useState('');
+
+  useEffect(() => {
+    let c = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/content?type=faq', { credentials: 'include' });
+        if (!res.ok) {
+          if (!c) setFaqsLoaded(true);
+          return;
+        }
+        const data = await res.json();
+        if (!c) {
+          setFaqs((data.items || []) as FaqItem[]);
+          setFaqsLoaded(true);
+        }
+      } catch {
+        if (!c) setFaqsLoaded(true);
+      }
+    })();
+    return () => {
+      c = true;
+    };
+  }, []);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSent(true);
+    if (!selected) return;
+    setSubmitError(null);
+    setSubmitting(true);
+    try {
+      const res = await fetch('/api/portal/ouvidoria', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          manifestationType: selected,
+          anonymous,
+          name: anonymous ? undefined : name,
+          sector: anonymous ? undefined : sector,
+          subject,
+          description,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || 'Falha ao enviar');
+      setProtocol(String(data.protocol || ''));
+      setProtocolShort(String(data.protocolShort || ''));
+      setSent(true);
+      setSubject('');
+      setDescription('');
+      setName('');
+      setSector('');
+    } catch (err: unknown) {
+      setSubmitError(err instanceof Error ? err.message : 'Erro ao enviar');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -51,7 +99,7 @@ export function SuportePageContent() {
           </div>
           <h1 className="mb-4 font-heading text-4xl font-bold text-white md:text-5xl">Ouvidoria e suporte</h1>
           <p className="font-body mx-auto max-w-2xl text-lg text-white/60">
-            Sua voz importa. Use este canal para reclamações, denúncias, sugestões ou elogios. Garantimos sigilo absoluto.
+            Sua voz importa. Use este canal para reclamações, denúncias, sugestões ou elogios. As manifestações são registradas no sistema com protocolo real.
           </p>
         </div>
       </section>
@@ -71,6 +119,7 @@ export function SuportePageContent() {
                   onClick={() => {
                     setSelected(cat.id);
                     setSent(false);
+                    setSubmitError(null);
                   }}
                   className={`group rounded-2xl border-2 p-6 text-left transition-all duration-300 ${
                     isActive
@@ -106,7 +155,7 @@ export function SuportePageContent() {
                 Registrar {categories.find((c) => c.id === selected)?.label}
               </h2>
 
-              <form onSubmit={handleSubmit} className="space-y-6">
+              <form onSubmit={(ev) => void handleSubmit(ev)} className="space-y-6">
                 <div className="flex items-center justify-between rounded-xl border border-border bg-muted/50 p-4">
                   <div className="flex items-center gap-3">
                     <Lock className="h-5 w-5 text-sl-red" />
@@ -134,6 +183,8 @@ export function SuportePageContent() {
                       <label className="mb-2 block font-heading text-sm font-medium text-foreground">Nome</label>
                       <input
                         type="text"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
                         placeholder="Seu nome completo"
                         className="h-12 w-full rounded-xl border border-border bg-background px-4 font-body text-sm placeholder:text-muted-foreground transition-colors focus:border-sl-red focus:outline-none focus:ring-2 focus:ring-sl-red/30"
                       />
@@ -142,6 +193,8 @@ export function SuportePageContent() {
                       <label className="mb-2 block font-heading text-sm font-medium text-foreground">Setor</label>
                       <input
                         type="text"
+                        value={sector}
+                        onChange={(e) => setSector(e.target.value)}
                         placeholder="Seu setor de trabalho"
                         className="h-12 w-full rounded-xl border border-border bg-background px-4 font-body text-sm placeholder:text-muted-foreground transition-colors focus:border-sl-red focus:outline-none focus:ring-2 focus:ring-sl-red/30"
                       />
@@ -154,6 +207,8 @@ export function SuportePageContent() {
                   <input
                     type="text"
                     required
+                    value={subject}
+                    onChange={(e) => setSubject(e.target.value)}
                     placeholder="Resuma brevemente o assunto"
                     className="h-12 w-full rounded-xl border border-border bg-background px-4 font-body text-sm placeholder:text-muted-foreground transition-colors focus:border-sl-red focus:outline-none focus:ring-2 focus:ring-sl-red/30"
                   />
@@ -164,6 +219,8 @@ export function SuportePageContent() {
                   <textarea
                     required
                     rows={5}
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
                     placeholder="Descreva com o máximo de detalhes possível..."
                     className="w-full resize-none rounded-xl border border-border bg-background px-4 py-3 font-body text-sm placeholder:text-muted-foreground transition-colors focus:border-sl-red focus:outline-none focus:ring-2 focus:ring-sl-red/30"
                   />
@@ -171,18 +228,20 @@ export function SuportePageContent() {
 
                 <div>
                   <label className="mb-2 block font-heading text-sm font-medium text-foreground">Anexos (opcional)</label>
-                  <div className="cursor-pointer rounded-xl border-2 border-dashed border-border p-6 text-center transition-colors hover:border-sl-red/30">
-                    <p className="font-body text-sm text-muted-foreground">Arraste arquivos ou clique para selecionar</p>
-                    <p className="mt-1 font-body text-xs text-muted-foreground/60">PDF, imagens ou documentos — máx. 10MB</p>
+                  <div className="cursor-not-allowed rounded-xl border-2 border-dashed border-border p-6 text-center opacity-60">
+                    <p className="font-body text-sm text-muted-foreground">Envio de arquivos será habilitado em versão futura.</p>
                   </div>
                 </div>
 
+                {submitError ? <p className="text-sm text-red-600">{submitError}</p> : null}
+
                 <button
                   type="submit"
-                  className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-sl-red px-8 font-heading font-semibold text-white transition-colors hover:bg-sl-red/90 md:w-auto"
+                  disabled={submitting}
+                  className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-sl-red px-8 font-heading font-semibold text-white transition-colors hover:bg-sl-red/90 disabled:opacity-60 md:w-auto"
                 >
                   <Send className="h-4 w-4" />
-                  Enviar manifestação
+                  {submitting ? 'Enviando…' : 'Enviar manifestação'}
                 </button>
               </form>
             </div>
@@ -196,16 +255,20 @@ export function SuportePageContent() {
                 <Shield className="h-8 w-8 text-emerald-600" />
               </div>
               <h2 className="mb-3 font-heading text-2xl font-bold text-foreground">Manifestação registrada</h2>
-              <p className="font-body mx-auto mb-4 max-w-md text-muted-foreground">
-                Seu protocolo é <span className="font-semibold text-foreground">#SLE-2026-00742</span>. Use-o para acompanhar o
-                andamento.
+              <p className="font-body mx-auto mb-2 max-w-md text-muted-foreground">
+                Guarde o protocolo: <span className="font-mono font-semibold text-foreground">{protocolShort || protocol}</span>
               </p>
-              <p className="font-body text-sm text-muted-foreground/60">Prazo de resposta: até 5 dias úteis</p>
+              {protocol ? (
+                <p className="font-body mx-auto mb-4 max-w-lg text-xs text-muted-foreground/80">Referência completa: {protocol}</p>
+              ) : null}
+              <p className="font-body text-sm text-muted-foreground/60">A ouvidoria dará seguimento conforme política interna.</p>
               <button
                 type="button"
                 onClick={() => {
                   setSent(false);
                   setSelected(null);
+                  setProtocol(null);
+                  setProtocolShort(null);
                 }}
                 className="mt-8 inline-flex items-center gap-2 font-heading text-sm font-semibold text-sl-red hover:underline"
               >
@@ -217,23 +280,36 @@ export function SuportePageContent() {
 
         <section>
           <h2 className="mb-2 font-heading text-2xl font-bold text-foreground">Perguntas frequentes</h2>
-          <p className="mb-8 font-body text-muted-foreground">Tire suas dúvidas sobre o canal de ouvidoria</p>
+          <p className="mb-8 font-body text-muted-foreground">
+            Conteúdo editável no gestor (tipo <span className="font-mono text-xs">faq</span> em /portal-edicao): título = pergunta, texto = resposta.
+          </p>
+          {!faqsLoaded && <p className="text-sm text-muted-foreground">Carregando…</p>}
+          {faqsLoaded && faqs.length === 0 && (
+            <div className="rounded-xl border border-dashed border-border bg-muted/30 px-6 py-10 text-center text-sm text-muted-foreground">
+              Nenhuma FAQ publicada.
+              <Link href="/portal-edicao" className="mt-2 block font-medium text-sl-red hover:text-sl-red-light">
+                Cadastrar FAQs
+              </Link>
+            </div>
+          )}
           <div className="space-y-3">
-            {faqs.map((faq, i) => (
-              <div key={i} className="overflow-hidden rounded-xl border border-border">
+            {faqs.map((faq) => (
+              <div key={faq.id} className="overflow-hidden rounded-xl border border-border">
                 <button
                   type="button"
-                  onClick={() => setOpenFaq(openFaq === i ? null : i)}
+                  onClick={() => setOpenFaqId(openFaqId === faq.id ? null : faq.id)}
                   className="flex w-full items-center justify-between p-5 text-left transition-colors hover:bg-muted/30"
                 >
-                  <span className="font-heading text-sm font-semibold text-foreground">{faq.q}</span>
+                  <span className="font-heading text-sm font-semibold text-foreground">{faq.title}</span>
                   <ChevronDown
-                    className={`h-4 w-4 text-muted-foreground transition-transform ${openFaq === i ? 'rotate-180' : ''}`}
+                    className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${openFaqId === faq.id ? 'rotate-180' : ''}`}
                   />
                 </button>
-                {openFaq === i && (
+                {openFaqId === faq.id && (
                   <div className="animate-fade-in-up px-5 pb-5">
-                    <p className="font-body text-sm text-muted-foreground">{faq.a}</p>
+                    <p className="font-body text-sm text-muted-foreground whitespace-pre-wrap">
+                      {(faq.description || '').trim() || '—'}
+                    </p>
                   </div>
                 )}
               </div>

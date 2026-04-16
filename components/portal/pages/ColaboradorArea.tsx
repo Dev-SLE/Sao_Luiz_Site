@@ -3,45 +3,8 @@
 import { useMemo } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { User, Clock, CalendarDays, FileText, Bell, ChevronRight, CheckCircle2, AlertCircle } from 'lucide-react';
+import { User, Clock, CalendarDays, FileText, Bell } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
-
-const pontoRecords = [
-  { date: '10/04/2026', entrada: '07:58', saida: '17:03', status: 'ok' as const },
-  { date: '09/04/2026', entrada: '07:55', saida: '17:01', status: 'ok' as const },
-  { date: '08/04/2026', entrada: '08:12', saida: '17:05', status: 'late' as const },
-  { date: '07/04/2026', entrada: '07:50', saida: '17:00', status: 'ok' as const },
-  { date: '04/04/2026', entrada: '07:59', saida: '16:55', status: 'early' as const },
-  { date: '03/04/2026', entrada: '07:57', saida: '17:02', status: 'ok' as const },
-  { date: '02/04/2026', entrada: '07:45', saida: '17:00', status: 'ok' as const },
-];
-
-const escalaData = [
-  { day: 'Seg 07/04', shift: '08:00 - 17:00', type: 'normal' as const },
-  { day: 'Ter 08/04', shift: '08:00 - 17:00', type: 'normal' as const },
-  { day: 'Qua 09/04', shift: '08:00 - 17:00', type: 'normal' as const },
-  { day: 'Qui 10/04', shift: '08:00 - 17:00', type: 'normal' as const },
-  { day: 'Sex 11/04', shift: '08:00 - 17:00', type: 'normal' as const },
-  { day: 'Sáb 12/04', shift: 'Folga', type: 'off' as const },
-  { day: 'Dom 13/04', shift: 'Folga', type: 'off' as const },
-  { day: 'Seg 14/04', shift: '06:00 - 15:00', type: 'early' as const },
-  { day: 'Ter 15/04', shift: '06:00 - 15:00', type: 'early' as const },
-];
-
-const holerites = [
-  { month: 'Março 2026', date: '05/04/2026', value: 'R$ 3.250,00', status: 'disponível' },
-  { month: 'Fevereiro 2026', date: '05/03/2026', value: 'R$ 3.250,00', status: 'disponível' },
-  { month: 'Janeiro 2026', date: '05/02/2026', value: 'R$ 3.450,00', status: 'disponível' },
-  { month: 'Dezembro 2025', date: '05/01/2026', value: 'R$ 6.500,00', status: 'disponível' },
-];
-
-const notifications = [
-  { id: 1, title: 'Seu holerite de Março está disponível', time: 'Há 2 horas', read: false },
-  { id: 2, title: 'Escala atualizada para a próxima semana', time: 'Há 5 horas', read: false },
-  { id: 3, title: 'Treinamento obrigatório agendado para 14/04', time: 'Ontem', read: true },
-  { id: 4, title: 'Campanha de vacinação disponível', time: '2 dias atrás', read: true },
-  { id: 5, title: 'Seu registro de ponto do dia 08/04 precisa de justificativa', time: '3 dias atrás', read: false },
-];
 
 const tabs = [
   { id: 'perfil' as const, label: 'Meu Perfil', icon: User, href: '/perfil' },
@@ -49,11 +12,20 @@ const tabs = [
   { id: 'escala' as const, label: 'Escala de Trabalho', icon: CalendarDays, href: '/minha-escala' },
   { id: 'holerite' as const, label: 'Holerites', icon: FileText, href: '/holerite' },
   { id: 'notificacoes' as const, label: 'Notificações', icon: Bell, href: '/notificacoes' },
-];
+] as const;
 
 export type ColaboradorTab = (typeof tabs)[number]['id'];
 
 type Props = { initialTab: ColaboradorTab };
+
+function EmptyRhPanel({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-2xl border border-dashed border-border bg-card px-6 py-14 text-center">
+      <h2 className="font-heading text-lg font-bold text-foreground">{title}</h2>
+      <div className="mx-auto mt-3 max-w-md text-sm text-muted-foreground">{children}</div>
+    </div>
+  );
+}
 
 export function ColaboradorArea({ initialTab }: Props) {
   const pathname = usePathname();
@@ -78,7 +50,8 @@ export function ColaboradorArea({ initialTab }: Props) {
             <div>
               <h1 className="font-heading text-2xl font-bold text-white md:text-3xl">{displayName}</h1>
               <p className="text-sm text-white/60">
-                Portal do colaborador · Dados de exemplo (integração DP/RH na Fase 2)
+                Área do colaborador · Ponto, escala e holerite dependem de integração com DP/RH (fora do escopo do CMS do
+                portal).
               </p>
             </div>
           </div>
@@ -102,11 +75,6 @@ export function ColaboradorArea({ initialTab }: Props) {
                   >
                     <Icon className="h-4 w-4" />
                     {tab.label}
-                    {tab.id === 'notificacoes' && (
-                      <span className="ml-auto flex h-5 w-5 items-center justify-center rounded-full bg-sl-red text-xs font-bold text-white">
-                        3
-                      </span>
-                    )}
                   </Link>
                 );
               })}
@@ -116,15 +84,15 @@ export function ColaboradorArea({ initialTab }: Props) {
           <div className="min-w-0 flex-1">
             {activeTab === 'perfil' && (
               <div className="rounded-2xl border border-border bg-card p-8">
-                <h2 className="mb-6 font-heading text-xl font-bold text-foreground">Dados pessoais</h2>
+                <h2 className="mb-6 font-heading text-xl font-bold text-foreground">Dados da sessão</h2>
                 <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                   {[
                     { label: 'Nome de usuário', value: displayName },
                     { label: 'Perfil (papel)', value: user?.role || '—' },
                     { label: 'Unidade origem', value: user?.linkedOriginUnit || '—' },
                     { label: 'Unidade destino', value: user?.linkedDestUnit || '—' },
-                    { label: 'E-mail', value: `${String(user?.username || 'usuario').toLowerCase()}@saoluizexpress.com.br` },
-                    { label: 'Telefone', value: '(exemplo) (11) 99999-0000' },
+                    { label: 'E-mail corporativo', value: '—' },
+                    { label: 'Telefone', value: '—' },
                   ].map((field) => (
                     <div key={field.label}>
                       <label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
@@ -134,149 +102,41 @@ export function ColaboradorArea({ initialTab }: Props) {
                     </div>
                   ))}
                 </div>
+                <p className="mt-8 text-xs text-muted-foreground">
+                  E-mail e telefone completos serão preenchidos quando o cadastro do colaborador for integrado ao sistema de
+                  identidade / RH.
+                </p>
               </div>
             )}
 
             {activeTab === 'ponto' && (
-              <div className="overflow-hidden rounded-2xl border border-border bg-card">
-                <div className="border-b border-border p-6">
-                  <h2 className="font-heading text-xl font-bold text-foreground">Registros de ponto</h2>
-                  <p className="mt-1 text-sm text-muted-foreground">Abril 2026 (dados mock)</p>
-                </div>
-                <div className="divide-y divide-border">
-                  {pontoRecords.map((record) => (
-                    <div key={record.date} className="flex items-center gap-4 px-6 py-4">
-                      <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-muted">
-                        <CalendarDays className="h-4 w-4 text-muted-foreground" />
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-foreground">{record.date}</p>
-                        <p className="text-xs text-muted-foreground">
-                          Entrada: {record.entrada} · Saída: {record.saida}
-                        </p>
-                      </div>
-                      {record.status === 'ok' && <CheckCircle2 className="h-5 w-5 text-emerald-500" />}
-                      {record.status === 'late' && (
-                        <div className="flex items-center gap-1.5">
-                          <AlertCircle className="h-4 w-4 text-amber-500" />
-                          <span className="text-xs font-medium text-amber-600">Atraso</span>
-                        </div>
-                      )}
-                      {record.status === 'early' && (
-                        <div className="flex items-center gap-1.5">
-                          <AlertCircle className="h-4 w-4 text-blue-500" />
-                          <span className="text-xs font-medium text-blue-600">Saída antecipada</span>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <EmptyRhPanel title="Consulta de ponto">
+                <p>
+                  Não há registros carregados aqui. Quando a API de ponto estiver disponível, os lançamentos aparecerão nesta
+                  lista.
+                </p>
+              </EmptyRhPanel>
             )}
 
             {activeTab === 'escala' && (
-              <div className="overflow-hidden rounded-2xl border border-border bg-card">
-                <div className="border-b border-border p-6">
-                  <h2 className="font-heading text-xl font-bold text-foreground">Escala de trabalho</h2>
-                  <p className="mt-1 text-sm text-muted-foreground">Semana atual e próxima (mock)</p>
-                </div>
-                <div className="divide-y divide-border">
-                  {escalaData.map((item) => (
-                    <div key={item.day} className="flex items-center gap-4 px-6 py-4">
-                      <div
-                        className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg ${
-                          item.type === 'off'
-                            ? 'bg-emerald-500/10'
-                            : item.type === 'early'
-                              ? 'bg-amber-500/10'
-                              : 'bg-muted'
-                        }`}
-                      >
-                        <Clock
-                          className={`h-4 w-4 ${
-                            item.type === 'off'
-                              ? 'text-emerald-500'
-                              : item.type === 'early'
-                                ? 'text-amber-500'
-                                : 'text-muted-foreground'
-                          }`}
-                        />
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-foreground">{item.day}</p>
-                      </div>
-                      <span
-                        className={`text-sm font-medium ${
-                          item.type === 'off'
-                            ? 'text-emerald-600'
-                            : item.type === 'early'
-                              ? 'text-amber-600'
-                              : 'text-foreground'
-                        }`}
-                      >
-                        {item.shift}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <EmptyRhPanel title="Escala de trabalho">
+                <p>A escala exibida virá do mesmo módulo de RH/operacional; ainda não há dados conectados a esta tela.</p>
+              </EmptyRhPanel>
             )}
 
             {activeTab === 'holerite' && (
-              <div className="overflow-hidden rounded-2xl border border-border bg-card">
-                <div className="border-b border-border p-6">
-                  <h2 className="font-heading text-xl font-bold text-foreground">Holerites</h2>
-                  <p className="mt-1 text-sm text-muted-foreground">Demonstrativos de pagamento (mock)</p>
-                </div>
-                <div className="divide-y divide-border">
-                  {holerites.map((h) => (
-                    <div
-                      key={h.month}
-                      className="flex cursor-pointer items-center gap-4 px-6 py-5 transition-colors hover:bg-muted/50"
-                    >
-                      <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-sl-red/10">
-                        <FileText className="h-5 w-5 text-sl-red" />
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-semibold text-foreground">{h.month}</p>
-                        <p className="text-xs text-muted-foreground">Disponível em {h.date}</p>
-                      </div>
-                      <span className="text-sm font-bold text-foreground">{h.value}</span>
-                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <EmptyRhPanel title="Holerites">
+                <p>Demonstrativos de pagamento não são armazenados no CMS do portal. Use o canal oficial da empresa quando o módulo financeiro estiver integrado.</p>
+              </EmptyRhPanel>
             )}
 
             {activeTab === 'notificacoes' && (
-              <div className="overflow-hidden rounded-2xl border border-border bg-card">
-                <div className="border-b border-border p-6">
-                  <h2 className="font-heading text-xl font-bold text-foreground">Notificações</h2>
-                </div>
-                <div className="divide-y divide-border">
-                  {notifications.map((n) => (
-                    <div
-                      key={n.id}
-                      className={`flex cursor-pointer items-start gap-4 px-6 py-5 transition-colors ${
-                        n.read ? 'hover:bg-muted/50' : 'bg-sl-red/[0.02] hover:bg-sl-red/[0.05]'
-                      }`}
-                    >
-                      {!n.read && <div className="mt-2 h-2 w-2 flex-shrink-0 rounded-full bg-sl-red" />}
-                      <div className={`flex-1 ${n.read ? 'ml-6' : ''}`}>
-                        <p
-                          className={`text-sm leading-snug ${
-                            n.read ? 'text-muted-foreground' : 'font-medium text-foreground'
-                          }`}
-                        >
-                          {n.title}
-                        </p>
-                        <p className="mt-1 text-xs text-muted-foreground">{n.time}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <EmptyRhPanel title="Notificações">
+                <p>Sem notificações de sistema neste momento. Avisos institucionais continuam em Comunicados e no mural.</p>
+                <Link href="/comunicados" className="mt-4 inline-block text-sm font-semibold text-sl-red hover:text-sl-red-light">
+                  Ir aos comunicados
+                </Link>
+              </EmptyRhPanel>
             )}
           </div>
         </div>

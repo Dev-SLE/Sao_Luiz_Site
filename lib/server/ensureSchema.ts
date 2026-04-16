@@ -1240,7 +1240,6 @@ export async function ensureOccurrencesSchemaTables() {
     await pool.query(`ALTER TABLE pendencias.dossiers ADD COLUMN IF NOT EXISTS finalization_status text`);
     await pool.query(`ALTER TABLE pendencias.dossiers ADD COLUMN IF NOT EXISTS finalized_at timestamptz`);
     await pool.query(`ALTER TABLE pendencias.dossiers ADD COLUMN IF NOT EXISTS finalized_by text`);
-    await pool.query(`ALTER TABLE pendencias.dossiers ADD COLUMN IF NOT EXISTS pdf_drive_file_id text`);
 
     await pool.query(`
       CREATE TABLE IF NOT EXISTS pendencias.dossier_attachments (
@@ -1249,7 +1248,6 @@ export async function ensureOccurrencesSchemaTables() {
         category text NOT NULL DEFAULT 'GERAL',
         label text,
         url text NOT NULL,
-        drive_file_id text,
         uploaded_by text,
         created_at timestamptz NOT NULL DEFAULT NOW()
       )
@@ -1269,6 +1267,232 @@ export async function ensureOccurrencesSchemaTables() {
     occurrencesSchemaReady = true;
   } finally {
     occurrencesSchemaPromise = null;
+  }
+}
+
+let storageCatalogReady = false;
+let storageCatalogPromise: Promise<void> | null = null;
+
+/** Catálogo de arquivos (Neon) + regras de roteamento SharePoint/Drive — Fase 2. */
+export async function ensureStorageCatalogTables() {
+  if (storageCatalogReady) return;
+  if (storageCatalogPromise) return storageCatalogPromise;
+  storageCatalogPromise = (async () => {
+    const pool = getPool();
+    await pool.query(`CREATE EXTENSION IF NOT EXISTS pgcrypto`);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS pendencias.storage_providers (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        name text NOT NULL,
+        status text NOT NULL DEFAULT 'active',
+        config_key text,
+        is_default boolean NOT NULL DEFAULT false,
+        created_at timestamptz NOT NULL DEFAULT NOW(),
+        UNIQUE (name)
+      )
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS pendencias.files (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        provider_id uuid NOT NULL REFERENCES pendencias.storage_providers(id) ON DELETE RESTRICT,
+        module text NOT NULL,
+        entity text NOT NULL,
+        entity_id text,
+        title text,
+        original_name text NOT NULL,
+        file_name text NOT NULL,
+        mime_type text NOT NULL,
+        file_size bigint NOT NULL DEFAULT 0,
+        extension text,
+        sharepoint_site_id text,
+        sharepoint_drive_id text,
+        sharepoint_item_id text,
+        sharepoint_path text,
+        thumbnail_path text,
+        uploaded_by text,
+        uploaded_at timestamptz NOT NULL DEFAULT NOW(),
+        is_active boolean NOT NULL DEFAULT true,
+        visibility_scope text NOT NULL DEFAULT 'internal',
+        metadata_json jsonb NOT NULL DEFAULT '{}'::jsonb
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_files_module_entity ON pendencias.files(module, entity, entity_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_files_uploaded_at ON pendencias.files(uploaded_at DESC)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_files_sharepoint_item ON pendencias.files(sharepoint_site_id, sharepoint_drive_id, sharepoint_item_id)`);
+    await pool.query(`ALTER TABLE pendencias.files DROP COLUMN IF EXISTS google_drive_file_id`);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS pendencias.storage_rules (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        module text NOT NULL,
+        entity text NOT NULL,
+        provider text NOT NULL,
+        site_name text,
+        library_name text,
+        sharepoint_site_id text,
+        sharepoint_drive_id text,
+        path_template text NOT NULL,
+        allowed_extensions text,
+        max_file_size_mb int,
+        visibility_scope text NOT NULL DEFAULT 'internal',
+        is_active boolean NOT NULL DEFAULT true,
+        created_at timestamptz NOT NULL DEFAULT NOW(),
+        UNIQUE (module, entity, provider)
+      )
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS pendencias.file_links (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        file_id uuid NOT NULL REFERENCES pendencias.files(id) ON DELETE CASCADE,
+        module text NOT NULL,
+        entity text NOT NULL,
+        entity_id text,
+        role text NOT NULL DEFAULT 'attachment',
+        created_at timestamptz NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_file_links_lookup ON pendencias.file_links(module, entity, entity_id)`);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS pendencias.content_items (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        type text NOT NULL,
+        title text NOT NULL,
+        subtitle text,
+        description text,
+        cover_file_id uuid REFERENCES pendencias.files(id) ON DELETE SET NULL,
+        main_file_id uuid REFERENCES pendencias.files(id) ON DELETE SET NULL,
+        category text,
+        target_audience text,
+        publish_start timestamptz,
+        publish_end timestamptz,
+        is_featured boolean NOT NULL DEFAULT false,
+        display_order int NOT NULL DEFAULT 0,
+        slug text,
+        status text NOT NULL DEFAULT 'draft',
+        created_by text,
+        created_at timestamptz NOT NULL DEFAULT NOW(),
+        updated_at timestamptz NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`ALTER TABLE pendencias.content_items ADD COLUMN IF NOT EXISTS metadata_json jsonb NOT NULL DEFAULT '{}'::jsonb`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_content_items_type_status ON pendencias.content_items(type, status, display_order)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_content_items_publish ON pendencias.content_items(publish_start, publish_end)`);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS pendencias.file_access_audit (
+        id bigserial PRIMARY KEY,
+        file_id uuid NOT NULL REFERENCES pendencias.files(id) ON DELETE CASCADE,
+        action text NOT NULL,
+        username text,
+        created_at timestamptz NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_file_access_audit_file ON pendencias.file_access_audit(file_id, created_at DESC)`);
+
+    await pool.query(`ALTER TABLE pendencias.dossier_attachments ADD COLUMN IF NOT EXISTS file_id uuid`);
+    await pool.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'dossier_attachments_file_id_fkey'
+        ) THEN
+          ALTER TABLE pendencias.dossier_attachments
+          ADD CONSTRAINT dossier_attachments_file_id_fkey
+          FOREIGN KEY (file_id) REFERENCES pendencias.files(id) ON DELETE SET NULL;
+        END IF;
+      END $$;
+    `);
+
+    await pool.query(`ALTER TABLE pendencias.dossiers ADD COLUMN IF NOT EXISTS pdf_file_id uuid`);
+    await pool.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'dossiers_pdf_file_id_fkey'
+        ) THEN
+          ALTER TABLE pendencias.dossiers
+          ADD CONSTRAINT dossiers_pdf_file_id_fkey
+          FOREIGN KEY (pdf_file_id) REFERENCES pendencias.files(id) ON DELETE SET NULL;
+        END IF;
+      END $$;
+    `);
+
+    await pool.query(`ALTER TABLE pendencias.dossiers DROP COLUMN IF EXISTS pdf_drive_file_id`);
+    await pool.query(`ALTER TABLE pendencias.dossier_attachments DROP COLUMN IF EXISTS drive_file_id`);
+
+    await pool.query(`
+      INSERT INTO pendencias.storage_providers (name, status, config_key, is_default)
+      SELECT 'sharepoint', 'active', 'default', true
+      WHERE NOT EXISTS (SELECT 1 FROM pendencias.storage_providers WHERE name = 'sharepoint')
+    `);
+    const ruleSeeds: { module: string; entity: string; provider: string; path_template: string; library_name: string | null }[] = [
+      { module: "operacional", entity: "dossier", provider: "sharepoint", path_template: "Ocorrencias/{year}/{month}/{entity_id}", library_name: "Ocorrencias" },
+      { module: "operacional", entity: "note", provider: "sharepoint", path_template: "OperacionalAnexos/notes/{year}/{month}/{entity_id}", library_name: null },
+      { module: "financeiro", entity: "*", provider: "sharepoint", path_template: "Financeiro/{subtype}/{year}/{month}/{entity_id}", library_name: "Financeiro" },
+      { module: "portal", entity: "banner", provider: "sharepoint", path_template: "PortalMidia/home/banners/{year}/{month}", library_name: "PortalMidia" },
+      { module: "portal", entity: "campaign", provider: "sharepoint", path_template: "PortalMidia/campanhas/{year}/{month}", library_name: "PortalMidia" },
+      { module: "portal", entity: "news", provider: "sharepoint", path_template: "PortalMidia/noticias/{year}/{month}", library_name: "PortalMidia" },
+      { module: "portal", entity: "training", provider: "sharepoint", path_template: "PortalMidia/treinamentos/{category_slug}/{content_slug}", library_name: "PortalMidia" },
+      { module: "portal", entity: "document", provider: "sharepoint", path_template: "PortalMidia/documentos/{year}/{month}", library_name: "PortalMidia" },
+      { module: "portal", entity: "mural", provider: "sharepoint", path_template: "PortalMidia/mural/{year}/{month}", library_name: "PortalMidia" },
+      { module: "portal", entity: "recognition", provider: "sharepoint", path_template: "PortalMidia/reconhecimento/{year}/{month}", library_name: "PortalMidia" },
+      { module: "portal", entity: "faq", provider: "sharepoint", path_template: "PortalMidia/faq/{year}/{month}", library_name: "PortalMidia" },
+    ];
+    for (const r of ruleSeeds) {
+      await pool.query(
+        `
+        INSERT INTO pendencias.storage_rules (module, entity, provider, library_name, path_template, is_active)
+        SELECT $1, $2, $3, $4, $5, true
+        WHERE NOT EXISTS (
+          SELECT 1 FROM pendencias.storage_rules WHERE module = $1 AND entity = $2 AND provider = $3
+        )
+      `,
+        [r.module, r.entity, r.provider, r.library_name, r.path_template]
+      );
+    }
+    await pool.query(`UPDATE pendencias.storage_rules SET visibility_scope = 'portal' WHERE module = 'portal' AND provider = 'sharepoint'`);
+    await pool.query(`
+      UPDATE pendencias.storage_rules SET path_template = 'PortalMidia/home/banners/{year}/{month}', library_name = 'PortalMidia'
+      WHERE module = 'portal' AND entity = 'banner' AND provider = 'sharepoint'
+    `);
+    await pool.query(`
+      UPDATE pendencias.storage_rules SET path_template = 'PortalMidia/treinamentos/{category_slug}/{content_slug}', library_name = 'PortalMidia'
+      WHERE module = 'portal' AND entity = 'training' AND provider = 'sharepoint'
+    `);
+    await pool.query(`
+      UPDATE pendencias.storage_rules SET path_template = 'PortalMidia/documentos/{year}/{month}', library_name = 'PortalMidia'
+      WHERE module = 'portal' AND entity = 'document' AND provider = 'sharepoint'
+    `);
+    await pool.query(`
+      UPDATE pendencias.storage_rules SET path_template = 'PortalMidia/campanhas/{year}/{month}', library_name = 'PortalMidia'
+      WHERE module = 'portal' AND entity = 'campaign' AND provider = 'sharepoint'
+    `);
+    await pool.query(`
+      UPDATE pendencias.storage_rules SET path_template = 'PortalMidia/noticias/{year}/{month}', library_name = 'PortalMidia'
+      WHERE module = 'portal' AND entity = 'news' AND provider = 'sharepoint'
+    `);
+    await pool.query(`
+      UPDATE pendencias.storage_rules SET path_template = 'PortalMidia/mural/{year}/{month}', library_name = 'PortalMidia'
+      WHERE module = 'portal' AND entity = 'mural' AND provider = 'sharepoint'
+    `);
+    await pool.query(`
+      UPDATE pendencias.storage_rules SET path_template = 'PortalMidia/reconhecimento/{year}/{month}', library_name = 'PortalMidia'
+      WHERE module = 'portal' AND entity = 'recognition' AND provider = 'sharepoint'
+    `);
+    await pool.query(`
+      UPDATE pendencias.storage_rules SET path_template = 'PortalMidia/faq/{year}/{month}', library_name = 'PortalMidia'
+      WHERE module = 'portal' AND entity = 'faq' AND provider = 'sharepoint'
+    `);
+  })();
+  try {
+    await storageCatalogPromise;
+    storageCatalogReady = true;
+  } finally {
+    storageCatalogPromise = null;
   }
 }
 
