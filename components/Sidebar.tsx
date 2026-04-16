@@ -16,11 +16,25 @@ function normalizeWorkspacePath(p: string) {
 
 const SIDEBAR_NAV_SCROLL_KEY = 'sle_sidebar_nav_scroll_v1';
 const SIDEBAR_MANUAL_EXPANDED_KEY = 'sle_sidebar_manual_expanded_v1';
+const SIDEBAR_ROUTE_COLLAPSED_KEY = 'sle_sidebar_route_collapsed_v1';
 
 function readManualExpanded(): Record<string, boolean> {
   if (typeof window === 'undefined') return {};
   try {
     const raw = sessionStorage.getItem(SIDEBAR_MANUAL_EXPANDED_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== 'object') return {};
+    return parsed as Record<string, boolean>;
+  } catch {
+    return {};
+  }
+}
+
+function readRouteCollapsed(): Record<string, boolean> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = sessionStorage.getItem(SIDEBAR_ROUTE_COLLAPSED_KEY);
     if (!raw) return {};
     const parsed = JSON.parse(raw) as unknown;
     if (!parsed || typeof parsed !== 'object') return {};
@@ -60,6 +74,8 @@ const Sidebar: React.FC<Props> = ({ pathname, onNavigateHref, currentPage, setPa
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
   /** Acordeões abertos manualmente fora da rota ativa (rota força aberto via `routeOpenKeys`). */
   const [manualExpanded, setManualExpanded] = useState<Record<string, boolean>>(readManualExpanded);
+  /** Na rota ativa, o utilizador pode recolher o grupo (seta); `true` = recolhido manualmente. */
+  const [routeCollapsed, setRouteCollapsed] = useState<Record<string, boolean>>(readRouteCollapsed);
   const desktopNavScrollRef = useRef<HTMLDivElement>(null);
   const mobileNavScrollRef = useRef<HTMLDivElement>(null);
   const scrollSaveRaf = useRef<number | null>(null);
@@ -115,9 +131,28 @@ const Sidebar: React.FC<Props> = ({ pathname, onNavigateHref, currentPage, setPa
   }, [pathname, allSections]);
 
   const isNavGroupExpanded = useCallback(
-    (gKey: string) => routeOpenKeys.has(gKey) || (manualExpanded[gKey] ?? false),
-    [routeOpenKeys, manualExpanded],
+    (gKey: string) => {
+      if (routeOpenKeys.has(gKey)) {
+        return !routeCollapsed[gKey];
+      }
+      return manualExpanded[gKey] ?? false;
+    },
+    [routeOpenKeys, manualExpanded, routeCollapsed],
   );
+
+  useEffect(() => {
+    setRouteCollapsed((prev) => {
+      const next = { ...prev };
+      let dirty = false;
+      for (const k of Object.keys(next)) {
+        if (!routeOpenKeys.has(k)) {
+          delete next[k];
+          dirty = true;
+        }
+      }
+      return dirty ? next : prev;
+    });
+  }, [routeOpenKeys]);
 
   useEffect(() => {
     try {
@@ -126,6 +161,14 @@ const Sidebar: React.FC<Props> = ({ pathname, onNavigateHref, currentPage, setPa
       /* ignore */
     }
   }, [manualExpanded]);
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(SIDEBAR_ROUTE_COLLAPSED_KEY, JSON.stringify(routeCollapsed));
+    } catch {
+      /* ignore */
+    }
+  }, [routeCollapsed]);
 
   useLayoutEffect(() => {
     const apply = (el: HTMLDivElement | null) => {
@@ -148,14 +191,25 @@ const Sidebar: React.FC<Props> = ({ pathname, onNavigateHref, currentPage, setPa
       run();
       requestAnimationFrame(run);
     });
-  }, [pathname, mobileOpen, pinned, routeOpenKeys]);
+  }, [pathname, mobileOpen, pinned, routeOpenKeys, routeCollapsed]);
 
   const toggleSection = (id: string) => {
     setOpenSections((prev) => ({ ...prev, [id]: !(prev[id] ?? true) }));
   };
 
   const toggleNavGroup = (gKey: string) => {
-    if (routeOpenKeys.has(gKey)) return;
+    if (routeOpenKeys.has(gKey)) {
+      setRouteCollapsed((prev) => {
+        const next = { ...prev };
+        if (next[gKey]) {
+          delete next[gKey];
+        } else {
+          next[gKey] = true;
+        }
+        return next;
+      });
+      return;
+    }
     setManualExpanded((prev) => ({ ...prev, [gKey]: !(prev[gKey] ?? false) }));
   };
 

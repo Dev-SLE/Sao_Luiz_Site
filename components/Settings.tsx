@@ -24,7 +24,7 @@ import {
   PERMISSION_CATALOG,
   PERMISSION_SECTION_LABELS,
   PERMISSION_SECTION_ORDER,
-  getPermissionEquivalence,
+  getProfileCheckboxEquivalence,
   type PermissionSectionId,
 } from '../lib/permissions';
 
@@ -327,7 +327,7 @@ const Settings: React.FC = () => {
 
   const togglePermission = (perm: string) => {
     if (!editingProfile) return;
-    const eq = getPermissionEquivalence(perm);
+    const eq = getProfileCheckboxEquivalence(perm);
     const current = editingProfile.permissions || [];
     const has = current.some((p) => eq.has(p));
     const newPerms = has ? current.filter((p) => !eq.has(p)) : [...current, perm];
@@ -337,7 +337,7 @@ const Settings: React.FC = () => {
   const isPermissionChecked = (key: string) => {
     if (!editingProfile) return false;
     const current = editingProfile.permissions || [];
-    const eq = getPermissionEquivalence(key);
+    const eq = getProfileCheckboxEquivalence(key);
     return current.some((p) => eq.has(p));
   };
 
@@ -686,8 +686,9 @@ const Settings: React.FC = () => {
                                     Permissões de acesso
                                   </label>
                                   <p className="text-[11px] text-slate-500 mb-4">
-                                    Itens agrupados por módulo e camada. Chaves novas (ex.: <code className="text-[10px]">tab.operacional.*</code>) substituem
-                                    as antigas (<code className="text-[10px]">VIEW_*</code>) — marcar uma opção liga ou desliga todas as variantes equivalentes.
+                                    Itens agrupados por módulo e camada. Cada opção alterna só o seu grupo canónico + legado direto (ex.:{' '}
+                                    <code className="text-[10px]">tab.operacional.pendencias.view</code> com{' '}
+                                    <code className="text-[10px]">VIEW_PENDENCIAS</code>), sem desmarcar outras permissões por engano.
                                   </p>
                                   <div className="space-y-8">
                                     {PERMISSION_SECTION_ORDER.map((sectionId) => {

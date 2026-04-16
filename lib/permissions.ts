@@ -426,9 +426,12 @@ const LEGACY_ALIAS: Record<string, string[]> = {
   "scope.crm.all": ["CRM_SCOPE_ALL"],
 };
 
-/** Chave canônica / legada e todos os sinônimos (uma permissão lógica = um checkbox). */
-export function getPermissionEquivalence(perm: string): Set<string> {
-  const p = String(perm).trim();
+/**
+ * Expansão ampla para checagem em runtime: `workspace.app.view` e `module.operacional.view` agregam várias chaves
+ * legadas para compatibilidade de perfis antigos.
+ */
+export function expandAuthPermissionMatch(needed: string): Set<string> {
+  const p = String(needed).trim();
   const equivalent = new Set<string>(p ? [p] : []);
   for (const [canonical, aliases] of Object.entries(LEGACY_ALIAS)) {
     if (p === canonical || aliases.includes(p)) {
@@ -437,6 +440,37 @@ export function getPermissionEquivalence(perm: string): Set<string> {
     }
   }
   return equivalent;
+}
+
+/**
+ * Equivalência por checkbox na tela de perfis: não puxa o merge reverso a partir dos guarda-chuvas
+ * `workspace.app.view` / `module.operacional.view`, senão desmarcar uma aba removia dezenas de permissões.
+ */
+const PROFILE_EQUIVALENCE_REVERSE_SKIP = new Set<string>(['workspace.app.view', 'module.operacional.view']);
+
+export function getProfileCheckboxEquivalence(perm: string): Set<string> {
+  const p = String(perm).trim();
+  if (!p) return new Set();
+  const s = new Set<string>([p]);
+  for (const [canonical, aliases] of Object.entries(LEGACY_ALIAS)) {
+    if (p === canonical) {
+      s.add(canonical);
+      aliases.forEach((a) => s.add(a));
+    }
+  }
+  for (const [canonical, aliases] of Object.entries(LEGACY_ALIAS)) {
+    if (PROFILE_EQUIVALENCE_REVERSE_SKIP.has(canonical)) continue;
+    if (aliases.includes(p)) {
+      s.add(canonical);
+      aliases.forEach((a) => s.add(a));
+    }
+  }
+  return s;
+}
+
+/** @deprecated Use expandAuthPermissionMatch ou getProfileCheckboxEquivalence conforme o contexto. */
+export function getPermissionEquivalence(perm: string): Set<string> {
+  return expandAuthPermissionMatch(perm);
 }
 
 export function hasPermissionWithAliases(userPermissions: string[] | null | undefined, needed: string) {
@@ -453,7 +487,7 @@ export function hasPermissionWithAliases(userPermissions: string[] | null | unde
   const [namespace] = needed.split(".");
   if (namespace && perms.includes(`${namespace}.*`)) return true;
 
-  const equivalent = getPermissionEquivalence(needed);
+  const equivalent = expandAuthPermissionMatch(needed);
   for (const p of perms) {
     if (equivalent.has(p)) return true;
   }
