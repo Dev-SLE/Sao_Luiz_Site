@@ -408,12 +408,12 @@ export function buildWorkspaceNavSections(input: {
 
   /** Camada dedicada: configuração, relatórios operacionais, Sofia, CRM admin. */
   const cfgSettings: WorkspaceNavItem | false =
-    (hasPermission('MANAGE_SETTINGS') || hasPermission('VIEW_SETTINGS')) && {
+    hasPermission('MANAGE_SETTINGS') && {
       id: Page.CONFIGURACOES,
       label: 'Configurações',
       icon: Settings,
       count: 0,
-      permission: 'VIEW_SETTINGS',
+      permission: 'MANAGE_SETTINGS',
       href: '/app/operacional/configuracoes',
       matchPrefix: '/app/operacional/configuracoes',
     };

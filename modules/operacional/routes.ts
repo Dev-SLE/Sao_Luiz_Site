@@ -27,7 +27,7 @@ export type OperacionalUtilityTab = {
 
 /** Rotas sob `/app/operacional/*` (config, relatórios, etc.) — entradas filhas no menu lateral (manifest). */
 export const OPERACIONAL_UTILITY_TABS: OperacionalUtilityTab[] = [
-  { slug: 'configuracoes', label: 'Configurações', permission: 'VIEW_SETTINGS' },
+  { slug: 'configuracoes', label: 'Configurações', permission: 'MANAGE_SETTINGS' },
   { slug: 'relatorios', label: 'Relatórios', permission: 'VIEW_RELATORIOS' },
   { slug: 'sofia-config', label: 'Sofia', permission: 'MANAGE_SOFIA' },
   { slug: 'mudar-senha', label: 'Senha', permission: '__always__' },
@@ -42,6 +42,23 @@ export function isOperacionalUtilityPath(pathname: string): boolean {
   const p = pathname.replace(/\/+$/, '') || '/';
   const util = ['configuracoes', 'relatorios', 'sofia-config', 'mudar-senha'];
   return util.some((u) => p.endsWith(`/operacional/${u}`));
+}
+
+/**
+ * Rotas utilitárias exigem permissão explícita (exceto mudar senha, sempre para utilizador autenticado no /app).
+ * Evita abrir /configuracoes só por estar em `isOperacionalUtilityPath` sem `MANAGE_SETTINGS`.
+ */
+export function canAccessOperacionalUtilityPath(
+  pathname: string,
+  hasPermission: (perm: string) => boolean,
+): boolean {
+  const p = (pathname || '').replace(/\/+$/, '') || '/';
+  const pl = p.toLowerCase();
+  if (pl.endsWith('/operacional/mudar-senha')) return true;
+  if (pl.endsWith('/operacional/configuracoes')) return hasPermission('MANAGE_SETTINGS');
+  if (pl.endsWith('/operacional/relatorios')) return hasPermission('VIEW_RELATORIOS');
+  if (pl.endsWith('/operacional/sofia-config')) return hasPermission('MANAGE_SETTINGS') && hasPermission('MANAGE_SOFIA');
+  return false;
 }
 
 export function operacionalPageFromPath(pathname: string): Page {

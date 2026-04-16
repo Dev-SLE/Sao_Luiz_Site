@@ -39,167 +39,14 @@ type ProfilePermissionRow = {
   group: PermissionGroup;
 };
 
-/** Chaves legadas e administrativas que não estão no catálogo principal (evita duplicar entradas já em PERMISSION_CATALOG). */
-const EXTRA_PROFILE_PERMISSIONS: ProfilePermissionRow[] = [
-  {
-    key: 'VIEW_DASHBOARD',
-    section: 'operacional',
-    group: 'LEGADO',
-    label: 'Visão geral (Dashboard) — legado',
-    description: 'Chave antiga equivalente à aba Visão geral. Prefira marcar a aba no catálogo.',
-  },
-  {
-    key: 'VIEW_PENDENCIAS',
-    section: 'operacional',
-    group: 'LEGADO',
-    label: 'Pendências — legado',
-    description: 'Chave antiga; use tab.operacional.pendencias.view no catálogo.',
-  },
-  {
-    key: 'VIEW_CRITICOS',
-    section: 'operacional',
-    group: 'LEGADO',
-    label: 'Críticos — legado',
-    description: 'Chave antiga; use tab.operacional.criticos.view.',
-  },
-  {
-    key: 'VIEW_EM_BUSCA',
-    section: 'operacional',
-    group: 'LEGADO',
-    label: 'Em busca — legado',
-    description: 'Chave antiga; use tab.operacional.em_busca.view.',
-  },
-  {
-    key: 'VIEW_OCORRENCIAS',
-    section: 'operacional',
-    group: 'LEGADO',
-    label: 'Ocorrências — legado',
-    description: 'Chave antiga; use tab.operacional.ocorrencias.view.',
-  },
-  {
-    key: 'VIEW_TAD',
-    section: 'operacional',
-    group: 'LEGADO',
-    label: 'TAD — legado',
-    description: 'Chave antiga ligada a ocorrências.',
-  },
-  {
-    key: 'VIEW_CONCLUIDOS',
-    section: 'operacional',
-    group: 'LEGADO',
-    label: 'Concluídos — legado',
-    description: 'Chave antiga; use tab.operacional.concluidos.view.',
-  },
-  {
-    key: 'VIEW_RASTREIO_OPERACIONAL',
-    section: 'operacional',
-    group: 'LEGADO',
-    label: 'Rastreio operacional (tela) — legado',
-    description: 'Abrir a tela de rastreio; prefira tab.operacional.rastreio.view.',
-  },
-  {
-    key: 'MANAGE_RASTREIO_OPERACIONAL',
-    section: 'operacional',
-    group: 'ACAO',
-    label: 'Atualizar rastreio operacional',
-    description: 'Registrar paradas, ônibus, fotos e status de descarga.',
-  },
-  {
-    key: 'EDIT_NOTES',
-    section: 'operacional',
-    group: 'LEGADO',
-    label: 'Editar notas — legado',
-    description: 'Chave antiga; prefira operacional.notes.edit no catálogo.',
-  },
-  {
-    key: 'VIEW_CRM_DASHBOARD',
-    section: 'crm',
-    group: 'LEGADO',
-    label: 'CRM Dashboard — legado',
-    description: 'Chave antiga; use tab.crm.dashboard.view.',
-  },
-  {
-    key: 'VIEW_CRM_FUNIL',
-    section: 'crm',
-    group: 'LEGADO',
-    label: 'CRM Funil — legado',
-    description: 'Chave antiga; use tab.crm.funil.view.',
-  },
-  {
-    key: 'VIEW_CRM_CHAT',
-    section: 'crm',
-    group: 'LEGADO',
-    label: 'CRM Chat — legado',
-    description: 'Chave antiga; use tab.crm.chat.view.',
-  },
-  {
-    key: 'EXPORT_DATA',
-    section: 'sistema',
-    group: 'ACAO',
-    label: 'Exportar dados (Excel)',
-    description: 'Exportar Excel nas tabelas.',
-  },
-  {
-    key: 'EXPORT_SYSTEM_LOGS',
-    section: 'sistema',
-    group: 'ACAO',
-    label: 'Exportar logs do sistema',
-    description: 'Exportar CSV/Excel na aba Logs.',
-  },
-  {
-    key: 'VIEW_SETTINGS',
-    section: 'sistema',
-    group: 'ADMIN',
-    label: 'Visualizar configurações',
-    description: 'Acesso de leitura à tela de configurações e perfis.',
-  },
-  {
-    key: 'VIEW_USERS',
-    section: 'sistema',
-    group: 'ADMIN',
-    label: 'Visualizar usuários',
-    description: 'Consultar lista de usuários sem alterar cadastro.',
-  },
-  {
-    key: 'MANAGE_SETTINGS',
-    section: 'sistema',
-    group: 'ADMIN',
-    label: 'Configurações e logs',
-    description: 'Acessar configurações e visualizar logs do sistema.',
-  },
-  {
-    key: 'MANAGE_USERS',
-    section: 'sistema',
-    group: 'ADMIN',
-    label: 'Gerenciar usuários',
-    description: 'Criar e remover usuários.',
-  },
-  {
-    key: 'MANAGE_SOFIA',
-    section: 'sistema',
-    group: 'ADMIN',
-    label: 'Configurações Sofia',
-    description: 'Ajustes da Sofia.',
-  },
-  {
-    key: 'MANAGE_CRM_OPS',
-    section: 'sistema',
-    group: 'ADMIN',
-    label: 'Operação CRM (console técnico)',
-    description:
-      'Acesso ao menu Atendimento CRM → Operação CRM (times, WhatsApp, triagem, roteamento, SLA, automações).',
-  },
-];
-
-const CATALOG_ROWS: ProfilePermissionRow[] = PERMISSION_CATALOG.map((p) => ({
+/** Linhas do editor de perfis = catálogo canónico (sem duplicar chaves legadas na UI). */
+const PROFILE_PERMISSION_ROWS: ProfilePermissionRow[] = PERMISSION_CATALOG.map((p) => ({
   key: p.key,
   label: p.label,
   description: p.description,
   section: p.section,
   group: p.group,
 }));
-
-const PROFILE_PERMISSION_ROWS: ProfilePermissionRow[] = [...CATALOG_ROWS, ...EXTRA_PROFILE_PERMISSIONS];
 
 function groupProfilePermissions(rows: ProfilePermissionRow[]): Record<PermissionSectionId, ProfilePermissionRow[]> {
   const out = {} as Record<PermissionSectionId, ProfilePermissionRow[]>;
@@ -258,7 +105,7 @@ const PROFILE_PRESETS: { id: string; label: string; permissions: string[] }[] = 
 const Settings: React.FC = () => {
   const { user } = useAuth();
   const { users, profiles, baseData, addUser, deleteUser, saveProfile, deleteProfile, hasPermission } = useData();
-  const [activeTab, setActiveTab] = useState<'USERS' | 'PROFILES' | 'LOGS'>('USERS');
+  const [activeTab, setActiveTab] = useState<'USERS' | 'PROFILES' | 'LOGS'>('PROFILES');
 
   // --- Logs Tab State ---
   const [logs, setLogs] = useState<any[]>([]);
@@ -270,6 +117,14 @@ const Settings: React.FC = () => {
   const [logLimit, setLogLimit] = useState(200);
   const [profilePermSearch, setProfilePermSearch] = useState('');
   const canExportLogs = hasPermission('EXPORT_SYSTEM_LOGS') || hasPermission('MANAGE_SETTINGS');
+  const showUsersTab = hasPermission('MANAGE_USERS');
+  const showProfilesTab = hasPermission('MANAGE_SETTINGS');
+  const showLogsTab = hasPermission('MANAGE_SETTINGS');
+
+  useEffect(() => {
+    if (activeTab === 'USERS' && !showUsersTab) setActiveTab('PROFILES');
+    if (activeTab === 'LOGS' && !showLogsTab) setActiveTab('PROFILES');
+  }, [activeTab, showUsersTab, showLogsTab]);
 
   const profilePermissionRowsFiltered = useMemo(() => {
     const q = profilePermSearch.trim().toLowerCase();
@@ -466,43 +321,52 @@ const Settings: React.FC = () => {
       
       {/* Tabs */}
       <div className="surface-card-strong flex flex-wrap gap-1 border-b border-slate-300/70 p-2">
-          <button 
-             onClick={() => setActiveTab('USERS')}
-             className={clsx(
-                 "pressable-3d rounded-xl py-2.5 px-4 font-bold text-sm border border-transparent transition-all flex items-center gap-2",
-                 activeTab === 'USERS'
-                   ? "border-sl-navy/35 bg-gradient-to-b from-slate-50 to-white text-sl-navy"
-                   : "text-slate-600 hover:text-slate-900 hover:bg-white"
-             )}
-          >
+          {showUsersTab ? (
+            <button
+              type="button"
+              onClick={() => setActiveTab('USERS')}
+              className={clsx(
+                'pressable-3d flex items-center gap-2 rounded-xl border border-transparent px-4 py-2.5 text-sm font-bold transition-all',
+                activeTab === 'USERS'
+                  ? 'border-sl-navy/35 bg-gradient-to-b from-slate-50 to-white text-sl-navy'
+                  : 'text-slate-600 hover:bg-white hover:text-slate-900',
+              )}
+            >
               <Users size={18} /> Gestão de Usuários
-          </button>
-          <button 
-             onClick={() => setActiveTab('PROFILES')}
-             className={clsx(
-                 "pressable-3d rounded-xl py-2.5 px-4 font-bold text-sm border border-transparent transition-all flex items-center gap-2",
-                 activeTab === 'PROFILES'
-                   ? "border-sl-navy text-sl-navy"
-                   : "border-transparent text-slate-500 hover:text-slate-800"
-             )}
-          >
+            </button>
+          ) : null}
+          {showProfilesTab ? (
+            <button
+              type="button"
+              onClick={() => setActiveTab('PROFILES')}
+              className={clsx(
+                'pressable-3d flex items-center gap-2 rounded-xl border border-transparent px-4 py-2.5 text-sm font-bold transition-all',
+                activeTab === 'PROFILES'
+                  ? 'border-sl-navy text-sl-navy'
+                  : 'border-transparent text-slate-500 hover:text-slate-800',
+              )}
+            >
               <Shield size={18} /> Perfis e Permissões
-          </button>
-          <button
-            onClick={() => setActiveTab('LOGS')}
-            className={clsx(
-                 "pressable-3d rounded-xl py-2.5 px-4 font-bold text-sm border border-transparent transition-all flex items-center gap-2",
-              activeTab === 'LOGS'
-                ? "border-sl-navy text-sl-navy"
-                : "border-transparent text-slate-500 hover:text-slate-800"
-            )}
-          >
-            <Activity size={18} /> Logs do Sistema
-          </button>
+            </button>
+          ) : null}
+          {showLogsTab ? (
+            <button
+              type="button"
+              onClick={() => setActiveTab('LOGS')}
+              className={clsx(
+                'pressable-3d flex items-center gap-2 rounded-xl border border-transparent px-4 py-2.5 text-sm font-bold transition-all',
+                activeTab === 'LOGS'
+                  ? 'border-sl-navy text-sl-navy'
+                  : 'border-transparent text-slate-500 hover:text-slate-800',
+              )}
+            >
+              <Activity size={18} /> Logs do Sistema
+            </button>
+          ) : null}
       </div>
 
       {/* --- USERS TAB --- */}
-      {activeTab === 'USERS' && (
+      {activeTab === 'USERS' && showUsersTab && (
           <div className="space-y-6">
               {!hasPermission('MANAGE_USERS') && (
                 <div className="surface-card p-6">
@@ -651,7 +515,7 @@ const Settings: React.FC = () => {
       )}
 
       {/* --- PROFILES TAB --- */}
-      {activeTab === 'PROFILES' && (
+      {activeTab === 'PROFILES' && showProfilesTab && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {/* Profiles List */}
               <div className="md:col-span-1 space-y-3">
@@ -787,10 +651,9 @@ const Settings: React.FC = () => {
                                     Permissões de acesso
                                   </label>
                                   <p className="text-[11px] text-slate-500 mb-3">
-                                    Cada caixa altera <strong>apenas uma chave</strong> no perfil. O sistema continua a aceitar chaves
-                                    legadas em perfis antigos (ex.: <code className="text-[10px]">VIEW_PENDENCIAS</code> e{' '}
-                                    <code className="text-[10px]">tab.operacional.pendencias.view</code> funcionam em conjunto ao
-                                    aceder às telas), mas aqui não selecionam várias de uma vez.
+                                    Cada caixa altera <strong>uma chave</strong> no perfil. Chaves antigas (VIEW_*, etc.) ainda
+                                    funcionam em <strong>runtime</strong> se estiverem gravadas na base, mas deixaram de aparecer
+                                    aqui — use as entradas <code className="text-[10px]">tab.*</code> e módulos do catálogo.
                                   </p>
                                   <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center">
                                     <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 sm:max-w-md sm:flex-1">
@@ -891,7 +754,7 @@ const Settings: React.FC = () => {
       )}
 
       {/* --- LOGS TAB --- */}
-      {activeTab === 'LOGS' && (
+      {activeTab === 'LOGS' && showLogsTab && (
         <div className="space-y-4">
           {!hasPermission('MANAGE_SETTINGS') ? (
             <div className="surface-card p-6">

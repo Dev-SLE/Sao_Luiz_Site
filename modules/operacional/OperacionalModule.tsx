@@ -9,7 +9,7 @@ import SofiaSettings from '@/components/SofiaSettings';
 import Reports from '@/components/Reports';
 import ChangePassword from '@/components/ChangePassword';
 import { WorkspaceNoAccess } from '@/components/workspace/WorkspaceNoAccess';
-import { isOperacionalUtilityPath } from './routes';
+import { canAccessOperacionalUtilityPath, isOperacionalUtilityPath } from './routes';
 import { VisaoGeralPage } from './pages/VisaoGeral';
 import { PendenciasPage } from './pages/Pendencias';
 import { CriticosPage } from './pages/Criticos';
@@ -39,19 +39,23 @@ export function OperacionalModule({ pathname, onNoteClick, navigateToPage, track
     hasPermission('tab.operacional.ocorrencias.view') ||
     hasPermission('VIEW_RASTREIO_OPERACIONAL') ||
     hasPermission('VIEW_CONCLUIDOS') ||
-    hasPermission('VIEW_SETTINGS') ||
     hasPermission('VIEW_RELATORIOS') ||
     hasPermission('MANAGE_SOFIA');
 
-  if (!canEnterOperacional && !isOperacionalUtilityPath(pathname)) {
+  const utilityPath = isOperacionalUtilityPath(pathname);
+  const utilityAllowed = utilityPath && canAccessOperacionalUtilityPath(pathname, hasPermission);
+
+  if (!canEnterOperacional && !utilityAllowed) {
     return <WorkspaceNoAccess message="Seu perfil não possui acesso ao módulo Operacional." />;
   }
 
   let body: React.ReactNode = null;
 
   if (pathname.endsWith('/configuracoes')) {
-    if (!hasPermission('MANAGE_SETTINGS') && !hasPermission('VIEW_SETTINGS')) {
-      body = <WorkspaceNoAccess message="Seu perfil não possui acesso a Configurações." />;
+    if (!hasPermission('MANAGE_SETTINGS')) {
+      body = (
+        <WorkspaceNoAccess message="Apenas perfis com permissão 'Configurações e logs' (MANAGE_SETTINGS) podem aceder a esta área." />
+      );
     } else {
       body = <Settings />;
     }
