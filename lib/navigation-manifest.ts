@@ -19,6 +19,7 @@ import {
   Warehouse,
 } from 'lucide-react';
 import { Page } from '@/types';
+import { canEditPortalContent } from '@/lib/portalEditorAccess';
 import { pageToWorkspacePath } from '@/lib/workspace-routes';
 import { OPERACIONAL_TABS, operacionalPath } from '@/modules/operacional/routes';
 import { CRM_TABS, crmPath } from '@/modules/crm/routes';
@@ -62,7 +63,10 @@ export type WorkspaceNavSection = {
 export type PortalNavLink = {
   label: string;
   href: string;
+  /** Permissão principal (usada se `altPermissions` estiver vazio). */
   permission: string;
+  /** Basta uma destas permissões adicionais (OR com `permission`). */
+  altPermissions?: string[];
 };
 
 export const PORTAL_NAV_LINKS: PortalNavLink[] = [
@@ -75,13 +79,26 @@ export const PORTAL_NAV_LINKS: PortalNavLink[] = [
   { label: 'Suporte', href: '/suporte', permission: 'portal.suporte.view' },
   { label: 'Solicitações', href: '/solicitacoes', permission: 'portal.solicitacoes.view' },
   { label: 'Gestor', href: '/gestor', permission: 'portal.gestor.view' },
+  {
+    label: 'Edição',
+    href: '/portal-edicao',
+    permission: 'portal.colaborador.editor',
+    altPermissions: ['portal.gestor.content.manage'],
+  },
 ];
 
 export function filterPortalNavLinks(
   links: PortalNavLink[],
   hasPermission: (perm: string) => boolean,
+  opts?: { role?: string | null },
 ): PortalNavLink[] {
-  return links.filter((l) => hasPermission(l.permission));
+  return links.filter((l) => {
+    if (l.href === '/portal-edicao') {
+      return canEditPortalContent(hasPermission, opts);
+    }
+    const keys = [l.permission, ...(l.altPermissions || [])];
+    return keys.some((k) => hasPermission(k));
+  });
 }
 
 export function workspaceNavGroupId(sectionId: string, item: WorkspaceNavItem): string {

@@ -3,10 +3,12 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Menu, X } from 'lucide-react';
+import { Menu, X, PenLine } from 'lucide-react';
 import clsx from 'clsx';
 import { useData } from '@/context/DataContext';
+import { useAuth } from '@/context/AuthContext';
 import { filterPortalNavLinks, PORTAL_NAV_LINKS } from '@/lib/navigation-manifest';
+import { canEditPortalContent } from '@/lib/portalEditorAccess';
 import { NotificationsCenter } from '@/components/notifications/NotificationsCenter';
 
 const WORKSPACE_HREF = '/app/operacional/visao-geral';
@@ -24,8 +26,10 @@ function portalTabClass(active: boolean) {
 export function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
   const pathname = usePathname();
+  const { user } = useAuth();
   const { hasPermission } = useData();
-  const links = filterPortalNavLinks(PORTAL_NAV_LINKS, hasPermission);
+  const links = filterPortalNavLinks(PORTAL_NAV_LINKS, hasPermission, { role: user?.role });
+  const canPortalEdit = canEditPortalContent(hasPermission, { role: user?.role });
   const showWorkspace = hasPermission('workspace.app.view');
   const isWorkspaceActive = Boolean(pathname?.startsWith('/app'));
 
@@ -88,6 +92,16 @@ export function Navbar() {
         </div>
 
         <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
+          {canPortalEdit ? (
+            <Link
+              href="/portal-edicao"
+              className="hidden items-center gap-1.5 rounded-lg border border-white/25 bg-sl-red/90 px-3 py-1.5 text-xs font-black uppercase tracking-wide text-white shadow-sm transition hover:bg-sl-red lg:inline-flex"
+              title="Editar conteúdo do portal"
+            >
+              <PenLine className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              Editar
+            </Link>
+          ) : null}
           <NotificationsCenter variant="portal" />
           <Link
             href="/perfil"
@@ -96,6 +110,16 @@ export function Navbar() {
           >
             <span className="font-heading text-xs font-bold">EU</span>
           </Link>
+          {canPortalEdit ? (
+            <Link
+              href="/portal-edicao"
+              className="inline-flex items-center gap-1 rounded-lg border border-white/25 bg-sl-red/90 px-2.5 py-1.5 text-[11px] font-black uppercase tracking-wide text-white lg:hidden"
+              title="Editar portal"
+            >
+              <PenLine className="h-3.5 w-3.5" aria-hidden />
+              Editar
+            </Link>
+          ) : null}
           <button
             type="button"
             onClick={() => setIsOpen(!isOpen)}
@@ -143,6 +167,24 @@ export function Navbar() {
                   />
                 ) : null}
                 <span className="relative z-10">Área de trabalho</span>
+              </Link>
+            ) : null}
+            {canPortalEdit ? (
+              <Link
+                href="/portal-edicao"
+                onClick={() => setIsOpen(false)}
+                className={clsx('group', portalTabClass(pathname === '/portal-edicao'), 'block w-full text-center')}
+              >
+                {pathname !== '/portal-edicao' ? (
+                  <span
+                    className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/[0.07] to-transparent transition-transform duration-500 ease-out group-hover:translate-x-full"
+                    aria-hidden
+                  />
+                ) : null}
+                <span className="relative z-10 inline-flex items-center justify-center gap-2">
+                  <PenLine className="h-4 w-4" aria-hidden />
+                  Editar portal
+                </span>
               </Link>
             ) : null}
           </div>

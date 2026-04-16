@@ -183,9 +183,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const hasPermission = (perm: string) => {
     const roleName = (user?.role || '').trim().toLowerCase();
-    if (roleName === 'admin') return true;
+    if (roleName === 'admin' || roleName === 'superadmin' || roleName === 'administrador') return true;
     if (!perm) return true;
-    return hasPermissionWithAliases(currentProfile?.permissions || [], perm) || !!currentProfile?.permissions?.includes(perm);
+    const perms = currentProfile?.permissions || [];
+    if (perms.includes('MANAGE_SETTINGS')) return true;
+    return hasPermissionWithAliases(perms, perm) || !!perms.includes(perm);
   };
 
   const normalizeCtes = (rows: any[]): CteData[] =>
