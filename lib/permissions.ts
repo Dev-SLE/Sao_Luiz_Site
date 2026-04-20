@@ -476,6 +476,19 @@ const LEGACY_ALIAS: Record<string, string[]> = {
   "tab.crm.chat.view": ["VIEW_CRM_CHAT"],
   "tab.crm.funil.view": ["VIEW_CRM_FUNIL"],
   "tab.crm.dashboard.view": ["VIEW_CRM_DASHBOARD"],
+  /**
+   * Gerencial: `module.gerencial.view` continua guarda-chuva para todas as abas BI e setores;
+   * perfis antigos permanecem válidos. Para restringir por tela, use as chaves `tab.gerencial.*`.
+   */
+  "module.gerencial.view": [
+    "tab.gerencial.setor.comercial.view",
+    "tab.gerencial.setor.financeiro.view",
+    "tab.gerencial.setor.operacao.view",
+    "tab.gerencial.comissoes.view",
+    "tab.gerencial.funil.view",
+    "tab.gerencial.sprint.view",
+    "tab.gerencial.metas.view",
+  ],
   "tab.operacional.pendencias.view": ["VIEW_PENDENCIAS"],
   "tab.operacional.criticos.view": ["VIEW_CRITICOS"],
   "tab.operacional.em_busca.view": ["VIEW_EM_BUSCA"],
@@ -511,7 +524,11 @@ export function expandAuthPermissionMatch(needed: string): Set<string> {
  * Equivalência por checkbox na tela de perfis: não puxa o merge reverso a partir dos guarda-chuvas
  * `workspace.app.view` / `module.operacional.view`, senão desmarcar uma aba removia dezenas de permissões.
  */
-const PROFILE_EQUIVALENCE_REVERSE_SKIP = new Set<string>(['workspace.app.view', 'module.operacional.view']);
+const PROFILE_EQUIVALENCE_REVERSE_SKIP = new Set<string>([
+  'workspace.app.view',
+  'module.operacional.view',
+  'module.gerencial.view',
+]);
 
 export function getProfileCheckboxEquivalence(perm: string): Set<string> {
   const p = String(perm).trim();

@@ -42,11 +42,13 @@ export async function POST(req: Request) {
     const role = String(body?.role || "").trim();
     const linkedOriginUnit = String(body?.linkedOriginUnit || "").trim();
     const linkedDestUnit = String(body?.linkedDestUnit || "").trim();
+    const linkedBiVendedora = String(body?.linkedBiVendedora ?? body?.linked_bi_vendedora ?? "").trim();
     if (!username || !role) {
       return NextResponse.json({ error: "username/role obrigatórios" }, { status: 400 });
     }
 
     const pool = getPool();
+    await pool.query(`ALTER TABLE pendencias.users ADD COLUMN IF NOT EXISTS linked_bi_vendedora text`);
     const existing = await pool.query(
       "SELECT username, password_hash FROM pendencias.users WHERE username = $1 LIMIT 1",
       [username]
@@ -66,17 +68,18 @@ export async function POST(req: Request) {
 
     const result = await pool.query(
       `
-        INSERT INTO pendencias.users (username, password_hash, role, linked_origin_unit, linked_dest_unit, updated_at)
-        VALUES ($1, $2, $3, $4, $5, NOW())
+        INSERT INTO pendencias.users (username, password_hash, role, linked_origin_unit, linked_dest_unit, linked_bi_vendedora, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, NOW())
         ON CONFLICT (username) DO UPDATE SET
           password_hash = EXCLUDED.password_hash,
           role = EXCLUDED.role,
           linked_origin_unit = EXCLUDED.linked_origin_unit,
           linked_dest_unit = EXCLUDED.linked_dest_unit,
+          linked_bi_vendedora = EXCLUDED.linked_bi_vendedora,
           updated_at = NOW()
         RETURNING *
       `,
-      [username, passwordHash, role, linkedOriginUnit || null, linkedDestUnit || null]
+      [username, passwordHash, role, linkedOriginUnit || null, linkedDestUnit || null, linkedBiVendedora || null]
     );
     return NextResponse.json(result.rows?.[0] || null);
   } catch (error) {

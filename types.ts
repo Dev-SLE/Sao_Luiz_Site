@@ -66,6 +66,8 @@ export interface UserData {
   role: string;
   linkedOriginUnit: string;
   linkedDestUnit: string;
+  /** Nome da vendedora no BI; quando preenchido, o usuário só vê dados dessa vendedora nos painéis aplicáveis. */
+  linkedBiVendedora?: string;
   lastLoginAt?: string;
 }
 
@@ -113,6 +115,10 @@ export enum Page {
   MODULE_COMPRAS = 'module_compras',
   MODULE_JURIDICO = 'module_juridico',
   MODULE_GERENCIAL = 'module_gerencial',
+  /** BI comissões (schema bi, COMERCIAL_DATABASE_URL). */
+  GERENCIAL_COMISSOES_BI = 'gerencial_comissoes_bi',
+  /** Holerite de comissões (impressão / detalhe). */
+  GERENCIAL_COMISSOES_HOLERITE = 'gerencial_comissoes_holerite',
   MODULE_AUDITORIA_APP = 'module_auditoria_app',
   /** Rotas fora de `/app` — portal colaborador (`/inicio`, `/comunicados`, …). */
   PORTAL_COLABORADOR = 'portal_colaborador',

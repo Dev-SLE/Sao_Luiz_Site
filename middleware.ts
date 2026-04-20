@@ -36,6 +36,18 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  /** Gerencial BI: primeiro segmento após `/app/gerencial` deve ser setor; senão, injeta `comercial`. */
+  if (pathname.startsWith('/app/gerencial/')) {
+    const rest = pathname.slice('/app/gerencial/'.length).replace(/\/+$/, '');
+    const first = rest.split('/')[0]?.toLowerCase() ?? '';
+    if (first && first !== 'comercial' && first !== 'financeiro' && first !== 'operacao') {
+      const url = request.nextUrl.clone();
+      url.pathname = `/app/gerencial/comercial/${rest}`;
+      url.search = request.nextUrl.search;
+      return NextResponse.redirect(url);
+    }
+  }
+
   return NextResponse.next();
 }
 

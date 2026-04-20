@@ -68,3 +68,58 @@ select option {
 select:focus {
   outline: none;
 }
+
+/* Holerite comissões — mesmo visual na tela e na janela de impressão/PDF */
+.holerite-doc .holerite-head {
+  background: linear-gradient(90deg, #1e3a5f, #2a4a7a);
+  color: #fff;
+  padding: 28px 32px;
+  border-radius: 12px 12px 0 0;
+}
+.holerite-doc .holerite-head .holerite-sub {
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  opacity: 0.85;
+}
+.holerite-doc .holerite-body {
+  border: 1px solid #e2e8f0;
+  border-top: 0;
+  border-radius: 0 0 12px 12px;
+  padding: 20px 24px 28px;
+  background: #fff;
+  box-shadow: 0 20px 60px rgba(30, 58, 95, 0.08);
+}
+.holerite-doc .holerite-table-wrap {
+  overflow-x: auto;
+  border-radius: 12px;
+  border: 1px solid #f1f5f9;
+}
+.holerite-doc table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.holerite-doc th,
+.holerite-doc td {
+  border: 1px solid #e2e8f0;
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+.holerite-doc th {
+  background: #f8fafc;
+  font-weight: 700;
+  color: #475569;
+}
+.holerite-doc tbody tr:nth-child(even) td {
+  background: #fafafa;
+}
+.holerite-doc .holerite-foot {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid #f1f5f9;
+  font-size: 10px;
+  color: #94a3b8;
+  text-align: center;
+}

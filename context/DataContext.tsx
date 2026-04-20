@@ -254,6 +254,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         role: row.role || '',
         linkedOriginUnit: row.linked_origin_unit || '',
         linkedDestUnit: row.linked_dest_unit || '',
+        linkedBiVendedora: row.linked_bi_vendedora || '',
         lastLoginAt: row.last_login_at || '',
       }));
 

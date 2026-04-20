@@ -1,0 +1,72 @@
+import { GERENCIAL_BI_TAB } from '@/modules/gerencial/permissions';
+
+export type GerencialSectorSlug = 'comercial' | 'financeiro' | 'operacao';
+
+export type GerencialSectorDef = {
+  slug: GerencialSectorSlug;
+  label: string;
+  permission: string;
+};
+
+export const GERENCIAL_SECTORS: GerencialSectorDef[] = [
+  { slug: 'comercial', label: 'Comercial', permission: GERENCIAL_BI_TAB.setorComercial },
+  { slug: 'financeiro', label: 'Financeiro', permission: GERENCIAL_BI_TAB.setorFinanceiro },
+  { slug: 'operacao', label: 'Operação', permission: GERENCIAL_BI_TAB.setorOperacao },
+];
+
+export type GerencialComercialPanelDef = {
+  slug: string;
+  label: string;
+  permission: string;
+};
+
+/** Abas internas do setor Comercial (BI já entregue). */
+export const GERENCIAL_COMERCIAL_PANELS: GerencialComercialPanelDef[] = [
+  { slug: 'comissoes', label: 'Comissões (BI)', permission: GERENCIAL_BI_TAB.comissoes },
+  { slug: 'performance-vendas', label: 'Performance de vendas', permission: GERENCIAL_BI_TAB.funil },
+  { slug: 'sprint-incentivos', label: 'Sprint & incentivos', permission: GERENCIAL_BI_TAB.sprint },
+  { slug: 'metas-performance', label: 'Metas & performance', permission: GERENCIAL_BI_TAB.metas },
+];
+
+/** Caminho canônico: `/app/gerencial/{setor}` ou `/app/gerencial/{setor}/{painel}` ou `.../holerite`. */
+export function gerencialHubPath(sector: string, panel?: string, extraSegment?: string) {
+  const sec = String(sector || 'comercial')
+    .trim()
+    .toLowerCase();
+  const base = `/app/gerencial/${sec}`;
+  if (!panel) return base;
+  const p = String(panel).trim().toLowerCase();
+  if (extraSegment) return `${base}/${p}/${String(extraSegment).replace(/^\/+/, '')}`;
+  return `${base}/${p}`;
+}
+
+/**
+ * Compat: rotas antigas `/app/gerencial/comissoes` → comercial.
+ * `slug` painel do setor Comercial (ex.: `comissoes`, `performance-vendas`).
+ */
+export function gerencialPath(slug?: string) {
+  const s = String(slug || '')
+    .trim()
+    .toLowerCase();
+  if (!s || s === 'visao') return gerencialHubPath('comercial');
+  return gerencialHubPath('comercial', s);
+}
+
+/** Holerite de comissões — mesmo filtro da tela BI via query string. */
+export function gerencialComissoesHoleritePath(query?: string) {
+  const base = gerencialHubPath('comercial', 'comissoes', 'holerite');
+  const q = query?.replace(/^\?/, '').trim();
+  return q ? `${base}?${q}` : base;
+}
+
+/** Detecta se o primeiro segmento após `/app/gerencial` é um setor canônico. */
+export function isGerencialSectorSlug(s: string): s is GerencialSectorSlug {
+  return s === 'comercial' || s === 'financeiro' || s === 'operacao';
+}
+
+/** Se `seg` for painel legado (sem setor na URL), devolve `comercial`. */
+export function inferSectorFromFirstSegment(seg: string): GerencialSectorSlug {
+  const s = String(seg || '').toLowerCase();
+  if (isGerencialSectorSlug(s)) return s;
+  return 'comercial';
+}

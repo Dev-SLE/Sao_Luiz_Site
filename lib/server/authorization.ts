@@ -8,6 +8,8 @@ export type SessionContext = {
   role: string;
   origin?: string | null;
   dest?: string | null;
+  /** Escopo BI: só dados desta vendedora quando preenchido no cadastro do usuário. */
+  biVendedora?: string | null;
   permissions: string[];
 };
 
@@ -34,9 +36,13 @@ export async function getSessionContext(req: Request): Promise<SessionContext | 
   const session = decodeSession(sessionCookie ? decodeURIComponent(sessionCookie) : null);
   if (!session) return null;
   const pool = getPool();
+  await pool.query(`ALTER TABLE pendencias.users ADD COLUMN IF NOT EXISTS linked_bi_vendedora text`);
   const p = await pool.query(
     `
-      SELECT p.permissions
+      SELECT p.permissions,
+             u.linked_origin_unit,
+             u.linked_dest_unit,
+             u.linked_bi_vendedora
       FROM pendencias.users u
       LEFT JOIN pendencias.profiles p ON LOWER(p.name) = LOWER(u.role)
       WHERE LOWER(u.username) = LOWER($1)
@@ -44,12 +50,21 @@ export async function getSessionContext(req: Request): Promise<SessionContext | 
     `,
     [session.username]
   );
+  const row = p.rows?.[0] as
+    | { permissions?: unknown; linked_origin_unit?: unknown; linked_dest_unit?: unknown; linked_bi_vendedora?: unknown }
+    | undefined;
   return {
     username: String(session.username),
     role: String(session.role || ""),
-    origin: session.origin || null,
-    dest: session.dest || null,
-    permissions: parsePermissions(p.rows?.[0]?.permissions),
+    origin: row?.linked_origin_unit != null ? String(row.linked_origin_unit) : session.origin || null,
+    dest: row?.linked_dest_unit != null ? String(row.linked_dest_unit) : session.dest || null,
+    biVendedora:
+      row?.linked_bi_vendedora != null && String(row.linked_bi_vendedora).trim() !== ""
+        ? String(row.linked_bi_vendedora).trim()
+        : session.biVendedora != null && String(session.biVendedora).trim() !== ""
+          ? String(session.biVendedora).trim()
+          : null,
+    permissions: parsePermissions(row?.permissions),
   };
 }
 

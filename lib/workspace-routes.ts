@@ -1,4 +1,5 @@
 import { Page } from '@/types';
+import { isGerencialSectorSlug } from '@/modules/gerencial/routes';
 
 /** Segmentos canônicos do workspace (fase_1.md). */
 export const WORKSPACE_MODULES = [
@@ -94,7 +95,18 @@ export function pathToPage(pathname: string): Page {
   if (module === 'rh') return Page.MODULE_RH;
   if (module === 'compras') return Page.MODULE_COMPRAS;
   if (module === 'juridico') return Page.MODULE_JURIDICO;
-  if (module === 'gerencial') return Page.MODULE_GERENCIAL;
+  if (module === 'gerencial') {
+    const r1 = rest[1]?.toLowerCase() ?? '';
+    const r2 = rest[2]?.toLowerCase() ?? '';
+    if (isGerencialSectorSlug(r0)) {
+      if (r1 === 'comissoes' && r2 === 'holerite') return Page.GERENCIAL_COMISSOES_HOLERITE;
+      if (r1 === 'comissoes') return Page.GERENCIAL_COMISSOES_BI;
+      return Page.MODULE_GERENCIAL;
+    }
+    if (r0 === 'comissoes' && r1 === 'holerite') return Page.GERENCIAL_COMISSOES_HOLERITE;
+    if (r0 === 'comissoes') return Page.GERENCIAL_COMISSOES_BI;
+    return Page.MODULE_GERENCIAL;
+  }
   if (module === 'auditoria') return Page.MODULE_AUDITORIA_APP;
 
   return Page.DASHBOARD;
@@ -162,7 +174,11 @@ export function pageToWorkspacePath(page: Page): string {
     case Page.MODULE_JURIDICO:
       return '/app/juridico';
     case Page.MODULE_GERENCIAL:
-      return '/app/gerencial';
+      return '/app/gerencial/comercial';
+    case Page.GERENCIAL_COMISSOES_BI:
+      return '/app/gerencial/comercial/comissoes';
+    case Page.GERENCIAL_COMISSOES_HOLERITE:
+      return '/app/gerencial/comercial/comissoes/holerite';
     case Page.MODULE_AUDITORIA_APP:
       return '/app/auditoria';
     case Page.PORTAL_COLABORADOR:

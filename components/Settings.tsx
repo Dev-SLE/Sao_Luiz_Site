@@ -20,6 +20,7 @@ import clsx from 'clsx';
 import { authClient } from '../lib/auth';
 import { AppConfirmModal, AppMessageModal, type AppMessageVariant } from './AppOverlays';
 import * as XLSX from 'xlsx';
+import { BI_COMISSOES_CONFIG } from '@/modules/bi/comissoes/config';
 import {
   PERMISSION_CATALOG,
   PERMISSION_GROUP_LABELS,
@@ -192,7 +193,8 @@ const Settings: React.FC = () => {
       password: '',
       role: '',
       linkedOriginUnit: '',
-      linkedDestUnit: ''
+      linkedDestUnit: '',
+      linkedBiVendedora: '',
   });
   const [isAddingUser, setIsAddingUser] = useState(false);
   const [editingUsername, setEditingUsername] = useState<string | null>(null);
@@ -224,6 +226,8 @@ const Settings: React.FC = () => {
       return Array.from(set).sort();
   }, [baseData]);
 
+  const biVendedoraOptions = useMemo(() => [...BI_COMISSOES_CONFIG.vendedorFinalAllowlist].sort(), []);
+
   const handleAddUser = async (e: React.FormEvent) => {
       e.preventDefault();
       const isEditing = !!editingUsername;
@@ -244,7 +248,7 @@ const Settings: React.FC = () => {
           return;
       }
       await addUser(newUser);
-      setNewUser({ username: '', password: '', role: '', linkedOriginUnit: '', linkedDestUnit: '' });
+      setNewUser({ username: '', password: '', role: '', linkedOriginUnit: '', linkedDestUnit: '', linkedBiVendedora: '' });
       setIsAddingUser(false);
       setEditingUsername(null);
   };
@@ -256,13 +260,14 @@ const Settings: React.FC = () => {
         role: u.role,
         linkedOriginUnit: u.linkedOriginUnit || '',
         linkedDestUnit: u.linkedDestUnit || '',
+        linkedBiVendedora: u.linkedBiVendedora || '',
       });
       setEditingUsername(u.username);
       setIsAddingUser(true);
   };
 
   const cancelUserForm = () => {
-      setNewUser({ username: '', password: '', role: '', linkedOriginUnit: '', linkedDestUnit: '' });
+      setNewUser({ username: '', password: '', role: '', linkedOriginUnit: '', linkedDestUnit: '', linkedBiVendedora: '' });
       setEditingUsername(null);
       setIsAddingUser(false);
   };
@@ -449,6 +454,24 @@ const Settings: React.FC = () => {
                                   {uniqueUnits.map(u => <option key={u} value={u}>{u}</option>)}
                               </select>
                           </div>
+                          <div className="space-y-1">
+                              <label className="text-xs font-bold text-slate-600 uppercase">Vendedora (BI, opcional)</label>
+                              <select
+                                className="w-full p-2 rounded border border-slate-200 focus:ring-2 focus:ring-sl-navy/30 outline-none bg-slate-50 text-slate-800"
+                                value={newUser.linkedBiVendedora || ''}
+                                onChange={(e) => setNewUser({ ...newUser, linkedBiVendedora: e.target.value })}
+                              >
+                                <option value="">Nenhuma — vê todas (respeitando unidade)</option>
+                                {biVendedoraOptions.map((v) => (
+                                  <option key={v} value={v}>
+                                    {v}
+                                  </option>
+                                ))}
+                              </select>
+                              <p className="text-[11px] text-slate-500">
+                                Se definida, o usuário só enxerga dados dessa vendedora nos painéis de comissões, funil e sprint.
+                              </p>
+                          </div>
                           <div className="md:col-span-2 lg:col-span-1 flex items-end">
                               <button type="submit" className="pressable-3d w-full rounded bg-gradient-to-r from-emerald-600 to-emerald-700 p-2 font-bold text-white transition hover:brightness-105">
                                   {editingUsername ? 'Salvar Edição' : 'Salvar'}
@@ -469,6 +492,7 @@ const Settings: React.FC = () => {
                               <th className="px-4 py-3">Perfil</th>
                               <th className="px-4 py-3">Origem</th>
                               <th className="px-4 py-3">Destino</th>
+                              <th className="px-4 py-3">Vendedora BI</th>
                               <th className="px-4 py-3">Último login</th>
                               <th className="px-4 py-3 text-right">Ações</th>
                           </tr>
@@ -484,6 +508,7 @@ const Settings: React.FC = () => {
                                   </td>
                                   <td className="px-4 py-3 text-slate-600">{u.linkedOriginUnit || '-'}</td>
                                   <td className="px-4 py-3 text-slate-600">{u.linkedDestUnit || '-'}</td>
+                                  <td className="px-4 py-3 text-slate-600">{u.linkedBiVendedora || '-'}</td>
                                   <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{formatLastLogin(u.lastLoginAt)}</td>
                                   <td className="px-4 py-3 text-right">
                                       <div className="inline-flex items-center gap-1">

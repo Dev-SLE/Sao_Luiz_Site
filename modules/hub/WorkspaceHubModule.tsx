@@ -3,6 +3,7 @@
 import React from 'react';
 import { pathToPage, moduleLabel } from '@/lib/workspace-routes';
 import { HUB_PAGE_TITLES } from '@/modules/hub/hub-page-titles';
+import { GerencialHubContent } from '@/modules/gerencial/GerencialHubContent';
 
 /**
  * Conteúdo do hub (manifestos, financeiro, etc.). O cabeçalho e navegação ficam em HubLayout.
@@ -10,6 +11,10 @@ import { HUB_PAGE_TITLES } from '@/modules/hub/hub-page-titles';
 export function WorkspaceHubModule({ pathname, moduleKey }: { pathname: string; moduleKey: string }) {
   const page = pathToPage(pathname);
   const title = HUB_PAGE_TITLES[page] ?? moduleLabel(moduleKey);
+
+  if (moduleKey === 'gerencial') {
+    return <GerencialHubContent pathname={pathname} />;
+  }
 
   return (
     <div className="surface-card max-w-2xl p-8 animate-in fade-in duration-200">

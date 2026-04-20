@@ -1,27 +1,24 @@
 import { NextResponse } from "next/server";
-import { decodeSession, SESSION_COOKIE_NAME } from "../../../../lib/server/session";
+import { SESSION_COOKIE_NAME } from "../../../../lib/server/session";
+import { getSessionContext } from "../../../../lib/server/authorization";
 
 export const runtime = "nodejs";
 
 export async function GET(req: Request) {
-  const rawCookie = req.headers.get("cookie") || "";
-  const sessionCookie = rawCookie
-    .split(";")
-    .map((part) => part.trim())
-    .find((part) => part.startsWith(`${SESSION_COOKIE_NAME}=`))
-    ?.split("=")[1];
-  const session = decodeSession(sessionCookie ? decodeURIComponent(sessionCookie) : null);
-  if (!session) {
-    return NextResponse.json({ authenticated: false, user: null }, { status: 200 });
+  const ctx = await getSessionContext(req);
+  if (!ctx) {
+    return NextResponse.json({ authenticated: false, user: null, permissions: [] }, { status: 200 });
   }
   return NextResponse.json({
     authenticated: true,
     user: {
-      username: session.username,
-      role: session.role,
-      origin: session.origin || "",
-      dest: session.dest || "",
+      username: ctx.username,
+      role: ctx.role,
+      origin: ctx.origin || "",
+      dest: ctx.dest || "",
+      biVendedora: ctx.biVendedora || "",
     },
+    permissions: ctx.permissions,
   });
 }
 

@@ -40,6 +40,7 @@ export async function POST(req: Request) {
     }
 
     const pool = getPool();
+    await pool.query(`ALTER TABLE pendencias.users ADD COLUMN IF NOT EXISTS linked_bi_vendedora text`);
     const result = await pool.query(
       `
         SELECT u.*, p.permissions AS profile_permissions
@@ -116,6 +117,7 @@ export async function POST(req: Request) {
         role: user.role,
         origin: user.linked_origin_unit,
         dest: user.linked_dest_unit,
+        biVendedora: user.linked_bi_vendedora ?? "",
       },
     });
     response.cookies.set(SESSION_COOKIE_NAME, encodeSession({
@@ -123,6 +125,7 @@ export async function POST(req: Request) {
       role: user.role,
       origin: user.linked_origin_unit,
       dest: user.linked_dest_unit,
+      biVendedora: user.linked_bi_vendedora ?? null,
     }), {
       httpOnly: true,
       sameSite: "lax",

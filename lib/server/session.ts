@@ -7,6 +7,8 @@ type SessionPayload = {
   role: string;
   origin?: string | null;
   dest?: string | null;
+  /** Vendedora restrita no BI (mesmo valor de `pendencias.users.linked_bi_vendedora`). */
+  biVendedora?: string | null;
   iat: number;
 };
 

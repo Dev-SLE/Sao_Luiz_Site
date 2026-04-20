@@ -24,7 +24,6 @@ import { pageToWorkspacePath } from '@/lib/workspace-routes';
 import { OPERACIONAL_TABS, operacionalPath } from '@/modules/operacional/routes';
 import { CRM_TABS, crmPath } from '@/modules/crm/routes';
 import { COMERCIAL_TABS, comercialPath } from '@/modules/comercial/routes';
-
 /** Itens planejados só aparecem com `NEXT_PUBLIC_SHOW_PLANNED_NAV=1`. */
 export const SHOW_PLANNED_WORKSPACE_NAV = process.env.NEXT_PUBLIC_SHOW_PLANNED_NAV === '1';
 
@@ -189,6 +188,15 @@ function buildComercialChildren(hasPermission: (perm: string) => boolean): Works
     href: comercialPath(t.slug),
     status: 'implemented' as const,
   }));
+}
+
+function canSeeGerencialHubNav(hasPermission: (perm: string) => boolean): boolean {
+  return (
+    hasPermission('module.gerencial.view') ||
+    hasPermission('tab.gerencial.setor.comercial.view') ||
+    hasPermission('tab.gerencial.setor.financeiro.view') ||
+    hasPermission('tab.gerencial.setor.operacao.view')
+  );
 }
 
 /** Exemplos de roadmap (só visíveis com NEXT_PUBLIC_SHOW_PLANNED_NAV=1). */
@@ -386,15 +394,22 @@ export function buildWorkspaceNavSections(input: {
       permission: 'module.juridico.view',
     });
 
+  const gerencialChildren: WorkspaceNavChild[] = [];
+
   const gerencialMod: WorkspaceNavItem | false =
-    hub('module.gerencial.view') &&
-    withHubHref(Page.MODULE_GERENCIAL, {
-      id: Page.MODULE_GERENCIAL,
-      label: 'Gerencial',
-      icon: LineChart,
-      count: 0,
-      permission: 'module.gerencial.view',
-    });
+    canSeeGerencialHubNav(hasPermission) &&
+    attachChildren(
+      {
+        id: Page.GERENCIAL_COMISSOES_BI,
+        label: 'Gerencial',
+        icon: LineChart,
+        count: 0,
+        permission: 'module.gerencial.view',
+        href: '/app/gerencial',
+        matchPrefix: '/app/gerencial',
+      },
+      gerencialChildren,
+    );
 
   const auditoriaMod: WorkspaceNavItem | false =
     hub('module.auditoria.view') &&
