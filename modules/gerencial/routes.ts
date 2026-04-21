@@ -20,12 +20,33 @@ export type GerencialComercialPanelDef = {
   permission: string;
 };
 
+/** Abas internas do setor Operação (BI logístico). */
+export const GERENCIAL_OPERACAO_PANELS: GerencialComercialPanelDef[] = [
+  { slug: 'monitor-fluxo', label: 'Monitor de fluxo', permission: GERENCIAL_BI_TAB.fluxoMonitor },
+  { slug: 'gestao-taxas', label: 'Gestão de taxas', permission: GERENCIAL_BI_TAB.taxasGerencial },
+];
+
 /** Abas internas do setor Comercial (BI já entregue). */
 export const GERENCIAL_COMERCIAL_PANELS: GerencialComercialPanelDef[] = [
   { slug: 'comissoes', label: 'Comissões (BI)', permission: GERENCIAL_BI_TAB.comissoes },
+  {
+    slug: 'carteira-renovacao',
+    label: 'Carteira & renovação',
+    permission: GERENCIAL_BI_TAB.carteiraRenovacao,
+  },
   { slug: 'performance-vendas', label: 'Performance de vendas', permission: GERENCIAL_BI_TAB.funil },
   { slug: 'sprint-incentivos', label: 'Sprint & incentivos', permission: GERENCIAL_BI_TAB.sprint },
   { slug: 'metas-performance', label: 'Metas & performance', permission: GERENCIAL_BI_TAB.metas },
+  {
+    slug: 'simulador-metas-vendedoras',
+    label: 'Simulador metas vendedoras',
+    permission: GERENCIAL_BI_TAB.metas,
+  },
+  { slug: 'cockpit-comercial-360', label: 'Cockpit Comercial 360', permission: GERENCIAL_BI_TAB.comercial360Cockpit },
+  { slug: 'central-360-executiva', label: 'Central 360 Executiva', permission: GERENCIAL_BI_TAB.comercial360Executiva },
+  { slug: 'monitor-risco-360', label: 'Monitor de risco 360', permission: GERENCIAL_BI_TAB.comercial360Risco },
+  { slug: 'potencial-gap-360', label: 'Potencial e GAP 360', permission: GERENCIAL_BI_TAB.comercial360Gap },
+  { slug: 'radar-prospeccao-360', label: 'Radar de prospecção 360', permission: GERENCIAL_BI_TAB.comercial360Radar },
 ];
 
 /** Caminho canônico: `/app/gerencial/{setor}` ou `/app/gerencial/{setor}/{painel}` ou `.../holerite`. */

@@ -7,6 +7,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { ModuleSubnavTabs } from '@/components/workspace/ModuleSubnavTabs';
 import {
   GERENCIAL_COMERCIAL_PANELS,
+  GERENCIAL_OPERACAO_PANELS,
   GERENCIAL_SECTORS,
   gerencialHubPath,
   isGerencialSectorSlug,
@@ -17,6 +18,15 @@ import { BiComissoesDashboard } from '@/modules/gerencial/BiComissoesDashboard';
 import { BiFunilVendasDashboard } from '@/modules/gerencial/BiFunilVendasDashboard';
 import { BiSprintVendasDashboard } from '@/modules/gerencial/BiSprintVendasDashboard';
 import { BiMetasPerformanceDashboard } from '@/modules/gerencial/BiMetasPerformanceDashboard';
+import { BiSimuladorMetasDashboard } from '@/modules/gerencial/BiSimuladorMetasDashboard';
+import { BiTabelasCombinadasDashboard } from '@/modules/gerencial/BiTabelasCombinadasDashboard';
+import { BiFluxoMonitorDashboard } from '@/modules/gerencial/BiFluxoMonitorDashboard';
+import { BiTaxasGerencialDashboard } from '@/modules/gerencial/BiTaxasGerencialDashboard';
+import { BiComercial360CockpitDashboard } from '@/modules/gerencial/comercial360/BiComercial360CockpitDashboard';
+import { BiComercial360ExecutivaDashboard } from '@/modules/gerencial/comercial360/BiComercial360ExecutivaDashboard';
+import { BiComercial360GapDashboard } from '@/modules/gerencial/comercial360/BiComercial360GapDashboard';
+import { BiComercial360RadarDashboard } from '@/modules/gerencial/comercial360/BiComercial360RadarDashboard';
+import { BiComercial360RiscoDashboard } from '@/modules/gerencial/comercial360/BiComercial360RiscoDashboard';
 import { ComissoesHoleriteView } from '@/modules/gerencial/ComissoesHoleriteView';
 import { hasPermissionWithAliases } from '@/lib/permissions';
 
@@ -51,9 +61,21 @@ function parseGerencialPath(pathname: string): ParsedGerencial {
 
 function commercialTabKeyFromPanelSlug(slug: string): keyof typeof GERENCIAL_BI_TAB | null {
   if (slug === 'comissoes') return 'comissoes';
+  if (slug === 'carteira-renovacao') return 'carteiraRenovacao';
   if (slug === 'performance-vendas') return 'funil';
   if (slug === 'sprint-incentivos') return 'sprint';
   if (slug === 'metas-performance') return 'metas';
+  if (slug === 'cockpit-comercial-360') return 'comercial360Cockpit';
+  if (slug === 'central-360-executiva') return 'comercial360Executiva';
+  if (slug === 'monitor-risco-360') return 'comercial360Risco';
+  if (slug === 'potencial-gap-360') return 'comercial360Gap';
+  if (slug === 'radar-prospeccao-360') return 'comercial360Radar';
+  return null;
+}
+
+function operacaoTabKeyFromPanelSlug(slug: string): keyof typeof GERENCIAL_BI_TAB | null {
+  if (slug === 'monitor-fluxo') return 'fluxoMonitor';
+  if (slug === 'gestao-taxas') return 'taxasGerencial';
   return null;
 }
 
@@ -108,7 +130,20 @@ export function GerencialHubContent({ pathname }: { pathname: string }) {
     }));
   }, [allowedCommercialPanels, parsed.holerite, parsed.panel, parsed.sector]);
 
-  /** URLs legadas `/app/gerencial/comissoes` → `/app/gerencial/comercial/comissoes`. */
+  const allowedOperacaoPanels = useMemo(() => {
+    return GERENCIAL_OPERACAO_PANELS.filter((p) => has(p.permission) || has('module.gerencial.view'));
+  }, [has]);
+
+  const operacaoSubTabs = useMemo(() => {
+    if (parsed.sector !== 'operacao') return [];
+    return allowedOperacaoPanels.map((p) => ({
+      href: gerencialHubPath('operacao', p.slug),
+      label: p.label,
+      active: parsed.panel === p.slug && parsed.sector === 'operacao',
+    }));
+  }, [allowedOperacaoPanels, parsed.panel, parsed.sector]);
+
+  /** URLs legadas `/app/gerencial/comissoes` para `/app/gerencial/comercial/comissoes`. */
   useEffect(() => {
     const parts = effectivePath.replace(/\/+$/, '').split('/').filter(Boolean);
     if (parts[0] !== 'app' || parts[1] !== 'gerencial') return;
@@ -120,7 +155,7 @@ export function GerencialHubContent({ pathname }: { pathname: string }) {
     }
   }, [effectivePath, router]);
 
-  /** `/app/gerencial` → primeiro setor permitido no catálogo. */
+  /** `/app/gerencial` para o primeiro setor permitido no catalogo. */
   useEffect(() => {
     if (permissions === null) return;
     const parts = effectivePath.replace(/\/+$/, '').split('/').filter(Boolean);
@@ -130,7 +165,7 @@ export function GerencialHubContent({ pathname }: { pathname: string }) {
     if (firstSector) router.replace(gerencialHubPath(firstSector));
   }, [effectivePath, has, permissions, router]);
 
-  /** `/app/gerencial/comercial` sem painel → primeiro painel Comercial permitido. */
+  /** `/app/gerencial/comercial` sem painel: primeiro painel Comercial permitido. */
   useEffect(() => {
     if (permissions === null) return;
     const parts = effectivePath.replace(/\/+$/, '').split('/').filter(Boolean);
@@ -140,6 +175,17 @@ export function GerencialHubContent({ pathname }: { pathname: string }) {
     const first = allowedCommercialPanels[0]?.slug;
     if (first) router.replace(gerencialHubPath('comercial', first));
   }, [allowedCommercialPanels, effectivePath, permissions, router]);
+
+  /** `/app/gerencial/operacao` sem painel: primeiro painel Operacao permitido. */
+  useEffect(() => {
+    if (permissions === null) return;
+    const parts = effectivePath.replace(/\/+$/, '').split('/').filter(Boolean);
+    if (parts[0] !== 'app' || parts[1] !== 'gerencial') return;
+    if (parts.length !== 3) return;
+    if (parts[2]?.toLowerCase() !== 'operacao') return;
+    const first = allowedOperacaoPanels[0]?.slug;
+    if (first) router.replace(gerencialHubPath('operacao', first));
+  }, [allowedOperacaoPanels, effectivePath, permissions, router]);
 
   const canAnySector = sectorTabs.length > 0;
   const canCommercial = has(GERENCIAL_BI_TAB.setorComercial) || has('module.gerencial.view');
@@ -159,6 +205,14 @@ export function GerencialHubContent({ pathname }: { pathname: string }) {
     (!panelKey || !has(GERENCIAL_BI_TAB[panelKey])) &&
     !has('module.gerencial.view');
 
+  const operacaoPanelKey = parsed.panel ? operacaoTabKeyFromPanelSlug(parsed.panel) : null;
+  const operacaoPanelDenied =
+    parsed.sector === 'operacao' &&
+    permissions !== null &&
+    !!parsed.panel &&
+    (!operacaoPanelKey || !has(GERENCIAL_BI_TAB[operacaoPanelKey])) &&
+    !has('module.gerencial.view');
+
   const holeriteDenied =
     parsed.holerite &&
     permissions !== null &&
@@ -170,7 +224,7 @@ export function GerencialHubContent({ pathname }: { pathname: string }) {
     return (
       <div className="flex min-h-[40vh] flex-col items-center justify-center gap-3 text-slate-600">
         <Loader2 className="animate-spin text-sl-navy" size={28} />
-        <span className="text-sm">Carregando permissões…</span>
+        <span className="text-sm">Carregando permissões...</span>
       </div>
     );
   }
@@ -179,7 +233,9 @@ export function GerencialHubContent({ pathname }: { pathname: string }) {
     return (
       <div className="surface-card mx-auto max-w-lg p-8 text-center">
         <p className="text-sm font-semibold text-slate-900">Sem acesso ao Gerencial</p>
-        <p className="mt-2 text-sm text-slate-600">Peça ao administrador as permissões de setor (Comercial, Financeiro ou Operação).</p>
+        <p className="mt-2 text-sm text-slate-600">
+          Peça ao administrador as permissões de setor (Comercial, Financeiro ou Operação).
+        </p>
       </div>
     );
   }
@@ -193,22 +249,33 @@ export function GerencialHubContent({ pathname }: { pathname: string }) {
             <ModuleSubnavTabs tabs={commercialSubTabs} size="sm" underlineClass="after:bg-amber-500" />
           </div>
         ) : null}
+        {parsed.sector === 'operacao' && operacaoSubTabs.length > 0 ? (
+          <div className="mt-1 border-t border-slate-100 pt-1">
+            <ModuleSubnavTabs tabs={operacaoSubTabs} size="sm" underlineClass="after:bg-emerald-600" />
+          </div>
+        ) : null}
       </div>
       <div className="min-h-0 flex-1 overflow-auto bg-slate-50/80 px-4 py-4 md:px-6">
-        {sectorDenied || commercialPanelDenied || holeriteDenied ? (
+        {sectorDenied || commercialPanelDenied || operacaoPanelDenied || holeriteDenied ? (
           <div className="surface-card mx-auto max-w-lg p-8 text-center">
             <p className="text-sm font-semibold text-slate-900">Acesso negado</p>
-            <p className="mt-2 text-sm text-slate-600">Você não tem permissão para esta área. Solicite o ajuste no perfil de permissões.</p>
+            <p className="mt-2 text-sm text-slate-600">
+              Você não tem permissão para esta área. Solicite o ajuste no perfil de permissões.
+            </p>
           </div>
         ) : parsed.sector === 'financeiro' ? (
           <PlaceholderSector
             title="Financeiro"
             description="Indicadores financeiros do BI por setor serão disponibilizados aqui. A estrutura de permissões e escopo por unidade já está preparada."
           />
+        ) : parsed.sector === 'operacao' && parsed.panel === 'monitor-fluxo' ? (
+          <BiFluxoMonitorDashboard />
+        ) : parsed.sector === 'operacao' && parsed.panel === 'gestao-taxas' ? (
+          <BiTaxasGerencialDashboard />
         ) : parsed.sector === 'operacao' ? (
           <PlaceholderSector
             title="Operação"
-            description="Painéis operacionais do BI por setor serão disponibilizados aqui. A estrutura de permissões e escopo por unidade já está preparada."
+            description="Escolha um painel na barra acima ou aguarde novos indicadores logísticos neste setor."
           />
         ) : parsed.holerite ? (
           <Suspense
@@ -221,6 +288,8 @@ export function GerencialHubContent({ pathname }: { pathname: string }) {
           >
             <ComissoesHoleriteView />
           </Suspense>
+        ) : parsed.panel === 'carteira-renovacao' ? (
+          <BiTabelasCombinadasDashboard />
         ) : parsed.panel === 'comissoes' ? (
           <BiComissoesDashboard />
         ) : parsed.panel === 'performance-vendas' ? (
@@ -229,6 +298,72 @@ export function GerencialHubContent({ pathname }: { pathname: string }) {
           <BiSprintVendasDashboard />
         ) : parsed.panel === 'metas-performance' ? (
           <BiMetasPerformanceDashboard />
+        ) : parsed.panel === 'simulador-metas-vendedoras' ? (
+          <Suspense
+            fallback={
+              <div className="flex flex-col items-center justify-center gap-3 py-24 text-slate-600">
+                <Loader2 className="animate-spin text-sl-navy" size={28} />
+                <span className="text-sm">Carregando simulador…</span>
+              </div>
+            }
+          >
+            <BiSimuladorMetasDashboard />
+          </Suspense>
+        ) : parsed.panel === 'cockpit-comercial-360' ? (
+          <Suspense
+            fallback={
+              <div className="flex flex-col items-center justify-center gap-3 py-24 text-slate-600">
+                <Loader2 className="animate-spin text-sl-navy" size={28} />
+                <span className="text-sm">Carregando Comercial 360…</span>
+              </div>
+            }
+          >
+            <BiComercial360CockpitDashboard />
+          </Suspense>
+        ) : parsed.panel === 'central-360-executiva' ? (
+          <Suspense
+            fallback={
+              <div className="flex flex-col items-center justify-center gap-3 py-24 text-slate-600">
+                <Loader2 className="animate-spin text-sl-navy" size={28} />
+                <span className="text-sm">Carregando Comercial 360…</span>
+              </div>
+            }
+          >
+            <BiComercial360ExecutivaDashboard />
+          </Suspense>
+        ) : parsed.panel === 'monitor-risco-360' ? (
+          <Suspense
+            fallback={
+              <div className="flex flex-col items-center justify-center gap-3 py-24 text-slate-600">
+                <Loader2 className="animate-spin text-sl-navy" size={28} />
+                <span className="text-sm">Carregando Comercial 360…</span>
+              </div>
+            }
+          >
+            <BiComercial360RiscoDashboard />
+          </Suspense>
+        ) : parsed.panel === 'potencial-gap-360' ? (
+          <Suspense
+            fallback={
+              <div className="flex flex-col items-center justify-center gap-3 py-24 text-slate-600">
+                <Loader2 className="animate-spin text-sl-navy" size={28} />
+                <span className="text-sm">Carregando Comercial 360…</span>
+              </div>
+            }
+          >
+            <BiComercial360GapDashboard />
+          </Suspense>
+        ) : parsed.panel === 'radar-prospeccao-360' ? (
+          <Suspense
+            fallback={
+              <div className="flex flex-col items-center justify-center gap-3 py-24 text-slate-600">
+                <Loader2 className="animate-spin text-sl-navy" size={28} />
+                <span className="text-sm">Carregando Comercial 360…</span>
+              </div>
+            }
+          >
+            <BiComercial360RadarDashboard />
+          </Suspense>
         ) : (
           <div className="surface-card mx-auto max-w-2xl p-8 animate-in fade-in duration-200">
             <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white shadow-sm">
