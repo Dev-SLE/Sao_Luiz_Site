@@ -6,18 +6,27 @@ import type { Pool } from "pg";
 import type { BiSchemaCatalog } from "@/lib/server/biComissoesIntrospect";
 import { getBiComissoesSchemaCatalog } from "@/lib/server/biComissoesIntrospect";
 import { serializePgRow } from "@/lib/server/biComissoesRead";
+import { getBiComissoesVendedorAllowlistUpper } from "@/modules/bi/comissoes/config";
 import { BI_FUNIL_VENDAS_CONFIG } from "@/modules/bi/funilVendas/config";
 
 const MAIN_ALIAS = "t";
 const BASE_REL = "vw_funil_vendas_base";
 const DATE_COL = BI_FUNIL_VENDAS_CONFIG.dateColumn;
-const RESERVED = new Set(["from", "to", "limit", "offset", "refresh", "search"]);
+const RESERVED = new Set([
+  "from",
+  "to",
+  "limit",
+  "offset",
+  "refresh",
+  "search",
+  BI_FUNIL_VENDAS_CONFIG.filters.cotIdPesquisaSistema,
+  BI_FUNIL_VENDAS_CONFIG.filters.cteSerie,
+]);
 
-/** Parâmetros de URL → coluna física em `vw_funil_vendas_base`. */
+/** Parâmetros de URL → coluna física em `vw_funil_vendas_base` (igualdade / ANY). */
 const URL_TO_BASE_COL: Record<string, string> = {
   [BI_FUNIL_VENDAS_CONFIG.filters.statusFunil]: BI_FUNIL_VENDAS_CONFIG.baseStatusColumn,
   [BI_FUNIL_VENDAS_CONFIG.filters.vendedor]: "vendedor",
-  [BI_FUNIL_VENDAS_CONFIG.filters.cotIdTabela]: "cot_id_tabela",
 };
 
 const BASE_FILTER_KEYS = new Set(Object.keys(URL_TO_BASE_COL));
@@ -79,12 +88,48 @@ function appendTabelaTextSearch(url: URL, values: unknown[], parts: string[], ro
   const i = values.length;
   parts.push(`AND (
     ${rowAlias}.cot_numero_interno::text ILIKE $${i}::text
+    OR COALESCE(${rowAlias}.cot_id_pesquisa_sistema::text, '') ILIKE $${i}::text
+    OR COALESCE(${rowAlias}.cte_serie::text, '') ILIKE $${i}::text
     OR COALESCE(${rowAlias}.cte_numero::text, '') ILIKE $${i}::text
     OR COALESCE(${rowAlias}.cliente_remetente::text, '') ILIKE $${i}::text
     OR COALESCE(${rowAlias}.vendedor::text, '') ILIKE $${i}::text
     OR COALESCE(tf.descricao::text, '') ILIKE $${i}::text
     OR COALESCE(${rowAlias}.status_funil_padronizado::text, '') ILIKE $${i}::text
   )`);
+}
+
+/** Filtros dedicados (ILIKE parcial) — parâmetros fora de `URL_TO_BASE_COL`. */
+function appendFunilIlikeColumnFilters(
+  url: URL,
+  catalog: BiSchemaCatalog,
+  parts: string[],
+  values: unknown[],
+) {
+  const specs: { param: string; logical: string }[] = [
+    { param: BI_FUNIL_VENDAS_CONFIG.filters.cotIdPesquisaSistema, logical: "cot_id_pesquisa_sistema" },
+    { param: BI_FUNIL_VENDAS_CONFIG.filters.cteSerie, logical: "cte_serie" },
+  ];
+  for (const { param, logical } of specs) {
+    const rawVals = url.searchParams.getAll(param).map((s) => s.trim()).filter(Boolean);
+    if (!rawVals.length) continue;
+    if (!columnExists(catalog, BASE_REL, logical)) continue;
+    const sqlCol = resolveColumnName(catalog, BASE_REL, logical)!;
+    const ors: string[] = [];
+    for (const raw of rawVals) {
+      const safe = `%${raw.replace(/%/g, "").replace(/_/g, "").slice(0, 200)}%`;
+      if (safe === "%%") continue;
+      values.push(safe);
+      ors.push(`COALESCE(${MAIN_ALIAS}.${sqlCol}::text, '') ILIKE $${values.length}::text`);
+    }
+    if (ors.length) parts.push(`AND (${ors.join(" OR ")})`);
+  }
+}
+
+function appendFunilVendedorAllowlist(parts: string[], values: unknown[]): void {
+  const allow = getBiComissoesVendedorAllowlistUpper();
+  if (!allow?.length) return;
+  values.push(allow);
+  parts.push(`AND upper(btrim(${MAIN_ALIAS}.vendedor::text)) = ANY($${values.length}::text[])`);
 }
 
 function buildScopedWhere(
@@ -123,19 +168,11 @@ function buildScopedWhere(
     if (!columnExists(catalog, BASE_REL, baseLogical)) continue;
     const sqlCol = resolveColumnName(catalog, BASE_REL, baseLogical)!;
 
-    if (paramKey === BI_FUNIL_VENDAS_CONFIG.filters.cotIdTabela && vals.every((v) => /^\d+$/.test(String(v).trim()))) {
-      const nums = vals.map((v) => Number(String(v).trim()));
-      if (nums.length === 1) {
-        values.push(nums[0]);
-        parts.push(`AND ${MAIN_ALIAS}.${sqlCol} = $${values.length}::numeric`);
-      } else {
-        values.push(nums);
-        parts.push(`AND ${MAIN_ALIAS}.${sqlCol} = ANY($${values.length}::numeric[])`);
-      }
-    } else {
-      pushTextEqOrAnyAnd(parts, values, `${MAIN_ALIAS}.${sqlCol}`, vals);
-    }
+    pushTextEqOrAnyAnd(parts, values, `${MAIN_ALIAS}.${sqlCol}`, vals);
   }
+
+  appendFunilIlikeColumnFilters(url, catalog, parts, values);
+  appendFunilVendedorAllowlist(parts, values);
 
   return { cteFilterSql: parts.join(" "), values, periodApplied };
 }
@@ -303,8 +340,9 @@ export async function selectFunilTabela(
   const q = `
     ${cte}
     SELECT
-      x.cot_numero_interno AS orcamento,
+      x.cot_id_pesquisa_sistema::text AS cot_id_pesquisa_sistema,
       x.cte_numero AS numero_cte,
+      COALESCE(x.cte_serie::text, '') AS cte_serie,
       x.cot_data_criacao AS data_cotacao,
       x.cliente_remetente AS cliente,
       x.vendedor,
@@ -338,8 +376,9 @@ export async function selectFunilTabelaExportRows(
   const q = `
     ${cte}
     SELECT
-      x.cot_numero_interno AS orcamento,
+      x.cot_id_pesquisa_sistema::text AS cot_id_pesquisa_sistema,
       x.cte_numero AS numero_cte,
+      COALESCE(x.cte_serie::text, '') AS cte_serie,
       x.cot_data_criacao AS data_cotacao,
       x.cliente_remetente AS cliente,
       x.vendedor,
@@ -415,45 +454,16 @@ export async function selectFunilFacetOptions(pool: Pool, url: URL, opts?: { for
   const F = BI_FUNIL_VENDAS_CONFIG.filters;
   const statusCol = BI_FUNIL_VENDAS_CONFIG.baseStatusColumn;
 
-  async function distinctTabelaComNome(): Promise<{ id: string; nome: string }[]> {
-    const q = `
-      WITH scoped AS (
-        SELECT ${MAIN_ALIAS}.* FROM ${baseFqn} ${MAIN_ALIAS} WHERE 1=1 ${cteFilterSql}
-      )
-      SELECT DISTINCT x.cot_id_tabela::text AS id,
-        COALESCE(tf.descricao, 'Tabela #' || x.cot_id_tabela::text) AS nome
-      FROM scoped x
-      LEFT JOIN bd_tabelas_frete tf ON tf.id_tabela_frete = x.cot_id_tabela
-      WHERE x.cot_id_tabela IS NOT NULL
-      ORDER BY nome
-      LIMIT 400
-    `;
-    const r = await pool.query(q, values);
-    return (r.rows || [])
-      .map((row: { id: unknown; nome: unknown }) => ({
-        id: String(row.id ?? "").trim(),
-        nome: String(row.nome ?? row.id ?? "").trim() || String(row.id ?? ""),
-      }))
-      .filter((x) => x.id.length > 0);
-  }
-
-  const [statuses, vendedores, tabelaOpcoes] = await Promise.all([
-    distinctCol(statusCol),
-    distinctCol("vendedor"),
-    distinctTabelaComNome(),
-  ]);
+  const [statuses, vendedores] = await Promise.all([distinctCol(statusCol), distinctCol("vendedor")]);
 
   return {
     status_funil: statuses,
     vendedores,
-    /** Lista para o filtro (id continua indo na query string). */
-    tabela_opcoes: tabelaOpcoes,
-    /** Compat: só os ids, na mesma ordem das opções. */
-    cot_id_tabela: tabelaOpcoes.map((t) => t.id),
     keys: {
       status_funil: F.statusFunil,
       vendedor: F.vendedor,
-      cot_id_tabela: F.cotIdTabela,
+      cot_id_pesquisa_sistema: F.cotIdPesquisaSistema,
+      cte_serie: F.cteSerie,
     },
   };
 }

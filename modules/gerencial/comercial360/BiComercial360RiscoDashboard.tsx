@@ -7,6 +7,7 @@ import { Comercial360Shell, useComercial360 } from '@/modules/gerencial/comercia
 import { formatBrl, toNum } from '@/modules/gerencial/comercial360/comercial360Format';
 import { GLOSSARY, INTERPRET, RISCO } from '@/modules/gerencial/comercial360/comercial360HelpContent';
 import { Comercial360HelpHint, Comercial360ThHelp } from '@/modules/gerencial/comercial360/Comercial360HelpHint';
+import { biGetJsonSafe } from '@/modules/gerencial/biApiClientCache';
 
 function RiscoBody() {
   const { queryString, patchFilters, openDrill } = useComercial360();
@@ -25,22 +26,29 @@ function RiscoBody() {
       setErr(null);
       try {
         const [kRes, sRes, tRes] = await Promise.all([
-          fetch(`/api/bi/comercial-360/kpis?${queryString}`, { credentials: 'include', cache: 'no-store' }),
-          fetch(`/api/bi/comercial-360/resumo?tipo=status&${queryString}`, { credentials: 'include', cache: 'no-store' }),
-          fetch(`/api/bi/comercial-360/tabela?${queryString}&limit=50&offset=0`, { credentials: 'include', cache: 'no-store' }),
+          biGetJsonSafe<Record<string, unknown>>(`/api/bi/comercial-360/kpis?${queryString}`),
+          biGetJsonSafe<{ rows?: unknown[] }>(`/api/bi/comercial-360/resumo?tipo=status&${queryString}`),
+          biGetJsonSafe<{ rows?: unknown[] }>(`/api/bi/comercial-360/tabela?${queryString}&limit=50&offset=0`),
         ]);
-        const kJson = kRes.ok ? await kRes.json() : null;
-        const sJson = sRes.ok ? await sRes.json() : null;
-        const tJson = tRes.ok ? await tRes.json() : null;
+        const kJson = kRes.ok ? kRes.data : null;
+        const sJson = sRes.ok ? sRes.data : null;
+        const tJson = tRes.ok ? tRes.data : null;
         if (cancelled) return;
         const parts: string[] = [];
-        if (!kRes.ok) parts.push(String(kJson?.error || 'KPIs'));
-        if (!sRes.ok) parts.push(String(sJson?.error || 'Resumo status'));
-        if (!tRes.ok) parts.push(String(tJson?.error || 'Tabela'));
+        if (!kRes.ok) parts.push(kRes.error || 'KPIs');
+        if (!sRes.ok) parts.push(sRes.error || 'Resumo status');
+        if (!tRes.ok) parts.push(tRes.error || 'Tabela');
         setErr(parts.length ? parts.join(' · ') : null);
         if (kRes.ok) setKpis(kJson as Record<string, unknown>);
-        if (sRes.ok) setStatusRows(Array.isArray(sJson?.rows) ? sJson.rows : []);
-        if (tRes.ok) setTableRows(Array.isArray(tJson?.rows) ? tJson.rows : []);
+        if (sRes.ok)
+          setStatusRows(
+            (Array.isArray(sJson?.rows) ? sJson.rows : []) as Array<{
+              status_atividade: string;
+              qtd_clientes: number;
+              dinheiro_em_risco: number;
+            }>,
+          );
+        if (tRes.ok) setTableRows(Array.isArray(tJson?.rows) ? (tJson.rows as Record<string, unknown>[]) : []);
       } catch {
         if (!cancelled) setErr('Falha de rede');
       } finally {

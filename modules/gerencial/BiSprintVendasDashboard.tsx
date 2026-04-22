@@ -6,6 +6,7 @@ import { ptBR } from 'date-fns/locale';
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { AlertCircle, ChevronDown, Loader2 } from 'lucide-react';
 import { BI_SPRINT_VENDAS_CONFIG, SPRINT_KPI_SLOTS } from '@/modules/bi/sprintVendas/config';
+import { biGetJson, biGetJsonSafe } from '@/modules/gerencial/biApiClientCache';
 
 type Row = Record<string, unknown>;
 
@@ -144,12 +145,16 @@ export function BiSprintVendasDashboard() {
 
   const loadFacets = useCallback(async () => {
     const q = queryBase || `from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
-    const res = await fetch(`/api/bi/sprint-vendas/facet-options?${q}`, { credentials: 'include' });
-    const j = await res.json().catch(() => ({}));
-    if (!res.ok) return;
-    setVendOpts(Array.isArray(j.vendedores) ? j.vendedores : []);
-    const k = j.keys || {};
-    setVendKey(typeof k.vendedor === 'string' ? k.vendedor : BI_SPRINT_VENDAS_CONFIG.filters.vendedor);
+    try {
+      const j = await biGetJson<{ vendedores?: unknown[]; keys?: { vendedor?: string } }>(
+        `/api/bi/sprint-vendas/facet-options?${q}`,
+      );
+      setVendOpts(Array.isArray(j.vendedores) ? (j.vendedores as string[]) : []);
+      const k = j.keys || {};
+      setVendKey(typeof k.vendedor === 'string' ? k.vendedor : BI_SPRINT_VENDAS_CONFIG.filters.vendedor);
+    } catch {
+      /* facet-options não-ok */
+    }
   }, [queryBase, from, to]);
 
   useEffect(() => {
@@ -161,14 +166,17 @@ export function BiSprintVendasDashboard() {
     setError(null);
     try {
       const qs = queryBase ? `?${queryBase}` : '';
-      const [kpiRes, rankRes, tabRes] = await Promise.all([
-        fetch(`/api/bi/sprint-vendas/kpis${qs}`, { credentials: 'include' }),
-        fetch(`/api/bi/sprint-vendas/ranking${qs}`, { credentials: 'include' }),
-        fetch(`/api/bi/sprint-vendas/table${qs}`, { credentials: 'include' }),
+      const [kpiR, rankR, tabR] = await Promise.all([
+        biGetJsonSafe<{
+          rows?: unknown[];
+          meta?: { mesReferencia?: string; refLogica?: string | null };
+        }>(`/api/bi/sprint-vendas/kpis${qs}`),
+        biGetJsonSafe<{ rows?: unknown[] }>(`/api/bi/sprint-vendas/ranking${qs}`),
+        biGetJsonSafe<{ rows?: unknown[] }>(`/api/bi/sprint-vendas/table${qs}`),
       ]);
-      if (!kpiRes.ok) throw new Error((await kpiRes.json().catch(() => ({})))?.error || kpiRes.statusText);
-      const kpiJ = await kpiRes.json();
-      setKpis(Array.isArray(kpiJ.rows) && kpiJ.rows[0] ? kpiJ.rows[0] : null);
+      if (!kpiR.ok) throw new Error(kpiR.error);
+      const kpiJ = kpiR.data;
+      setKpis(Array.isArray(kpiJ.rows) && kpiJ.rows[0] ? (kpiJ.rows[0] as Row) : null);
       setKpiMeta(
         kpiJ.meta && typeof kpiJ.meta === 'object'
           ? {
@@ -177,12 +185,9 @@ export function BiSprintVendasDashboard() {
             }
           : null,
       );
-      const pickRows = async (r: Response) => {
-        const j = await r.json().catch(() => ({}));
-        return Array.isArray(j.rows) ? j.rows : [];
-      };
-      setRanking(rankRes.ok ? await pickRows(rankRes) : []);
-      setTableRows(tabRes.ok ? ((await pickRows(tabRes)) as TabelaRow[]) : []);
+      const pickRows = (j: { rows?: unknown[] }) => (Array.isArray(j.rows) ? j.rows : []);
+      setRanking(rankR.ok ? (pickRows(rankR.data) as Row[]) : []);
+      setTableRows(tabR.ok ? (pickRows(tabR.data) as unknown as TabelaRow[]) : []);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Erro ao carregar dados');
     } finally {

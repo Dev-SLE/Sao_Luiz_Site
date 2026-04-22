@@ -7,6 +7,7 @@ import { Comercial360Shell, useComercial360 } from '@/modules/gerencial/comercia
 import { formatBrl, toNum } from '@/modules/gerencial/comercial360/comercial360Format';
 import { GLOSSARY, GAP as GAP_HELP, INTERPRET } from '@/modules/gerencial/comercial360/comercial360HelpContent';
 import { Comercial360HelpHint, Comercial360ThHelp } from '@/modules/gerencial/comercial360/Comercial360HelpHint';
+import { biGetJsonSafe } from '@/modules/gerencial/biApiClientCache';
 
 function GapBody() {
   const { queryString, openDrill } = useComercial360();
@@ -23,33 +24,35 @@ function GapBody() {
       setErr(null);
       try {
         const [kRes, cRes, oRes] = await Promise.all([
-          fetch(`/api/bi/comercial-360/kpis?${queryString}`, { credentials: 'include', cache: 'no-store' }),
-          fetch(`/api/bi/comercial-360/resumo?tipo=categoria&${queryString}`, { credentials: 'include', cache: 'no-store' }),
-          fetch(`/api/bi/comercial-360/oportunidades?${queryString}&mode=top&order=gap&limit=30`, {
-            credentials: 'include',
-            cache: 'no-store',
-          }),
+          biGetJsonSafe<Record<string, unknown>>(`/api/bi/comercial-360/kpis?${queryString}`),
+          biGetJsonSafe<{ rows?: unknown[] }>(`/api/bi/comercial-360/resumo?tipo=categoria&${queryString}`),
+          biGetJsonSafe<{ rows?: unknown[] }>(
+            `/api/bi/comercial-360/oportunidades?${queryString}&mode=top&order=gap&limit=30`,
+          ),
         ]);
-        const kJson = kRes.ok ? await kRes.json() : null;
-        const cJson = cRes.ok ? await cRes.json() : null;
-        const oJson = oRes.ok ? await oRes.json() : null;
+        const kJson = kRes.ok ? kRes.data : null;
+        const cJson = cRes.ok ? cRes.data : null;
+        const oJson = oRes.ok ? oRes.data : null;
         if (cancelled) return;
         const parts: string[] = [];
-        if (!kRes.ok) parts.push(String(kJson?.error || 'KPIs'));
-        if (!cRes.ok) parts.push(String(cJson?.error || 'Categorias'));
-        if (!oRes.ok) parts.push(String(oJson?.error || 'Oportunidades'));
+        if (!kRes.ok) parts.push(kRes.error || 'KPIs');
+        if (!cRes.ok) parts.push(cRes.error || 'Categorias');
+        if (!oRes.ok) parts.push(oRes.error || 'Oportunidades');
         setErr(parts.length ? parts.join(' · ') : null);
         if (kRes.ok) setKpis(kJson as Record<string, unknown>);
         if (cRes.ok) {
-          const rows = Array.isArray(cJson?.rows) ? cJson.rows : [];
+          const rows = (Array.isArray(cJson?.rows) ? cJson.rows : []) as Array<{
+            categoria_cliente?: string;
+            gap_estimado?: unknown;
+          }>;
           setCats(
-            rows.slice(0, 10).map((r: { categoria_cliente?: string; gap_estimado?: unknown }) => ({
+            rows.slice(0, 10).map((r) => ({
               name: String(r.categoria_cliente || '—').slice(0, 24),
               gap: toNum(r.gap_estimado),
             })),
           );
         }
-        if (oRes.ok) setTop(Array.isArray(oJson?.rows) ? oJson.rows : []);
+        if (oRes.ok) setTop(Array.isArray(oJson?.rows) ? (oJson.rows as Record<string, unknown>[]) : []);
       } catch {
         if (!cancelled) setErr('Falha de rede');
       } finally {

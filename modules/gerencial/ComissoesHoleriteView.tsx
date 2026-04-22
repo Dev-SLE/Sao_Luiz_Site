@@ -7,6 +7,7 @@ import { format } from 'date-fns';
 import { AlertCircle, Loader2, Printer } from 'lucide-react';
 import { BI_COMISSOES_CONFIG } from '@/modules/bi/comissoes/config';
 import { gerencialPath } from '@/modules/gerencial/routes';
+import { biGetJson } from '@/modules/gerencial/biApiClientCache';
 
 type Row = Record<string, unknown>;
 
@@ -114,9 +115,7 @@ export function ComissoesHoleriteView() {
     setError(null);
     try {
       const url = qs ? `/api/bi/comissoes/holerite?${qs}` : '/api/bi/comissoes/holerite';
-      const res = await fetch(url, { credentials: 'include' });
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(String(j?.error || res.statusText));
+      const j = await biGetJson<{ rows?: Row[]; error?: string }>(url);
       setRows(Array.isArray(j.rows) ? j.rows : []);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Erro ao carregar holerite');

@@ -6,6 +6,7 @@ import { Comercial360Shell, useComercial360 } from '@/modules/gerencial/comercia
 import { formatBrl, toNum } from '@/modules/gerencial/comercial360/comercial360Format';
 import { COCKPIT, GLOSSARY, INTERPRET } from '@/modules/gerencial/comercial360/comercial360HelpContent';
 import { Comercial360HelpHint, Comercial360ThHelp } from '@/modules/gerencial/comercial360/Comercial360HelpHint';
+import { biGetJsonSafe } from '@/modules/gerencial/biApiClientCache';
 
 type RadarSnap = {
   clientes_cif: number;
@@ -30,26 +31,25 @@ function CockpitBody() {
       setErr(null);
       try {
         const [kRes, rRes, oRes] = await Promise.all([
-          fetch(`/api/bi/comercial-360/kpis?${queryString}`, { credentials: 'include', cache: 'no-store' }),
-          fetch(`/api/bi/comercial-360/radar-snapshot?${queryString}`, { credentials: 'include', cache: 'no-store' }),
-          fetch(`/api/bi/comercial-360/oportunidades?${queryString}&limit=${limit}&offset=${offset}`, {
-            credentials: 'include',
-            cache: 'no-store',
-          }),
+          biGetJsonSafe<Record<string, unknown>>(`/api/bi/comercial-360/kpis?${queryString}`),
+          biGetJsonSafe<RadarSnap>(`/api/bi/comercial-360/radar-snapshot?${queryString}`),
+          biGetJsonSafe<{ rows?: unknown[]; meta?: { total?: number } }>(
+            `/api/bi/comercial-360/oportunidades?${queryString}&limit=${limit}&offset=${offset}`,
+          ),
         ]);
-        const kJson = kRes.ok ? await kRes.json() : null;
-        const rJson = rRes.ok ? await rRes.json() : null;
-        const oJson = oRes.ok ? await oRes.json() : null;
+        const kJson = kRes.ok ? kRes.data : null;
+        const rJson = rRes.ok ? rRes.data : null;
+        const oJson = oRes.ok ? oRes.data : null;
         if (cancelled) return;
         const parts: string[] = [];
-        if (!kRes.ok) parts.push(String(kJson?.error || 'KPIs'));
-        if (!rRes.ok) parts.push(String(rJson?.error || 'Radar'));
-        if (!oRes.ok) parts.push(String(oJson?.error || 'Oportunidades'));
+        if (!kRes.ok) parts.push(kRes.error || 'KPIs');
+        if (!rRes.ok) parts.push(rRes.error || 'Radar');
+        if (!oRes.ok) parts.push(oRes.error || 'Oportunidades');
         setErr(parts.length ? parts.join(' · ') : null);
         if (kRes.ok) setKpis(kJson as Record<string, unknown>);
         if (rRes.ok && rJson) setSnap(rJson as RadarSnap);
         if (oRes.ok) {
-          setRows(Array.isArray(oJson?.rows) ? oJson.rows : []);
+          setRows(Array.isArray(oJson?.rows) ? (oJson.rows as Record<string, unknown>[]) : []);
           setTotal(Number(oJson?.meta?.total ?? 0));
         }
       } catch {

@@ -42,6 +42,11 @@ export const GERENCIAL_COMERCIAL_PANELS: GerencialComercialPanelDef[] = [
     label: 'Simulador metas vendedoras',
     permission: GERENCIAL_BI_TAB.metas,
   },
+  {
+    slug: 'planejamento-agencias',
+    label: 'Planejamento agências',
+    permission: GERENCIAL_BI_TAB.metas,
+  },
   { slug: 'cockpit-comercial-360', label: 'Cockpit Comercial 360', permission: GERENCIAL_BI_TAB.comercial360Cockpit },
   { slug: 'central-360-executiva', label: 'Central 360 Executiva', permission: GERENCIAL_BI_TAB.comercial360Executiva },
   { slug: 'monitor-risco-360', label: 'Monitor de risco 360', permission: GERENCIAL_BI_TAB.comercial360Risco },

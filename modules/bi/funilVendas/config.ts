@@ -8,7 +8,10 @@ export const BI_FUNIL_VENDAS_CONFIG = {
   filters: {
     statusFunil: "status_funil",
     vendedor: "vendedor",
-    cotIdTabela: "cot_id_tabela",
+    /** Filtro textual (ILIKE) na query string — coluna física `cot_id_pesquisa_sistema`. */
+    cotIdPesquisaSistema: "cot_id_pesquisa_sistema",
+    /** Filtro textual (ILIKE) — coluna `cte_serie`. */
+    cteSerie: "cte_serie",
   },
   /** Coluna física na base analítica para `status_funil` na query string. */
   baseStatusColumn: "status_funil_padronizado",
@@ -50,8 +53,9 @@ export const FUNIL_ETAPA_ORDER: readonly { etapa: string; color: string }[] = [
 
 /** Colunas da tabela detalhada (rótulos na UI; chaves = retorno da API). */
 export const FUNIL_TABELA_COLUNAS: readonly { key: string; label: string }[] = [
-  { key: "orcamento", label: "Orçamento" },
+  { key: "cot_id_pesquisa_sistema", label: "Orçamento" },
   { key: "numero_cte", label: "N. CTE" },
+  { key: "cte_serie", label: "Série CT-e" },
   { key: "data_cotacao", label: "Data da cotação" },
   { key: "cliente", label: "Cliente" },
   { key: "vendedor", label: "Vendedor" },

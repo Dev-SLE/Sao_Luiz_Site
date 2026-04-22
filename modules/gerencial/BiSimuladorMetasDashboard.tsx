@@ -24,6 +24,7 @@ import {
   SIMULADOR_METAS_DEFAULT_FROM,
   SIMULADOR_METAS_DEFAULT_TO,
 } from '@/modules/bi/simuladorMetas/config';
+import { biGetJson } from '@/modules/gerencial/biApiClientCache';
 
 const NAVY = '#1e3a5f';
 const TEAL = '#0d9488';
@@ -148,11 +149,12 @@ export function BiSimuladorMetasDashboard() {
     (async () => {
       setLoadingFacets(true);
       try {
-        const res = await fetch('/api/bi/simulador-metas/facet-options', { credentials: 'include' });
-        const j = await res.json().catch(() => ({}));
-        if (!cancelled && res.ok) {
-          setFacetV(Array.isArray(j.vendedores) ? j.vendedores : []);
-          setFacetT(Array.isArray(j.tiposComissao) ? j.tiposComissao : []);
+        const j = await biGetJson<{ vendedores?: unknown[]; tiposComissao?: unknown[] }>(
+          '/api/bi/simulador-metas/facet-options',
+        );
+        if (!cancelled) {
+          setFacetV(Array.isArray(j.vendedores) ? (j.vendedores as string[]) : []);
+          setFacetT(Array.isArray(j.tiposComissao) ? (j.tiposComissao as string[]) : []);
         }
       } catch {
         if (!cancelled) {
@@ -191,9 +193,9 @@ export function BiSimuladorMetasDashboard() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/bi/simulador-metas/dataset?${queryDataset}`, { credentials: 'include' });
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(String(j?.error || res.statusText));
+      const j = await biGetJson<{ rows?: SimuladorMesRow[]; error?: string }>(
+        `/api/bi/simulador-metas/dataset?${queryDataset}`,
+      );
       const r = Array.isArray(j.rows) ? (j.rows as SimuladorMesRow[]) : [];
       setRows(r);
     } catch (e) {

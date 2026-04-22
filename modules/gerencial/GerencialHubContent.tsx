@@ -19,6 +19,7 @@ import { BiFunilVendasDashboard } from '@/modules/gerencial/BiFunilVendasDashboa
 import { BiSprintVendasDashboard } from '@/modules/gerencial/BiSprintVendasDashboard';
 import { BiMetasPerformanceDashboard } from '@/modules/gerencial/BiMetasPerformanceDashboard';
 import { BiSimuladorMetasDashboard } from '@/modules/gerencial/BiSimuladorMetasDashboard';
+import { BiPlanejamentoAgenciasDashboard } from '@/modules/gerencial/BiPlanejamentoAgenciasDashboard';
 import { BiTabelasCombinadasDashboard } from '@/modules/gerencial/BiTabelasCombinadasDashboard';
 import { BiFluxoMonitorDashboard } from '@/modules/gerencial/BiFluxoMonitorDashboard';
 import { BiTaxasGerencialDashboard } from '@/modules/gerencial/BiTaxasGerencialDashboard';
@@ -65,6 +66,8 @@ function commercialTabKeyFromPanelSlug(slug: string): keyof typeof GERENCIAL_BI_
   if (slug === 'performance-vendas') return 'funil';
   if (slug === 'sprint-incentivos') return 'sprint';
   if (slug === 'metas-performance') return 'metas';
+  if (slug === 'simulador-metas-vendedoras') return 'metas';
+  if (slug === 'planejamento-agencias') return 'metas';
   if (slug === 'cockpit-comercial-360') return 'comercial360Cockpit';
   if (slug === 'central-360-executiva') return 'comercial360Executiva';
   if (slug === 'monitor-risco-360') return 'comercial360Risco';
@@ -308,6 +311,17 @@ export function GerencialHubContent({ pathname }: { pathname: string }) {
             }
           >
             <BiSimuladorMetasDashboard />
+          </Suspense>
+        ) : parsed.panel === 'planejamento-agencias' ? (
+          <Suspense
+            fallback={
+              <div className="flex flex-col items-center justify-center gap-3 py-24 text-slate-600">
+                <Loader2 className="animate-spin text-sl-navy" size={28} />
+                <span className="text-sm">Carregando planejamento…</span>
+              </div>
+            }
+          >
+            <BiPlanejamentoAgenciasDashboard />
           </Suspense>
         ) : parsed.panel === 'cockpit-comercial-360' ? (
           <Suspense

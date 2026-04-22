@@ -22,6 +22,7 @@ import { Comercial360Shell, useComercial360 } from '@/modules/gerencial/comercia
 import { formatBrl, toNum } from '@/modules/gerencial/comercial360/comercial360Format';
 import { EXECUTIVA, GLOSSARY, INTERPRET } from '@/modules/gerencial/comercial360/comercial360HelpContent';
 import { Comercial360HelpHint } from '@/modules/gerencial/comercial360/Comercial360HelpHint';
+import { biGetJsonSafe } from '@/modules/gerencial/biApiClientCache';
 
 function formatMes(iso: string): string {
   const s = iso.slice(0, 10);
@@ -60,62 +61,82 @@ function ExecBody() {
       setErr(null);
       try {
         const [kRes, eRes, cRes, dRes, catRes, stRes] = await Promise.all([
-          fetch(`/api/bi/comercial-360/kpis?${queryString}`, { credentials: 'include', cache: 'no-store' }),
-          fetch(`/api/bi/comercial-360/evolucao?${queryString}`, { credentials: 'include', cache: 'no-store' }),
-          fetch(`/api/bi/comercial-360/resumo?tipo=contrato&${queryString}`, { credentials: 'include', cache: 'no-store' }),
-          fetch(`/api/bi/comercial-360/resumo?tipo=documento&${queryString}`, { credentials: 'include', cache: 'no-store' }),
-          fetch(`/api/bi/comercial-360/resumo?tipo=categoria&${queryString}`, { credentials: 'include', cache: 'no-store' }),
-          fetch(`/api/bi/comercial-360/resumo?tipo=status&${queryString}`, { credentials: 'include', cache: 'no-store' }),
+          biGetJsonSafe<Record<string, unknown>>(`/api/bi/comercial-360/kpis?${queryString}`),
+          biGetJsonSafe<{ rows?: unknown[] }>(`/api/bi/comercial-360/evolucao?${queryString}`),
+          biGetJsonSafe<{ rows?: unknown[] }>(`/api/bi/comercial-360/resumo?tipo=contrato&${queryString}`),
+          biGetJsonSafe<{ rows?: unknown[] }>(`/api/bi/comercial-360/resumo?tipo=documento&${queryString}`),
+          biGetJsonSafe<{ rows?: unknown[] }>(`/api/bi/comercial-360/resumo?tipo=categoria&${queryString}`),
+          biGetJsonSafe<{ rows?: unknown[] }>(`/api/bi/comercial-360/resumo?tipo=status&${queryString}`),
         ]);
         const messages: string[] = [];
-        const kJson = kRes.ok ? await kRes.json() : null;
-        const eJson = eRes.ok ? await eRes.json() : null;
-        const cJson = cRes.ok ? await cRes.json() : null;
-        const dJson = dRes.ok ? await dRes.json() : null;
-        const catJson = catRes.ok ? await catRes.json() : null;
-        const stJson = stRes.ok ? await stRes.json() : null;
-        if (!kRes.ok) messages.push(String(kJson?.error || 'KPIs'));
-        if (!eRes.ok) messages.push(String(eJson?.error || 'Evolução'));
-        if (!cRes.ok) messages.push(String(cJson?.error || 'Resumo contrato'));
-        if (!dRes.ok) messages.push(String(dJson?.error || 'Resumo documento'));
-        if (!catRes.ok) messages.push(String(catJson?.error || 'Resumo categoria'));
-        if (!stRes.ok) messages.push(String(stJson?.error || 'Resumo status'));
+        const kJson = kRes.ok ? kRes.data : null;
+        const eJson = eRes.ok ? eRes.data : null;
+        const cJson = cRes.ok ? cRes.data : null;
+        const dJson = dRes.ok ? dRes.data : null;
+        const catJson = catRes.ok ? catRes.data : null;
+        const stJson = stRes.ok ? stRes.data : null;
+        if (!kRes.ok) messages.push(kRes.error || 'KPIs');
+        if (!eRes.ok) messages.push(eRes.error || 'Evolução');
+        if (!cRes.ok) messages.push(cRes.error || 'Resumo contrato');
+        if (!dRes.ok) messages.push(dRes.error || 'Resumo documento');
+        if (!catRes.ok) messages.push(catRes.error || 'Resumo categoria');
+        if (!stRes.ok) messages.push(stRes.error || 'Resumo status');
         if (cancelled) return;
         if (messages.length) setErr(messages.join(' · '));
         else setErr(null);
         if (kRes.ok) setKpis(kJson as Record<string, unknown>);
-        if (eRes.ok) setEvo(Array.isArray(eJson?.rows) ? eJson.rows : []);
+        if (eRes.ok)
+          setEvo(
+            (Array.isArray(eJson?.rows) ? eJson.rows : []) as Array<{
+              data_referencia: string;
+              faturamento_real: number;
+              potencial_estimado: number;
+              gap_estimado: number;
+            }>,
+          );
         if (cRes.ok) {
-          const rows = Array.isArray(cJson?.rows) ? cJson.rows : [];
+          const rows = (Array.isArray(cJson?.rows) ? cJson.rows : []) as Array<{
+            filtro_tem_contrato?: string;
+            faturamento_real?: unknown;
+          }>;
           setContrato(
-            rows.map((r: { filtro_tem_contrato?: string; faturamento_real?: unknown }) => ({
+            rows.map((r) => ({
               name: String(r.filtro_tem_contrato || '—'),
               value: toNum(r.faturamento_real),
             })),
           );
         }
         if (dRes.ok) {
-          const rows = Array.isArray(dJson?.rows) ? dJson.rows : [];
+          const rows = (Array.isArray(dJson?.rows) ? dJson.rows : []) as Array<{
+            tipo_documento_detectado?: string;
+            faturamento_real?: unknown;
+          }>;
           setDoc(
-            rows.slice(0, 6).map((r: { tipo_documento_detectado?: string; faturamento_real?: unknown }) => ({
+            rows.slice(0, 6).map((r) => ({
               name: String(r.tipo_documento_detectado || '—'),
               value: toNum(r.faturamento_real),
             })),
           );
         }
         if (catRes.ok) {
-          const rows = Array.isArray(catJson?.rows) ? catJson.rows : [];
+          const rows = (Array.isArray(catJson?.rows) ? catJson.rows : []) as Array<{
+            categoria_cliente?: string;
+            gap_estimado?: unknown;
+          }>;
           setCategoria(
-            rows.slice(0, 6).map((r: { categoria_cliente?: string; gap_estimado?: unknown }) => ({
+            rows.slice(0, 6).map((r) => ({
               name: String(r.categoria_cliente || '—'),
               value: toNum(r.gap_estimado),
             })),
           );
         }
         if (stRes.ok) {
-          const rows = Array.isArray(stJson?.rows) ? stJson.rows : [];
+          const rows = (Array.isArray(stJson?.rows) ? stJson.rows : []) as Array<{
+            status_atividade?: string;
+            dinheiro_em_risco?: unknown;
+          }>;
           setStatus(
-            rows.slice(0, 6).map((r: { status_atividade?: string; dinheiro_em_risco?: unknown }) => ({
+            rows.slice(0, 6).map((r) => ({
               name: String(r.status_atividade || '—'),
               value: toNum(r.dinheiro_em_risco),
             })),

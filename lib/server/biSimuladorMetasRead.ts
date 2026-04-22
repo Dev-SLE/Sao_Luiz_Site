@@ -1,11 +1,15 @@
 import type { Pool } from "pg";
 import { serializePgRow } from "@/lib/server/biComissoesRead";
+import { getBiComissoesVendedorAllowlistUpper } from "@/modules/bi/comissoes/config";
 import {
   BI_SIMULADOR_METAS_CONFIG,
   SIMULADOR_METAS_DEFAULT_FROM,
   SIMULADOR_METAS_DEFAULT_TO,
 } from "@/modules/bi/simuladorMetas/config";
 import type { SimuladorMesRow } from "@/modules/bi/simuladorMetas/types";
+
+/** Igual ao BI Comissões: sem linhas “sem vendedor” / vazio. */
+const SEM_VENDEDOR_SQL = `lower(trim(r.vendedor)) <> 'sem vendedor'`;
 
 export type { SimuladorMesRow };
 
@@ -28,19 +32,39 @@ export async function selectSimuladorMetasFacetOptions(pool: Pool): Promise<{
   vendedores: string[];
   tiposComissao: string[];
 }> {
+  const allow = getBiComissoesVendedorAllowlistUpper();
+  const vParams: unknown[] = [];
+  let vWhere = `trim(r.vendedor) IS NOT NULL AND trim(r.vendedor) <> '' AND ${SEM_VENDEDOR_SQL}`;
+  if (allow?.length) {
+    vParams.push(allow);
+    vWhere += ` AND upper(trim(r.vendedor)) = ANY($${vParams.length}::text[])`;
+  }
   const vSql = `
     SELECT DISTINCT trim(r.vendedor) AS v
     FROM ${BI_SIMULADOR_METAS_CONFIG.views.ready} r
-    WHERE trim(r.vendedor) IS NOT NULL AND trim(r.vendedor) <> ''
+    WHERE ${vWhere}
     ORDER BY 1
   `;
+  const tParts = [
+    `c.tipo_comissao IS NOT NULL AND trim(c.tipo_comissao) <> ''`,
+    `c.vendedor_final IS NOT NULL AND trim(c.vendedor_final) <> ''`,
+    `lower(trim(c.vendedor_final)) <> 'sem vendedor'`,
+  ];
+  const tParams: unknown[] = [];
+  if (allow?.length) {
+    tParams.push(allow);
+    tParts.push(`upper(trim(c.vendedor_final)) = ANY($${tParams.length}::text[])`);
+  }
   const tSql = `
     SELECT DISTINCT trim(c.tipo_comissao) AS t
     FROM ${BI_SIMULADOR_METAS_CONFIG.comissoesTable} c
-    WHERE c.tipo_comissao IS NOT NULL AND trim(c.tipo_comissao) <> ''
+    WHERE ${tParts.join(" AND ")}
     ORDER BY 1
   `;
-  const [vr, tr] = await Promise.all([pool.query<{ v: string }>(vSql), pool.query<{ t: string }>(tSql)]);
+  const [vr, tr] = await Promise.all([
+    pool.query<{ v: string }>(vSql, vParams),
+    pool.query<{ t: string }>(tSql, tParams),
+  ]);
   return {
     vendedores: vr.rows.map((r) => r.v).filter(Boolean),
     tiposComissao: tr.rows.map((r) => r.t).filter(Boolean),
@@ -60,6 +84,7 @@ export async function selectSimuladorMetasDataset(pool: Pool, url: URL): Promise
   }
   const vendedores = collectMulti(url, "vendedor");
   const tipos = collectMulti(url, "tipo_comissao");
+  const allow = getBiComissoesVendedorAllowlistUpper();
 
   const values: unknown[] = [from, to];
   let sql = `
@@ -78,11 +103,23 @@ export async function selectSimuladorMetasDataset(pool: Pool, url: URL): Promise
     FROM ${BI_SIMULADOR_METAS_CONFIG.views.ready} r
     WHERE r.mes_referencia >= $1::date
       AND r.mes_referencia <= $2::date
+      AND trim(r.vendedor) IS NOT NULL AND trim(r.vendedor) <> ''
+      AND ${SEM_VENDEDOR_SQL}
   `;
 
-  if (vendedores.length) {
-    values.push(vendedores);
-    sql += ` AND trim(r.vendedor) = ANY($${values.length}::text[])`;
+  const allowSet = allow?.length ? new Set(allow.map((a) => a.toUpperCase())) : null;
+  let vendUpperForSql: string[] | null = null;
+  if (allowSet?.size) {
+    const picked = vendedores
+      .map((v) => v.trim().toUpperCase())
+      .filter((v) => allowSet.has(v));
+    vendUpperForSql = vendedores.length ? (picked.length ? picked : [...allowSet]) : [...allowSet];
+  } else if (vendedores.length) {
+    vendUpperForSql = vendedores.map((v) => v.trim().toUpperCase());
+  }
+  if (vendUpperForSql?.length) {
+    values.push(vendUpperForSql);
+    sql += ` AND upper(trim(r.vendedor)) = ANY($${values.length}::text[])`;
   }
   if (tipos.length) {
     values.push(tipos);

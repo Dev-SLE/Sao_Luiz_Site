@@ -16,6 +16,7 @@ import { formatBrlDetail, toNum } from '@/modules/gerencial/comercial360/comerci
 import { GLOSSARY } from '@/modules/gerencial/comercial360/comercial360HelpContent';
 import { Comercial360HelpHint, Comercial360ThHelp } from '@/modules/gerencial/comercial360/Comercial360HelpHint';
 import { Comercial360InterpretPanel } from '@/modules/gerencial/comercial360/Comercial360InterpretPanel';
+import { biGetJsonSafe } from '@/modules/gerencial/biApiClientCache';
 
 export type Comercial360ShellVariant = 'cockpit' | 'executiva' | 'risco' | 'gap' | 'radar';
 
@@ -137,15 +138,14 @@ function Comercial360DrillDrawer({
       setErr(null);
       try {
         const u = `/api/bi/comercial-360/drill?${queryString}&match_key=${encodeURIComponent(matchKey)}`;
-        const res = await fetch(u, { credentials: 'include', cache: 'no-store' });
-        const data = res.ok ? await res.json() : null;
+        const out = await biGetJsonSafe<{ rows?: DrillRow[] }>(u);
         if (cancelled) return;
-        if (!res.ok) {
-          setErr(String(data?.error || 'Falha ao carregar drill'));
+        if (!out.ok) {
+          setErr(out.error);
           setRows([]);
           return;
         }
-        setRows(Array.isArray(data?.rows) ? data.rows : []);
+        setRows(Array.isArray(out.data?.rows) ? out.data.rows : []);
       } catch {
         if (!cancelled) {
           setErr('Falha de rede ao carregar drill');
@@ -389,19 +389,17 @@ export function Comercial360Shell({
     qsPeriod.set("to", filters.to);
     (async () => {
       try {
-        const res = await fetch(`/api/bi/comercial-360/facet-options?${qsPeriod.toString()}`, {
-          credentials: 'include',
-          cache: 'no-store',
-        });
-        const data = res.ok ? await res.json() : null;
+        const out = await biGetJsonSafe<Comercial360FacetOptions>(
+          `/api/bi/comercial-360/facet-options?${qsPeriod.toString()}`,
+        );
         if (cancelled) return;
-        if (!res.ok) {
-          setFacetErr(String(data?.error || 'Falha ao carregar opções de filtro'));
+        if (!out.ok) {
+          setFacetErr(out.error);
           setFacets(null);
           return;
         }
         setFacetErr(null);
-        setFacets(data as Comercial360FacetOptions);
+        setFacets(out.data);
       } catch {
         if (!cancelled) {
           setFacetErr('Falha de rede nos filtros');

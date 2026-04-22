@@ -7,6 +7,7 @@ import { Comercial360Shell, useComercial360 } from '@/modules/gerencial/comercia
 import { formatBrl, toNum } from '@/modules/gerencial/comercial360/comercial360Format';
 import { GLOSSARY, INTERPRET, RADAR } from '@/modules/gerencial/comercial360/comercial360HelpContent';
 import { Comercial360HelpHint, Comercial360ThHelp } from '@/modules/gerencial/comercial360/Comercial360HelpHint';
+import { biGetJsonSafe } from '@/modules/gerencial/biApiClientCache';
 
 const COL = ['#0f766e', '#0e7490', '#1e3a5f', '#6366f1'];
 
@@ -35,37 +36,39 @@ function RadarBody() {
       setErr(null);
       try {
         const [kRes, rRes, dRes, oRes] = await Promise.all([
-          fetch(`/api/bi/comercial-360/kpis?${queryString}`, { credentials: 'include', cache: 'no-store' }),
-          fetch(`/api/bi/comercial-360/radar-snapshot?${queryString}`, { credentials: 'include', cache: 'no-store' }),
-          fetch(`/api/bi/comercial-360/resumo?tipo=documento&${queryString}`, { credentials: 'include', cache: 'no-store' }),
-          fetch(`/api/bi/comercial-360/oportunidades?${queryString}&mode=top&order=score&limit=40`, {
-            credentials: 'include',
-            cache: 'no-store',
-          }),
+          biGetJsonSafe<Record<string, unknown>>(`/api/bi/comercial-360/kpis?${queryString}`),
+          biGetJsonSafe<RadarSnap>(`/api/bi/comercial-360/radar-snapshot?${queryString}`),
+          biGetJsonSafe<{ rows?: unknown[] }>(`/api/bi/comercial-360/resumo?tipo=documento&${queryString}`),
+          biGetJsonSafe<{ rows?: unknown[] }>(
+            `/api/bi/comercial-360/oportunidades?${queryString}&mode=top&order=score&limit=40`,
+          ),
         ]);
-        const kJson = kRes.ok ? await kRes.json() : null;
-        const rJson = rRes.ok ? await rRes.json() : null;
-        const dJson = dRes.ok ? await dRes.json() : null;
-        const oJson = oRes.ok ? await oRes.json() : null;
+        const kJson = kRes.ok ? kRes.data : null;
+        const rJson = rRes.ok ? rRes.data : null;
+        const dJson = dRes.ok ? dRes.data : null;
+        const oJson = oRes.ok ? oRes.data : null;
         if (cancelled) return;
         const parts: string[] = [];
-        if (!kRes.ok) parts.push(String(kJson?.error || 'KPIs'));
-        if (!rRes.ok) parts.push(String(rJson?.error || 'Radar'));
-        if (!dRes.ok) parts.push(String(dJson?.error || 'Documento'));
-        if (!oRes.ok) parts.push(String(oJson?.error || 'Exploração'));
+        if (!kRes.ok) parts.push(kRes.error || 'KPIs');
+        if (!rRes.ok) parts.push(rRes.error || 'Radar');
+        if (!dRes.ok) parts.push(dRes.error || 'Documento');
+        if (!oRes.ok) parts.push(oRes.error || 'Exploração');
         setErr(parts.length ? parts.join(' · ') : null);
         if (kRes.ok) setKpis(kJson as Record<string, unknown>);
         if (rRes.ok && rJson) setSnap(rJson as RadarSnap);
         if (dRes.ok) {
-          const rows = Array.isArray(dJson?.rows) ? dJson.rows : [];
+          const rows = (Array.isArray(dJson?.rows) ? dJson.rows : []) as Array<{
+            tipo_documento_detectado?: string;
+            qtd_clientes?: unknown;
+          }>;
           setDocPie(
-            rows.slice(0, 5).map((row: { tipo_documento_detectado?: string; qtd_clientes?: unknown }) => ({
+            rows.slice(0, 5).map((row) => ({
               name: String(row.tipo_documento_detectado || '—'),
               value: toNum(row.qtd_clientes),
             })),
           );
         }
-        if (oRes.ok) setExplore(Array.isArray(oJson?.rows) ? oJson.rows : []);
+        if (oRes.ok) setExplore(Array.isArray(oJson?.rows) ? (oJson.rows as Record<string, unknown>[]) : []);
       } catch {
         if (!cancelled) setErr('Falha de rede');
       } finally {

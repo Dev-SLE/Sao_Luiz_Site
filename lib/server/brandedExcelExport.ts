@@ -68,11 +68,8 @@ function toNum(v: unknown): number {
 
 const DEFAULT_WIDTH = 16;
 
-export async function buildBrandedExcelBuffer(config: BrandedExcelExportConfig): Promise<Buffer> {
-  const wb = new ExcelJS.Workbook();
-  wb.creator = config.workbookCreator ?? "São Luiz Express — Gerencial";
-  wb.created = new Date();
-
+/** Adiciona uma aba ao workbook com o layout padrão gerencial (faixa título, filtros, tabela, rodapé). */
+export function addBrandedSheetToWorkbook(wb: ExcelJS.Workbook, config: BrandedExcelExportConfig): void {
   const ws = wb.addWorksheet(config.sheetName.slice(0, 31), {
     views: [{ state: "frozen", ySplit: 5 }],
     properties: { defaultRowHeight: 18 },
@@ -180,7 +177,13 @@ export async function buildBrandedExcelBuffer(config: BrandedExcelExportConfig):
   foot.value = config.footerNote ?? "Documento confidencial — uso interno.";
   foot.font = { size: 9, italic: true, color: { argb: C.footer } };
   foot.alignment = { horizontal: "center" };
+}
 
+export async function buildBrandedExcelBuffer(config: BrandedExcelExportConfig): Promise<Buffer> {
+  const wb = new ExcelJS.Workbook();
+  wb.creator = config.workbookCreator ?? "São Luiz Express — Gerencial";
+  wb.created = new Date();
+  addBrandedSheetToWorkbook(wb, config);
   const buf = await wb.xlsx.writeBuffer();
   return Buffer.from(buf);
 }

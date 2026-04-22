@@ -29,6 +29,7 @@ import {
   X,
 } from 'lucide-react';
 import { BI_TAXAS_CONFIG } from '@/modules/bi/taxas/config';
+import { biGetJson, biGetJsonSafe } from '@/modules/gerencial/biApiClientCache';
 
 const F = BI_TAXAS_CONFIG.filters;
 
@@ -332,16 +333,14 @@ export function BiTaxasGerencialDashboard() {
     facetFetchRef.current = ac;
     const qs = buildQuery(from, to, [], [], []);
     try {
-      const res = await fetch(`/api/bi/taxas/facet-options?${qs}`, {
-        credentials: 'include',
-        cache: 'no-store',
-        signal: ac.signal,
-      });
-      if (!res.ok) return;
-      const d = await res.json();
-      setFacetA(Array.isArray(d.agencias) ? d.agencias : []);
-      setFacetP(Array.isArray(d.perfis) ? d.perfis : []);
-      setFacetS(Array.isArray(d.servicos) ? d.servicos : []);
+      const d = await biGetJson<{
+        agencias?: unknown[];
+        perfis?: unknown[];
+        servicos?: unknown[];
+      }>(`/api/bi/taxas/facet-options?${qs}`, { signal: ac.signal });
+      setFacetA(Array.isArray(d.agencias) ? (d.agencias as string[]) : []);
+      setFacetP(Array.isArray(d.perfis) ? (d.perfis as string[]) : []);
+      setFacetS(Array.isArray(d.servicos) ? (d.servicos as string[]) : []);
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') return;
       if (e instanceof Error && e.name === 'AbortError') return;
@@ -354,27 +353,46 @@ export function BiTaxasGerencialDashboard() {
     try {
       const qs = `${qBase}&limit=60&offset=${offset}`;
       const [kRes, cRes, tRes, eRes, rRes, tbRes] = await Promise.all([
-        fetch(`/api/bi/taxas/kpis?${qBase}`, { credentials: 'include' }),
-        fetch(`/api/bi/taxas/composicao?${qBase}`, { credentials: 'include' }),
-        fetch(`/api/bi/taxas/tm-servico?${qBase}`, { credentials: 'include' }),
-        fetch(`/api/bi/taxas/evolucao?${qBase}`, { credentials: 'include' }),
-        fetch(`/api/bi/taxas/ranking?${qBase}`, { credentials: 'include' }),
-        fetch(`/api/bi/taxas/table?${qs}`, { credentials: 'include' }),
+        biGetJsonSafe<{ row?: KpiRow }>(`/api/bi/taxas/kpis?${qBase}`),
+        biGetJsonSafe<{ rows?: unknown[] }>(`/api/bi/taxas/composicao?${qBase}`),
+        biGetJsonSafe<{ rows?: unknown[] }>(`/api/bi/taxas/tm-servico?${qBase}`),
+        biGetJsonSafe<{ rows?: unknown[] }>(`/api/bi/taxas/evolucao?${qBase}`),
+        biGetJsonSafe<{ rows?: unknown[] }>(`/api/bi/taxas/ranking?${qBase}`),
+        biGetJsonSafe<{ rows?: unknown[]; meta?: unknown }>(`/api/bi/taxas/table?${qs}`),
       ]);
-      if (!kRes.ok) throw new Error((await kRes.json().catch(() => ({})))?.error || `KPIs HTTP ${kRes.status}`);
-      setKpi((await kRes.json()).row as KpiRow);
-      if (cRes.ok) setComposicao((await cRes.json()).rows ?? []);
+      if (!kRes.ok) throw new Error(kRes.error);
+      setKpi((kRes.data.row as KpiRow) ?? null);
+      if (cRes.ok) setComposicao((cRes.data.rows ?? []) as Array<{ servico: string; receita: number }>);
       else setComposicao([]);
-      if (tRes.ok) setTmRows((await tRes.json()).rows ?? []);
+      if (tRes.ok) setTmRows((tRes.data.rows ?? []) as Array<{ servico: string; ticket_medio: number }>);
       else setTmRows([]);
-      if (eRes.ok) setEvolucao((await eRes.json()).rows ?? []);
+      if (eRes.ok)
+        setEvolucao(
+          (eRes.data.rows ?? []) as Array<{
+            mes_referencia: string;
+            receita_extras_total: number;
+            pct_representatividade_extras: number;
+            pct_penetracao_entrega_global: number;
+            pct_penetracao_coleta_global: number;
+          }>,
+        );
       else setEvolucao([]);
-      if (rRes.ok) setRanking((await rRes.json()).rows ?? []);
+      if (rRes.ok)
+        setRanking(
+          (rRes.data.rows ?? []) as Array<{
+            agencia: string;
+            faturamento_total: number;
+            receita_extras: number;
+            pct_penetracao_entrega: number;
+            pct_penetracao_coleta: number;
+            score_oportunidade: number;
+          }>,
+        );
       else setRanking([]);
       if (tbRes.ok) {
-        const tb = await tbRes.json();
-        setTableRows(Array.isArray(tb.rows) ? tb.rows : []);
-        setTableMeta(tb.meta || null);
+        const tb = tbRes.data;
+        setTableRows(Array.isArray(tb.rows) ? (tb.rows as Record<string, unknown>[]) : []);
+        setTableMeta((tb.meta as { limit: number; offset: number; total: number } | null) ?? null);
       } else {
         setTableRows([]);
         setTableMeta(null);
@@ -463,12 +481,10 @@ export function BiTaxasGerencialDashboard() {
     setDrillRows([]);
     setDrillLoading(true);
     try {
-      const res = await fetch(`/api/bi/taxas/drill?${qBase}&agencia=${encodeURIComponent(agencia)}`, {
-        credentials: 'include',
-      });
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(String(j?.error || res.statusText));
-      setDrillRows(Array.isArray(j.rows) ? j.rows : []);
+      const j = await biGetJson<{ rows?: unknown[] }>(
+        `/api/bi/taxas/drill?${qBase}&agencia=${encodeURIComponent(agencia)}`,
+      );
+      setDrillRows(Array.isArray(j.rows) ? (j.rows as Record<string, unknown>[]) : []);
     } catch {
       setDrillRows([]);
     } finally {

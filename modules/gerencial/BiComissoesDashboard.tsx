@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { AlertCircle, ChevronDown, FileText, Loader2, X } from 'lucide-react';
 import { BI_COMISSOES_CONFIG, KPI_SLOTS, type KpiSlotDef } from '@/modules/bi/comissoes/config';
 import { gerencialComissoesHoleritePath } from '@/modules/gerencial/routes';
+import { biGetJson } from '@/modules/gerencial/biApiClientCache';
 
 type Row = Record<string, unknown>;
 
@@ -277,18 +278,25 @@ export function BiComissoesDashboard() {
   }, [from, to, selVendedores, selTipos, selTabelas, facetKeys]);
 
   const loadFacets = useCallback(async () => {
-    const res = await fetch('/api/bi/comissoes/facet-options', { credentials: 'include' });
-    const j = await res.json().catch(() => ({}));
-    if (!res.ok) return;
-    setVendedores(Array.isArray(j.vendedores) ? j.vendedores : []);
-    setTipos(Array.isArray(j.tipos) ? j.tipos : []);
-    setTabelas(Array.isArray(j.tabelas) ? j.tabelas : []);
-    const k = j.keys || {};
-    setFacetKeys({
-      vendedor: typeof k.vendedor === 'string' ? k.vendedor : null,
-      tipo: typeof k.tipo === 'string' ? k.tipo : null,
-      tabela: typeof k.tabela === 'string' ? k.tabela : null,
-    });
+    try {
+      const j = await biGetJson<{
+        vendedores?: unknown[];
+        tipos?: unknown[];
+        tabelas?: unknown[];
+        keys?: { vendedor?: string; tipo?: string; tabela?: string };
+      }>('/api/bi/comissoes/facet-options');
+      setVendedores(Array.isArray(j.vendedores) ? (j.vendedores as string[]) : []);
+      setTipos(Array.isArray(j.tipos) ? (j.tipos as string[]) : []);
+      setTabelas(Array.isArray(j.tabelas) ? (j.tabelas as string[]) : []);
+      const k = j.keys || {};
+      setFacetKeys({
+        vendedor: typeof k.vendedor === 'string' ? k.vendedor : null,
+        tipo: typeof k.tipo === 'string' ? k.tipo : null,
+        tabela: typeof k.tabela === 'string' ? k.tabela : null,
+      });
+    } catch {
+      /* igual ao fluxo anterior em resposta não-ok */
+    }
   }, []);
 
   useEffect(() => {
@@ -308,25 +316,15 @@ export function BiComissoesDashboard() {
       const tableQs = tableParams.toString();
       const tableUrl = tableQs ? `/api/bi/comissoes/table?${tableQs}` : '/api/bi/comissoes/table?limit=5000';
 
-      const [rankRes, kpiRes, tableRes] = await Promise.all([
-        fetch(`/api/bi/comissoes/ranking?${rankQs}`, { credentials: 'include' }),
-        fetch(kpiUrl, { credentials: 'include' }),
-        fetch(tableUrl, { credentials: 'include' }),
-      ]);
-
-      if (!rankRes.ok) throw new Error((await rankRes.json().catch(() => ({})))?.error || rankRes.statusText);
-      if (!kpiRes.ok) throw new Error((await kpiRes.json().catch(() => ({})))?.error || kpiRes.statusText);
-      if (!tableRes.ok) throw new Error((await tableRes.json().catch(() => ({})))?.error || tableRes.statusText);
-
       const [rankJson, kpiJson, tableJson] = await Promise.all([
-        rankRes.json(),
-        kpiRes.json(),
-        tableRes.json(),
+        biGetJson<{ rows?: unknown[] }>(`/api/bi/comissoes/ranking?${rankQs}`),
+        biGetJson<{ rows?: unknown[] }>(kpiUrl),
+        biGetJson<{ rows?: unknown[] }>(tableUrl),
       ]);
 
-      setRanking(Array.isArray(rankJson.rows) ? rankJson.rows : []);
-      setKpis(Array.isArray(kpiJson.rows) ? kpiJson.rows : []);
-      setTable(Array.isArray(tableJson.rows) ? tableJson.rows : []);
+      setRanking(Array.isArray(rankJson.rows) ? (rankJson.rows as Row[]) : []);
+      setKpis(Array.isArray(kpiJson.rows) ? (kpiJson.rows as Row[]) : []);
+      setTable(Array.isArray(tableJson.rows) ? (tableJson.rows as Row[]) : []);
       setDrill([]);
       setDrillTitle(null);
     } catch (e) {
@@ -411,15 +409,14 @@ export function BiComissoesDashboard() {
     setDrillTitle(title);
     setDrill([]);
     q.set('limit', '2000');
-    const res = await fetch(`/api/bi/comissoes/drill?${q.toString()}`, { credentials: 'include' });
-    const j = await res.json().catch(() => ({}));
-    if (!res.ok) {
+    try {
+      const j = await biGetJson<{ rows?: unknown[]; error?: string }>(`/api/bi/comissoes/drill?${q.toString()}`);
+      setError(null);
+      setDrill(Array.isArray(j.rows) ? (j.rows as Row[]) : []);
+    } catch (e) {
       setDrill([]);
-      setError(String(j?.error || 'Não foi possível carregar o detalhamento.'));
-      return;
+      setError(e instanceof Error ? e.message : 'Não foi possível carregar o detalhamento.');
     }
-    setError(null);
-    setDrill(Array.isArray(j.rows) ? j.rows : []);
   };
 
   const loadDrillForVendorTipo = async (vendorName: string, tipoComissao?: string) => {

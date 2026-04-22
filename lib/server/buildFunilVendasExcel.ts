@@ -10,19 +10,7 @@ import { BI_FUNIL_VENDAS_CONFIG, FUNIL_TABELA_COLUNAS } from "@/modules/bi/funil
 
 type Row = Record<string, unknown>;
 
-/** Mapa id_tabela → descrição (bd_tabelas_frete) para resumo de filtros na planilha. */
-export async function fetchTabelaFreteLabelMap(pool: Pool): Promise<Record<string, string>> {
-  const r = await pool.query<{ id: string; nome: string }>(
-    `SELECT id_tabela_frete::text AS id, trim(coalesce(descricao, '')) AS nome FROM bd_tabelas_frete`,
-  );
-  const m: Record<string, string> = {};
-  for (const row of r.rows || []) {
-    if (row.id && row.nome) m[row.id] = row.nome;
-  }
-  return m;
-}
-
-export function summarizeFunilExportFilters(url: URL, tabelaLabels?: Record<string, string>): string[] {
+export function summarizeFunilExportFilters(url: URL): string[] {
   const lines: string[] = [];
   const from = url.searchParams.get("from");
   const to = url.searchParams.get("to");
@@ -35,14 +23,10 @@ export function summarizeFunilExportFilters(url: URL, tabelaLabels?: Record<stri
   if (vs.length) lines.push(`Vendedor(es): ${vs.join(", ")}`);
   const ss = url.searchParams.getAll(F.statusFunil).filter(Boolean);
   if (ss.length) lines.push(`Status: ${ss.join(", ")}`);
-  const ts = url.searchParams.getAll(F.cotIdTabela).filter(Boolean);
-  if (ts.length) {
-    const parts = ts.map((id) => {
-      const nome = tabelaLabels?.[id];
-      return nome ? `${nome} (${id})` : id;
-    });
-    lines.push(`Tabela(s): ${parts.join(", ")}`);
-  }
+  const ps = url.searchParams.getAll(F.cotIdPesquisaSistema).filter(Boolean);
+  if (ps.length) lines.push(`Orçamento: ${ps.join(", ")}`);
+  const cs = url.searchParams.getAll(F.cteSerie).filter(Boolean);
+  if (cs.length) lines.push(`Série CT-e: ${cs.join(", ")}`);
   const q = url.searchParams.get("search")?.trim();
   if (q) lines.push(`Busca na tabela: ${q}`);
   return lines;
@@ -50,7 +34,8 @@ export function summarizeFunilExportFilters(url: URL, tabelaLabels?: Record<stri
 
 function funilColumnDefs(): BrandedExcelColumn[] {
   const widths: Record<string, number> = {
-    orcamento: 14,
+    cot_id_pesquisa_sistema: 22,
+    cte_serie: 14,
     numero_cte: 12,
     data_cotacao: 20,
     cliente: 38,
@@ -62,8 +47,6 @@ function funilColumnDefs(): BrandedExcelColumn[] {
   const formats: Partial<Record<string, BrandedExcelColumn["format"]>> = {
     data_cotacao: "datetime",
     valor_cotacao: "currency",
-    orcamento: "integer",
-    numero_cte: "integer",
   };
   return FUNIL_TABELA_COLUNAS.map((c) => ({
     key: c.key,
@@ -73,13 +56,8 @@ function funilColumnDefs(): BrandedExcelColumn[] {
   }));
 }
 
-export async function buildFunilVendasExcelBuffer(
-  pool: Pool,
-  rows: Row[],
-  url: URL,
-): Promise<Buffer> {
-  const tabelaLabels = await fetchTabelaFreteLabelMap(pool);
-  const filterSummaryLines = summarizeFunilExportFilters(url, tabelaLabels);
+export async function buildFunilVendasExcelBuffer(_pool: Pool, rows: Row[], url: URL): Promise<Buffer> {
+  const filterSummaryLines = summarizeFunilExportFilters(url);
   const generatedMetaLine = `Gerado em ${new Date().toLocaleString("pt-BR")}  ·  ${rows.length} linha(s)`;
 
   return buildBrandedExcelBuffer({

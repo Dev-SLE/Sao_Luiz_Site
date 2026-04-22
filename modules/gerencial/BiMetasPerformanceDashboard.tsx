@@ -16,12 +16,13 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { AlertCircle, ChevronDown, Loader2 } from 'lucide-react';
+import { AlertCircle, ChevronDown, Download, Loader2 } from 'lucide-react';
 import {
   BI_METAS_PERFORMANCE_CONFIG,
   METAS_KPI_SLOTS,
   METAS_TABELA_COLUNAS,
 } from '@/modules/bi/metasPerformance/config';
+import { biGetJson } from '@/modules/gerencial/biApiClientCache';
 
 type Row = Record<string, unknown>;
 
@@ -121,7 +122,7 @@ export function BiMetasPerformanceDashboard() {
   const [from, setFrom] = useState(defaultFrom);
   const [to, setTo] = useState(defaultTo);
   const [selAgencias, setSelAgencias] = useState<string[]>([]);
-  const [agKey, setAgKey] = useState(BI_METAS_PERFORMANCE_CONFIG.filters.agencia);
+  const [agKey, setAgKey] = useState<string>(BI_METAS_PERFORMANCE_CONFIG.filters.agencia);
   const [agOpts, setAgOpts] = useState<{ label: string; value: string }[]>([]);
 
   const [kpis, setKpis] = useState<Row | null>(null);
@@ -138,6 +139,7 @@ export function BiMetasPerformanceDashboard() {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   const queryBase = useMemo(() => {
     const q = new URLSearchParams();
@@ -150,20 +152,28 @@ export function BiMetasPerformanceDashboard() {
 
   const loadFacets = useCallback(async () => {
     const q = queryBase || `from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
-    const res = await fetch(`/api/bi/metas-performance/facet-options?${q}`, { credentials: 'include' });
-    const j = await res.json().catch(() => ({}));
-    if (!res.ok) return;
-    const arr = Array.isArray(j.agencias) ? j.agencias : [];
-    setAgOpts(
-      arr
-        .filter((x: unknown) => x && typeof x === 'object' && 'value' in (x as object))
-        .map((x: { label?: unknown; value?: unknown }) => ({
-          label: String(x.label ?? '').trim(),
-          value: String(x.value ?? '').trim(),
-        }))
-        .filter((x: { value: string }) => x.value.length > 0),
-    );
-    setAgKey(typeof j.keys?.agencia === 'string' ? j.keys.agencia : BI_METAS_PERFORMANCE_CONFIG.filters.agencia);
+    try {
+      const j = await biGetJson<{
+        agencias?: unknown[];
+        keys?: { agencia?: string };
+      }>(`/api/bi/metas-performance/facet-options?${q}`);
+      const arr = (Array.isArray(j.agencias) ? j.agencias : []) as unknown[];
+      setAgOpts(
+        arr
+          .filter((x: unknown) => x && typeof x === 'object' && 'value' in (x as object))
+          .map((x: unknown) => {
+            const o = x as { label?: unknown; value?: unknown };
+            return {
+              label: String(o.label ?? '').trim(),
+              value: String(o.value ?? '').trim(),
+            };
+          })
+          .filter((x: { value: string }) => x.value.length > 0),
+      );
+      setAgKey(typeof j.keys?.agencia === 'string' ? j.keys.agencia : BI_METAS_PERFORMANCE_CONFIG.filters.agencia);
+    } catch {
+      /* facet-options não-ok */
+    }
   }, [queryBase, from, to]);
 
   useEffect(() => {
@@ -175,12 +185,15 @@ export function BiMetasPerformanceDashboard() {
     setError(null);
     try {
       const qs = queryBase ? `?${queryBase}` : '';
-      const res = await fetch(`/api/bi/metas-performance/table${qs}`, { credentials: 'include' });
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(String(j?.error || res.statusText));
-      const kArr = Array.isArray(j.kpis) ? j.kpis : [];
+      const j = await biGetJson<{
+        kpis?: unknown[];
+        rows?: unknown[];
+        meta?: Record<string, unknown>;
+        error?: string;
+      }>(`/api/bi/metas-performance/table${qs}`);
+      const kArr = Array.isArray(j.kpis) ? (j.kpis as Row[]) : [];
       setKpis(kArr[0] ?? null);
-      setTableRows(Array.isArray(j.rows) ? j.rows : []);
+      setTableRows(Array.isArray(j.rows) ? (j.rows as Row[]) : []);
       const m = j.meta;
       if (m && typeof m === 'object') {
         setDashMeta({
@@ -203,6 +216,33 @@ export function BiMetasPerformanceDashboard() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const exportXlsx = async () => {
+    setExporting(true);
+    setError(null);
+    try {
+      const qs = queryBase ? `?${queryBase}` : '';
+      const res = await fetch(`/api/bi/metas-performance/export-table${qs}`, { credentials: 'include' });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(String((j as { error?: string })?.error || res.statusText));
+      }
+      const blob = await res.blob();
+      const cd = res.headers.get('Content-Disposition');
+      const m = cd?.match(/filename="([^"]+)"/);
+      const name = m?.[1] ?? 'Metas_performance.xlsx';
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = name;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Falha ao exportar');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const rankingRows = useMemo(() => {
     return [...tableRows].sort((a, b) => {
@@ -378,8 +418,23 @@ export function BiMetasPerformanceDashboard() {
             </div>
 
             <section className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
-              <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Detalhe por agência</h2>
-              <p className="mt-1 text-xs text-slate-500">Valores calculados no servidor a partir do faturamento autorizado e das metas do mês.</p>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Detalhe por agência</h2>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Valores calculados no servidor a partir do faturamento autorizado e das metas do mês.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  disabled={exporting || tableRows.length === 0}
+                  onClick={() => void exportXlsx()}
+                  className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-sl-navy/25 bg-gradient-to-r from-sl-navy to-[#2a4a7a] px-4 py-2.5 text-sm font-bold text-white shadow-md transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {exporting ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" strokeWidth={2} />}
+                  Exportar planilha (XLSX)
+                </button>
+              </div>
               <div className="mt-4 overflow-x-auto rounded-xl border border-slate-100">
                 <table className="w-full min-w-[900px] border-collapse text-sm">
                   <thead>

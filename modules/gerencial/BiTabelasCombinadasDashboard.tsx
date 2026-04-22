@@ -18,6 +18,7 @@ import {
 } from 'recharts';
 import { AlertCircle, ChevronDown, Download, Loader2, Sparkles, Target, TrendingUp, X } from 'lucide-react';
 import { BI_TABELAS_COMBINADAS_CONFIG } from '@/modules/bi/tabelasCombinadas/config';
+import { biGetJson, biGetJsonSafe } from '@/modules/gerencial/biApiClientCache';
 
 const F = BI_TABELAS_COMBINADAS_CONFIG.filters;
 
@@ -219,14 +220,18 @@ export function BiTabelasCombinadasDashboard() {
   }, [qBase]);
 
   const loadFacets = useCallback(async () => {
-    const res = await fetch(`/api/bi/tabelas-combinadas/facet-options?${buildQuery(from, to, [], [], [], '')}`, {
-      credentials: 'include',
-    });
-    if (!res.ok) return;
-    const d = await res.json();
-    setFacetV(Array.isArray(d.vendedores) ? d.vendedores : []);
-    setFacetS(Array.isArray(d.status) ? d.status : []);
-    setFacetC(Array.isArray(d.clientes) ? d.clientes : []);
+    try {
+      const d = await biGetJson<{
+        vendedores?: unknown[];
+        status?: unknown[];
+        clientes?: unknown[];
+      }>(`/api/bi/tabelas-combinadas/facet-options?${buildQuery(from, to, [], [], [], '')}`);
+      setFacetV(Array.isArray(d.vendedores) ? (d.vendedores as string[]) : []);
+      setFacetS(Array.isArray(d.status) ? (d.status as string[]) : []);
+      setFacetC(Array.isArray(d.clientes) ? (d.clientes as string[]) : []);
+    } catch {
+      /* facet-options não-ok */
+    }
   }, [from, to]);
 
   const loadAll = useCallback(async () => {
@@ -235,37 +240,65 @@ export function BiTabelasCombinadasDashboard() {
     try {
       const qs = qBase;
       const [kRes, rRes, sRes, tRes, pRes, tabRes] = await Promise.all([
-        fetch(`/api/bi/tabelas-combinadas/kpis?${qs}`, { credentials: 'include' }),
-        fetch(`/api/bi/tabelas-combinadas/vendedor-risco?${qs}`, { credentials: 'include' }),
-        fetch(`/api/bi/tabelas-combinadas/status-diagnostico?${qs}`, { credentials: 'include' }),
-        fetch(`/api/bi/tabelas-combinadas/top-clientes?${qs}`, { credentials: 'include' }),
-        fetch(`/api/bi/tabelas-combinadas/pipeline?${qs}`, { credentials: 'include' }),
-        fetch(`/api/bi/tabelas-combinadas/table?${qs}&limit=80&offset=${offset}`, { credentials: 'include' }),
+        biGetJsonSafe<{ row?: KpiRow }>(`/api/bi/tabelas-combinadas/kpis?${qs}`),
+        biGetJsonSafe<{ rows?: unknown[] }>(`/api/bi/tabelas-combinadas/vendedor-risco?${qs}`),
+        biGetJsonSafe<{ rows?: unknown[] }>(`/api/bi/tabelas-combinadas/status-diagnostico?${qs}`),
+        biGetJsonSafe<{ rows?: unknown[] }>(`/api/bi/tabelas-combinadas/top-clientes?${qs}`),
+        biGetJsonSafe<{ rows?: unknown[] }>(`/api/bi/tabelas-combinadas/pipeline?${qs}`),
+        biGetJsonSafe<{ rows?: unknown[]; meta?: unknown }>(
+          `/api/bi/tabelas-combinadas/table?${qs}&limit=80&offset=${offset}`,
+        ),
       ]);
-      if (!kRes.ok) throw new Error((await kRes.json().catch(() => ({})))?.error || `KPIs HTTP ${kRes.status}`);
-      const kj = await kRes.json();
+      if (!kRes.ok) throw new Error(kRes.error);
+      const kj = kRes.data;
       setKpi((kj.row as KpiRow) || {});
 
       if (rRes.ok) {
-        const rj = await rRes.json();
-        setRiscoRows(Array.isArray(rj.rows) ? rj.rows : []);
+        const rj = rRes.data;
+        setRiscoRows(
+          Array.isArray(rj.rows)
+            ? (rj.rows as Array<{ vendedor: string; risco_financeiro: number; risco_silencioso: number }>)
+            : [],
+        );
       } else setRiscoRows([]);
       if (sRes.ok) {
-        const sj = await sRes.json();
-        setStatusRows(Array.isArray(sj.rows) ? sj.rows : []);
+        const sj = sRes.data;
+        setStatusRows(
+          Array.isArray(sj.rows)
+            ? (sj.rows as Array<{ status_grupo: string; valor: number; qtd_contratos: number }>)
+            : [],
+        );
       } else setStatusRows([]);
       if (tRes.ok) {
-        const tj = await tRes.json();
-        setTopCli(Array.isArray(tj.rows) ? tj.rows : []);
+        const tj = tRes.data;
+        setTopCli(
+          Array.isArray(tj.rows)
+            ? (tj.rows as Array<{
+                cliente: string;
+                score_prioridade_medio: number;
+                risco_financeiro_valor: number;
+                risco_silencioso_valor: number;
+                oportunidade_recuperacao_valor: number;
+                ultima_compra: string | null;
+                qtd_ctes: number;
+                total_volumes: number;
+                proxima_acao: string | null;
+              }>)
+            : [],
+        );
       } else setTopCli([]);
       if (pRes.ok) {
-        const pj = await pRes.json();
-        setPipeRows(Array.isArray(pj.rows) ? pj.rows : []);
+        const pj = pRes.data;
+        setPipeRows(
+          Array.isArray(pj.rows)
+            ? (pj.rows as Array<{ pipeline_fase: string; qtd_contratos: number; total_comprado: number }>)
+            : [],
+        );
       } else setPipeRows([]);
       if (tabRes.ok) {
-        const tb = await tabRes.json();
-        setTableRows(Array.isArray(tb.rows) ? tb.rows : []);
-        setTableMeta(tb.meta || null);
+        const tb = tabRes.data;
+        setTableRows(Array.isArray(tb.rows) ? (tb.rows as Record<string, unknown>[]) : []);
+        setTableMeta((tb.meta as { limit: number; offset: number } | null) ?? null);
       } else {
         setTableRows([]);
         setTableMeta(null);
@@ -291,9 +324,9 @@ export function BiTabelasCombinadasDashboard() {
     setDrillRows([]);
     try {
       const qs = `${qBase}&cliente=${encodeURIComponent(cliente)}`;
-      const res = await fetch(`/api/bi/tabelas-combinadas/drill?${qs}`, { credentials: 'include' });
-      const d = res.ok ? await res.json() : { rows: [] };
-      setDrillRows(Array.isArray(d.rows) ? d.rows : []);
+      const d = await biGetJsonSafe<{ rows?: unknown[] }>(`/api/bi/tabelas-combinadas/drill?${qs}`);
+      const body = d.ok ? d.data : { rows: [] };
+      setDrillRows(Array.isArray(body.rows) ? (body.rows as Record<string, unknown>[]) : []);
     } finally {
       setDrillLoading(false);
     }

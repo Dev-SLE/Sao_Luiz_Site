@@ -23,6 +23,7 @@ import {
   FUNIL_KPI_SLOTS_SECONDARY,
   FUNIL_TABELA_COLUNAS,
 } from '@/modules/bi/funilVendas/config';
+import { biGetJson, biGetJsonSafe } from '@/modules/gerencial/biApiClientCache';
 
 type Row = Record<string, unknown>;
 
@@ -137,67 +138,6 @@ function CollapsibleMultiSelect({
   );
 }
 
-type TabelaOpcao = { id: string; nome: string };
-
-function FacetMultiSelectTabela({
-  label,
-  options,
-  selectedIds,
-  onToggle,
-  onClear,
-}: {
-  label: string;
-  options: TabelaOpcao[];
-  selectedIds: string[];
-  onToggle: (id: string) => void;
-  onClear: () => void;
-}) {
-  const summary = selectedIds.length ? `${selectedIds.length} selecionado(s)` : 'Todos';
-  return (
-    <details className="group relative min-w-[220px] flex-1 rounded-xl border border-slate-200 bg-slate-50/50 shadow-sm open:z-30 open:shadow-md">
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2.5 text-left [&::-webkit-details-marker]:hidden">
-        <span>
-          <span className="block text-[10px] font-bold uppercase tracking-wide text-slate-500">{label}</span>
-          <span className="text-sm font-semibold text-slate-900">{summary}</span>
-        </span>
-        <ChevronDown className="size-4 shrink-0 text-slate-500 transition group-open:rotate-180" aria-hidden />
-      </summary>
-      <div className="absolute left-0 right-0 top-full z-40 mt-1 max-h-56 min-w-[280px] overflow-y-auto rounded-xl border border-slate-200 bg-white py-2 shadow-xl">
-        {options.length === 0 ? (
-          <p className="px-3 py-2 text-sm text-slate-400">Sem opções</p>
-        ) : (
-          options.map((opt) => (
-            <label key={opt.id} className="flex cursor-pointer items-start gap-2 px-3 py-2 text-sm hover:bg-slate-50">
-              <input
-                type="checkbox"
-                checked={selectedIds.includes(opt.id)}
-                onChange={() => onToggle(opt.id)}
-                className="mt-0.5 rounded border-slate-300 text-sl-navy focus:ring-sl-navy/30"
-              />
-              <span className="min-w-0 flex-1">
-                <span className="block font-semibold text-slate-900">{opt.nome}</span>
-                <span className="text-[11px] text-slate-500">ID {opt.id}</span>
-              </span>
-            </label>
-          ))
-        )}
-        <div className="border-t border-slate-100 px-3 pt-2">
-          <button
-            type="button"
-            className="text-xs font-semibold text-sl-navy underline"
-            onClick={(e) => {
-              e.preventDefault();
-              onClear();
-            }}
-          >
-            Limpar seleção
-          </button>
-        </div>
-      </div>
-    </details>
-  );
-}
-
 export function BiFunilVendasDashboard() {
   const defaultFrom = useMemo(() => format(startOfMonth(new Date()), 'yyyy-MM-dd'), []);
   const defaultTo = useMemo(() => format(new Date(), 'yyyy-MM-dd'), []);
@@ -206,15 +146,18 @@ export function BiFunilVendasDashboard() {
   const [to, setTo] = useState(defaultTo);
   const [selStatus, setSelStatus] = useState<string[]>([]);
   const [selVendedores, setSelVendedores] = useState<string[]>([]);
-  const [selTabelas, setSelTabelas] = useState<string[]>([]);
+  const [filterPesquisaSistema, setFilterPesquisaSistema] = useState('');
+  const [filterCteSerie, setFilterCteSerie] = useState('');
+  const [debouncedPesquisa, setDebouncedPesquisa] = useState('');
+  const [debouncedCteSerie, setDebouncedCteSerie] = useState('');
   const [facetKeys, setFacetKeys] = useState<{
     status_funil: string | null;
     vendedor: string | null;
-    cot_id_tabela: string | null;
-  }>({ status_funil: null, vendedor: null, cot_id_tabela: null });
+    cot_id_pesquisa_sistema: string | null;
+    cte_serie: string | null;
+  }>({ status_funil: null, vendedor: null, cot_id_pesquisa_sistema: null, cte_serie: null });
   const [statusOpts, setStatusOpts] = useState<string[]>([]);
   const [vendOpts, setVendOpts] = useState<string[]>([]);
-  const [tabelaOpcoes, setTabelaOpcoes] = useState<TabelaOpcao[]>([]);
 
   const [kpis, setKpis] = useState<Row | null>(null);
   const [funnel, setFunnel] = useState<Row[]>([]);
@@ -241,36 +184,37 @@ export function BiFunilVendasDashboard() {
     const F = BI_FUNIL_VENDAS_CONFIG.filters;
     const sk = K.status_funil || F.statusFunil;
     const vk = K.vendedor || F.vendedor;
-    const tk = K.cot_id_tabela || F.cotIdTabela;
+    const pk = K.cot_id_pesquisa_sistema || F.cotIdPesquisaSistema;
+    const ck = K.cte_serie || F.cteSerie;
     for (const v of selStatus) if (v) q.append(sk, v);
     for (const v of selVendedores) if (v) q.append(vk, v);
-    for (const v of selTabelas) if (v) q.append(tk, v);
+    const p = debouncedPesquisa.trim();
+    if (p) q.append(pk, p);
+    const c = debouncedCteSerie.trim();
+    if (c) q.append(ck, c);
     return q.toString();
-  }, [from, to, selStatus, selVendedores, selTabelas, facetKeys]);
+  }, [from, to, selStatus, selVendedores, debouncedPesquisa, debouncedCteSerie, facetKeys]);
 
   const loadFacets = useCallback(async () => {
     const q = queryBase || `from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
-    const res = await fetch(`/api/bi/funil-vendas/facet-options?${q}`, { credentials: 'include' });
-    const j = await res.json().catch(() => ({}));
-    if (!res.ok) return;
-    setStatusOpts(Array.isArray(j.status_funil) ? j.status_funil : []);
-    setVendOpts(Array.isArray(j.vendedores) ? j.vendedores : []);
-    const tops = Array.isArray(j.tabela_opcoes) ? j.tabela_opcoes : [];
-    setTabelaOpcoes(
-      tops
-        .filter((x: unknown) => x && typeof x === "object" && "id" in (x as object))
-        .map((x: { id: unknown; nome: unknown }) => ({
-          id: String(x.id ?? "").trim(),
-          nome: String(x.nome ?? "").trim(),
-        }))
-        .filter((x: TabelaOpcao) => x.id.length > 0),
-    );
-    const k = j.keys || {};
-    setFacetKeys({
-      status_funil: typeof k.status_funil === 'string' ? k.status_funil : null,
-      vendedor: typeof k.vendedor === 'string' ? k.vendedor : null,
-      cot_id_tabela: typeof k.cot_id_tabela === 'string' ? k.cot_id_tabela : null,
-    });
+    try {
+      const j = await biGetJson<{
+        status_funil?: unknown[];
+        vendedores?: unknown[];
+        keys?: Record<string, string | undefined>;
+      }>(`/api/bi/funil-vendas/facet-options?${q}`);
+      setStatusOpts(Array.isArray(j.status_funil) ? (j.status_funil as string[]) : []);
+      setVendOpts(Array.isArray(j.vendedores) ? (j.vendedores as string[]) : []);
+      const k = j.keys || {};
+      setFacetKeys({
+        status_funil: typeof k.status_funil === 'string' ? k.status_funil : null,
+        vendedor: typeof k.vendedor === 'string' ? k.vendedor : null,
+        cot_id_pesquisa_sistema: typeof k.cot_id_pesquisa_sistema === 'string' ? k.cot_id_pesquisa_sistema : null,
+        cte_serie: typeof k.cte_serie === 'string' ? k.cte_serie : null,
+      });
+    } catch {
+      /* facet-options não-ok: mantém estado anterior */
+    }
   }, [queryBase, from, to]);
 
   useEffect(() => {
@@ -282,31 +226,38 @@ export function BiFunilVendasDashboard() {
     return () => window.clearTimeout(id);
   }, [tableSearch]);
 
+  useEffect(() => {
+    const id = window.setTimeout(() => setDebouncedPesquisa(filterPesquisaSistema), 320);
+    return () => window.clearTimeout(id);
+  }, [filterPesquisaSistema]);
+
+  useEffect(() => {
+    const id = window.setTimeout(() => setDebouncedCteSerie(filterCteSerie), 320);
+    return () => window.clearTimeout(id);
+  }, [filterCteSerie]);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const qs = queryBase ? `?${queryBase}` : '';
-      const [kpiRes, funRes, convRes, vfRes, qfRes, evRes] = await Promise.all([
-        fetch(`/api/bi/funil-vendas/kpis${qs}`, { credentials: 'include' }),
-        fetch(`/api/bi/funil-vendas/funnel${qs}`, { credentials: 'include' }),
-        fetch(`/api/bi/funil-vendas/conversao-vendedor${qs}`, { credentials: 'include' }),
-        fetch(`/api/bi/funil-vendas/valor-fechado-vendedor${qs}`, { credentials: 'include' }),
-        fetch(`/api/bi/funil-vendas/quantidade-fechada-vendedor${qs}`, { credentials: 'include' }),
-        fetch(`/api/bi/funil-vendas/evolucao-mensal${qs}`, { credentials: 'include' }),
+      const [kpiR, funR, convR, vfR, qfR, evR] = await Promise.all([
+        biGetJsonSafe<{ rows?: unknown[] }>(`/api/bi/funil-vendas/kpis${qs}`),
+        biGetJsonSafe<{ rows?: unknown[] }>(`/api/bi/funil-vendas/funnel${qs}`),
+        biGetJsonSafe<{ rows?: unknown[] }>(`/api/bi/funil-vendas/conversao-vendedor${qs}`),
+        biGetJsonSafe<{ rows?: unknown[] }>(`/api/bi/funil-vendas/valor-fechado-vendedor${qs}`),
+        biGetJsonSafe<{ rows?: unknown[] }>(`/api/bi/funil-vendas/quantidade-fechada-vendedor${qs}`),
+        biGetJsonSafe<{ rows?: unknown[] }>(`/api/bi/funil-vendas/evolucao-mensal${qs}`),
       ]);
-      if (!kpiRes.ok) throw new Error((await kpiRes.json().catch(() => ({})))?.error || kpiRes.statusText);
-      const kpiJ = await kpiRes.json();
-      setKpis(Array.isArray(kpiJ.rows) && kpiJ.rows[0] ? kpiJ.rows[0] : null);
-      const pick = async (r: Response) => {
-        const j = await r.json().catch(() => ({}));
-        return Array.isArray(j.rows) ? j.rows : [];
-      };
-      setFunnel(funRes.ok ? await pick(funRes) : []);
-      setConv(convRes.ok ? await pick(convRes) : []);
-      setValorFech(vfRes.ok ? await pick(vfRes) : []);
-      setQtdFech(qfRes.ok ? await pick(qfRes) : []);
-      setEvolucao(evRes.ok ? await pick(evRes) : []);
+      if (!kpiR.ok) throw new Error(kpiR.error);
+      const kpiJ = kpiR.data;
+      setKpis(Array.isArray(kpiJ.rows) && kpiJ.rows[0] ? (kpiJ.rows[0] as Row) : null);
+      const pickRows = (j: { rows?: unknown[] }) => (Array.isArray(j.rows) ? j.rows : []);
+      setFunnel(funR.ok ? (pickRows(funR.data) as Row[]) : []);
+      setConv(convR.ok ? (pickRows(convR.data) as Row[]) : []);
+      setValorFech(vfR.ok ? (pickRows(vfR.data) as Row[]) : []);
+      setQtdFech(qfR.ok ? (pickRows(qfR.data) as Row[]) : []);
+      setEvolucao(evR.ok ? (pickRows(evR.data) as Row[]) : []);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Erro ao carregar dados');
     } finally {
@@ -323,9 +274,8 @@ export function BiFunilVendasDashboard() {
     q.set('limit', '800');
     if (debouncedSearch) q.set('search', debouncedSearch);
     try {
-      const res = await fetch(`/api/bi/funil-vendas/table?${q.toString()}`, { credentials: 'include' });
-      const j = await res.json().catch(() => ({}));
-      if (res.ok) setTableRows(Array.isArray(j.rows) ? j.rows : []);
+      const j = await biGetJson<{ rows?: unknown[] }>(`/api/bi/funil-vendas/table?${q.toString()}`);
+      setTableRows(Array.isArray(j.rows) ? (j.rows as Row[]) : []);
     } catch {
       setTableRows([]);
     }
@@ -460,13 +410,26 @@ export function BiFunilVendasDashboard() {
               onToggle={(v) => toggle(selVendedores, setSelVendedores, v)}
               onClear={() => setSelVendedores([])}
             />
-            <FacetMultiSelectTabela
-              label="Nome da tabela"
-              options={tabelaOpcoes}
-              selectedIds={selTabelas}
-              onToggle={(id) => toggle(selTabelas, setSelTabelas, id)}
-              onClear={() => setSelTabelas([])}
-            />
+            <label className="flex min-w-[180px] flex-1 flex-col gap-1">
+              <span className="text-xs font-semibold text-slate-700">Orçamento</span>
+              <input
+                type="search"
+                value={filterPesquisaSistema}
+                onChange={(e) => setFilterPesquisaSistema(e.target.value)}
+                placeholder="Buscar orçamento…"
+                className="rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 text-sm text-slate-900 outline-none focus:border-sl-navy/40 focus:ring-2 focus:ring-sl-navy/15"
+              />
+            </label>
+            <label className="flex min-w-[140px] flex-1 flex-col gap-1">
+              <span className="text-xs font-semibold text-slate-700">Série CT-e</span>
+              <input
+                type="search"
+                value={filterCteSerie}
+                onChange={(e) => setFilterCteSerie(e.target.value)}
+                placeholder="Contém…"
+                className="rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 text-sm text-slate-900 outline-none focus:border-sl-navy/40 focus:ring-2 focus:ring-sl-navy/15"
+              />
+            </label>
           </div>
         </section>
 
@@ -672,7 +635,7 @@ export function BiFunilVendasDashboard() {
                 </button>
               </div>
               <div className="max-h-[520px] overflow-auto">
-                <table className="w-full min-w-[760px] text-left text-sm">
+                <table className="w-full min-w-[960px] text-left text-sm">
                   <thead>
                     <tr className="bg-slate-100/95 text-xs font-bold uppercase tracking-wide text-slate-600">
                       {FUNIL_TABELA_COLUNAS.map((c) => (
@@ -713,6 +676,8 @@ export function BiFunilVendasDashboard() {
                               String(r[c.key] ?? '—')
                             ) : c.key === 'valor_cotacao' ? (
                               formatBrl(toNum(r[c.key]))
+                            ) : c.key === 'numero_cte' ? (
+                              String(r[c.key] ?? '—')
                             ) : c.key === 'data_cotacao' ? (
                               (() => {
                                 const raw = r[c.key];

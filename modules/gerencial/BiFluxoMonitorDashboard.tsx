@@ -21,6 +21,7 @@ import {
 } from 'recharts';
 import { Activity, AlertCircle, ChevronDown, HelpCircle, Loader2, Network, TrendingUp, X } from 'lucide-react';
 import { BI_FLUXO_CONFIG } from '@/modules/bi/fluxo/config';
+import { biGetJson, biGetJsonSafe } from '@/modules/gerencial/biApiClientCache';
 
 const F = BI_FLUXO_CONFIG.filters;
 
@@ -312,16 +313,14 @@ export function BiFluxoMonitorDashboard() {
     facetFetchRef.current = ac;
     const qs = buildQuery(from, to, [], [], []);
     try {
-      const res = await fetch(`/api/bi/fluxo/facet-options?${qs}`, {
-        credentials: 'include',
-        cache: 'no-store',
-        signal: ac.signal,
-      });
-      if (!res.ok) return;
-      const d = await res.json();
-      setFacetA(Array.isArray(d.agencias) ? d.agencias : []);
-      setFacetT(Array.isArray(d.tiposFluxo) ? d.tiposFluxo : []);
-      setFacetP(Array.isArray(d.perfis) ? d.perfis : []);
+      const d = await biGetJson<{
+        agencias?: unknown[];
+        tiposFluxo?: unknown[];
+        perfis?: unknown[];
+      }>(`/api/bi/fluxo/facet-options?${qs}`, { signal: ac.signal });
+      setFacetA(Array.isArray(d.agencias) ? (d.agencias as string[]) : []);
+      setFacetT(Array.isArray(d.tiposFluxo) ? (d.tiposFluxo as string[]) : []);
+      setFacetP(Array.isArray(d.perfis) ? (d.perfis as string[]) : []);
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') return;
       if (e instanceof Error && e.name === 'AbortError') return;
@@ -334,27 +333,56 @@ export function BiFluxoMonitorDashboard() {
     try {
       const qs = `${qBase}&limit=60&offset=${offset}`;
       const [kRes, bRes, sRes, cRes, eRes, tRes] = await Promise.all([
-        fetch(`/api/bi/fluxo/kpis?${qBase}`, { credentials: 'include' }),
-        fetch(`/api/bi/fluxo/agencia-balance?${qBase}`, { credentials: 'include' }),
-        fetch(`/api/bi/fluxo/status-resumo?${qBase}`, { credentials: 'include' }),
-        fetch(`/api/bi/fluxo/cluster-resumo?${qBase}`, { credentials: 'include' }),
-        fetch(`/api/bi/fluxo/evolucao?${qBase}`, { credentials: 'include' }),
-        fetch(`/api/bi/fluxo/table?${qs}`, { credentials: 'include' }),
+        biGetJsonSafe<{ row?: KpiRow }>(`/api/bi/fluxo/kpis?${qBase}`),
+        biGetJsonSafe<{ rows?: unknown[] }>(`/api/bi/fluxo/agencia-balance?${qBase}`),
+        biGetJsonSafe<{ rows?: unknown[] }>(`/api/bi/fluxo/status-resumo?${qBase}`),
+        biGetJsonSafe<{ rows?: unknown[] }>(`/api/bi/fluxo/cluster-resumo?${qBase}`),
+        biGetJsonSafe<{ rows?: unknown[] }>(`/api/bi/fluxo/evolucao?${qBase}`),
+        biGetJsonSafe<{ rows?: unknown[]; meta?: unknown }>(`/api/bi/fluxo/table?${qs}`),
       ]);
-      if (!kRes.ok) throw new Error((await kRes.json().catch(() => ({})))?.error || `KPIs HTTP ${kRes.status}`);
-      setKpi((await kRes.json()).row as KpiRow);
-      if (bRes.ok) setBalance((await bRes.json()).rows ?? []);
+      if (!kRes.ok) throw new Error(kRes.error);
+      setKpi((kRes.data.row as KpiRow) ?? null);
+      if (bRes.ok)
+        setBalance(
+          (bRes.data.rows ?? []) as Array<{
+            agencia: string;
+            qtd_emissoes: number;
+            qtd_recebimentos: number;
+            volume_total: number;
+          }>,
+        );
       else setBalance([]);
-      if (sRes.ok) setStatusRows((await sRes.json()).rows ?? []);
+      if (sRes.ok)
+        setStatusRows(
+          (sRes.data.rows ?? []) as Array<{ status_fluxo: string; qtd_agencias: number; volume_total: number }>,
+        );
       else setStatusRows([]);
-      if (cRes.ok) setClusterRows((await cRes.json()).rows ?? []);
+      if (cRes.ok)
+        setClusterRows(
+          (cRes.data.rows ?? []) as Array<{
+            cluster_perfil: string;
+            qtd_agencias: number;
+            volume_total: number;
+            score_hub_medio: number;
+          }>,
+        );
       else setClusterRows([]);
-      if (eRes.ok) setEvolucao((await eRes.json()).rows ?? []);
+      if (eRes.ok)
+        setEvolucao(
+          (eRes.data.rows ?? []) as Array<{
+            mes_referencia: string;
+            volume_total: number;
+            qtd_emissoes: number;
+            qtd_recebimentos: number;
+            ticket_medio_global: number;
+            score_hub_medio: number;
+          }>,
+        );
       else setEvolucao([]);
       if (tRes.ok) {
-        const tb = await tRes.json();
-        setTableRows(Array.isArray(tb.rows) ? tb.rows : []);
-        setTableMeta(tb.meta || null);
+        const tb = tRes.data;
+        setTableRows(Array.isArray(tb.rows) ? (tb.rows as Record<string, unknown>[]) : []);
+        setTableMeta((tb.meta as { limit: number; offset: number; total: number } | null) ?? null);
       } else {
         setTableRows([]);
         setTableMeta(null);
@@ -382,10 +410,10 @@ export function BiFluxoMonitorDashboard() {
     setDrillRows([]);
     setDrillLoading(true);
     try {
-      const res = await fetch(`/api/bi/fluxo/drill?${qBase}&agencia=${encodeURIComponent(agencia)}`, { credentials: 'include' });
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(String(j?.error || res.statusText));
-      setDrillRows(Array.isArray(j.rows) ? j.rows : []);
+      const j = await biGetJson<{ rows?: unknown[] }>(
+        `/api/bi/fluxo/drill?${qBase}&agencia=${encodeURIComponent(agencia)}`,
+      );
+      setDrillRows(Array.isArray(j.rows) ? (j.rows as Record<string, unknown>[]) : []);
     } catch {
       setDrillRows([]);
     } finally {
