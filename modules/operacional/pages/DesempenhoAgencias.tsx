@@ -202,6 +202,45 @@ export function DesempenhoAgenciasPage() {
     });
   }, [dataset?.table, sortKey, sortDir]);
 
+  const tableTotals = useMemo(() => {
+    const rows = dataset?.table ?? [];
+    return rows.reduce(
+      (acc, row) => {
+        acc.total_ctes_origem += row.total_ctes_origem;
+        acc.total_ctes_destino += row.total_ctes_destino;
+        acc.total_volumes_origem += row.total_volumes_origem;
+        acc.total_volumes_destino += row.total_volumes_destino;
+        acc.peso_total_origem += row.peso_total_origem;
+        acc.faturamento_origem += row.faturamento_origem;
+        acc.qtd_coletas += row.qtd_coletas;
+        acc.qtd_entregas += row.qtd_entregas;
+        acc.qtd_manifestos += row.qtd_manifestos;
+        acc.saldo_ctes += row.saldo_ctes;
+        acc.saldo_volumes += row.saldo_volumes;
+        return acc;
+      },
+      {
+        total_ctes_origem: 0,
+        total_ctes_destino: 0,
+        total_volumes_origem: 0,
+        total_volumes_destino: 0,
+        peso_total_origem: 0,
+        faturamento_origem: 0,
+        qtd_coletas: 0,
+        qtd_entregas: 0,
+        qtd_manifestos: 0,
+        saldo_ctes: 0,
+        saldo_volumes: 0,
+      },
+    );
+  }, [dataset?.table]);
+
+  const avgVolumesPerCte =
+    tableTotals.total_ctes_origem > 0 ? tableTotals.total_volumes_origem / tableTotals.total_ctes_origem : 0;
+  const avgPesoPerCte = tableTotals.total_ctes_origem > 0 ? tableTotals.peso_total_origem / tableTotals.total_ctes_origem : 0;
+  const avgTicketPerCte =
+    tableTotals.total_ctes_origem > 0 ? tableTotals.faturamento_origem / tableTotals.total_ctes_origem : 0;
+
   const toggleSort = (k: SortKey) => {
     if (sortKey === k) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
     else {
@@ -555,6 +594,23 @@ export function DesempenhoAgenciasPage() {
                     <td className="px-3 py-2 tabular-nums">{formatBrl(row.ticket_por_cte)}</td>
                   </tr>
                 ))}
+                <tr className="sticky bottom-0 border-t-2 border-slate-300 bg-slate-100/95 font-semibold text-slate-900">
+                  <td className="whitespace-nowrap px-3 py-2">Total geral</td>
+                  <td className="px-3 py-2 tabular-nums">{formatInt(tableTotals.total_ctes_origem)}</td>
+                  <td className="px-3 py-2 tabular-nums">{formatInt(tableTotals.total_ctes_destino)}</td>
+                  <td className="px-3 py-2 tabular-nums">{formatInt(tableTotals.total_volumes_origem)}</td>
+                  <td className="px-3 py-2 tabular-nums">{formatInt(tableTotals.total_volumes_destino)}</td>
+                  <td className="px-3 py-2 tabular-nums">{formatKg(tableTotals.peso_total_origem)}</td>
+                  <td className="px-3 py-2 tabular-nums">{formatBrl(tableTotals.faturamento_origem)}</td>
+                  <td className="px-3 py-2 tabular-nums">{formatInt(tableTotals.qtd_coletas)}</td>
+                  <td className="px-3 py-2 tabular-nums">{formatInt(tableTotals.qtd_entregas)}</td>
+                  <td className="px-3 py-2 tabular-nums">{formatInt(tableTotals.qtd_manifestos)}</td>
+                  <td className="px-3 py-2 tabular-nums">{formatInt(tableTotals.saldo_ctes)}</td>
+                  <td className="px-3 py-2 tabular-nums">{formatInt(tableTotals.saldo_volumes)}</td>
+                  <td className="px-3 py-2 tabular-nums">{avgVolumesPerCte.toFixed(2)}</td>
+                  <td className="px-3 py-2 tabular-nums">{avgPesoPerCte.toFixed(1)}</td>
+                  <td className="px-3 py-2 tabular-nums">{formatBrl(avgTicketPerCte)}</td>
+                </tr>
               </tbody>
             </table>
           </div>

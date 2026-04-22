@@ -55,9 +55,9 @@ export const PERMISSION_GROUP_ORDER: PermissionGroup[] = [
 ];
 
 export const PERMISSION_GROUP_LABELS: Record<PermissionGroup, string> = {
-  MODULO: "Módulos e áreas",
-  ABA: "Abas e telas",
-  ACAO: "Ações",
+  MODULO: "Camadas (portal/módulos/setores)",
+  ABA: "Telas e subtelas",
+  ACAO: "Funções e ações",
   ESCOPO: "Escopos de dados",
   ADMIN: "Administração e integrações",
   LEGADO: "Legado / compatibilidade",
@@ -476,27 +476,6 @@ const LEGACY_ALIAS: Record<string, string[]> = {
   "tab.crm.chat.view": ["VIEW_CRM_CHAT"],
   "tab.crm.funil.view": ["VIEW_CRM_FUNIL"],
   "tab.crm.dashboard.view": ["VIEW_CRM_DASHBOARD"],
-  /**
-   * Gerencial: `module.gerencial.view` continua guarda-chuva para todas as abas BI e setores;
-   * perfis antigos permanecem válidos. Para restringir por tela, use as chaves `tab.gerencial.*`.
-   */
-  "module.gerencial.view": [
-    "tab.gerencial.setor.comercial.view",
-    "tab.gerencial.setor.financeiro.view",
-    "tab.gerencial.setor.operacao.view",
-    "tab.gerencial.comissoes.view",
-    "tab.gerencial.funil.view",
-    "tab.gerencial.sprint.view",
-    "tab.gerencial.metas.view",
-    "tab.gerencial.carteira_renovacao.view",
-    "tab.gerencial.fluxo.view",
-    "tab.gerencial.taxas.view",
-    "tab.gerencial.360.cockpit.view",
-    "tab.gerencial.360.executiva.view",
-    "tab.gerencial.360.risco.view",
-    "tab.gerencial.360.gap.view",
-    "tab.gerencial.360.radar.view",
-  ],
   "tab.operacional.pendencias.view": ["VIEW_PENDENCIAS"],
   "tab.operacional.criticos.view": ["VIEW_CRITICOS"],
   "tab.operacional.em_busca.view": ["VIEW_EM_BUSCA"],

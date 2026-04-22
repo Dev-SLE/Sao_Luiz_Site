@@ -7,6 +7,18 @@ interface Props {
   onClose?: () => void;
 }
 
+function validatePasswordClient(password: string, username: string): string | null {
+  const p = String(password || '');
+  if (p.length < 12) return 'A senha deve ter no mínimo 12 caracteres.';
+  if (!/[a-z]/.test(p)) return 'A senha precisa ter ao menos 1 letra minúscula.';
+  if (!/[A-Z]/.test(p)) return 'A senha precisa ter ao menos 1 letra maiúscula.';
+  if (!/\d/.test(p)) return 'A senha precisa ter ao menos 1 número.';
+  if (!/[^A-Za-z0-9]/.test(p)) return 'A senha precisa ter ao menos 1 caractere especial.';
+  if (/\s/.test(p)) return 'A senha não pode conter espaços.';
+  if (username && p.toLowerCase().includes(username.toLowerCase())) return 'A senha não pode conter o usuário.';
+  return null;
+}
+
 const ChangePassword: React.FC<Props> = ({ onClose }) => {
   const { user } = useAuth();
   const [currentPass, setCurrentPass] = useState('');
@@ -26,8 +38,9 @@ const ChangePassword: React.FC<Props> = ({ onClose }) => {
       return;
     }
 
-    if (newPass.length < 4) {
-      setError('A senha deve ter pelo menos 4 caracteres.');
+    const policyErr = validatePasswordClient(newPass, user?.username || '');
+    if (policyErr) {
+      setError(policyErr);
       return;
     }
 
@@ -124,6 +137,9 @@ const ChangePassword: React.FC<Props> = ({ onClose }) => {
               className="w-full rounded-lg border border-slate-200 bg-white p-2.5 text-slate-900 outline-none placeholder:text-slate-400 focus:border-sl-navy focus:ring-2 focus:ring-sl-navy/20"
               placeholder="Digite a nova senha"
             />
+            <p className="mt-1 text-xs text-slate-500">
+              Mínimo 12 caracteres, com maiúscula, minúscula, número e símbolo.
+            </p>
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">Confirmar nova senha</label>

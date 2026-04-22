@@ -114,7 +114,7 @@ export function GerencialHubContent({ pathname }: { pathname: string }) {
   }, [permissions]);
 
   const sectorTabs = useMemo(() => {
-    return GERENCIAL_SECTORS.filter((s) => has(s.permission) || has('module.gerencial.view')).map((s) => ({
+    return GERENCIAL_SECTORS.filter((s) => has(s.permission)).map((s) => ({
       href: gerencialHubPath(s.slug),
       label: s.label,
       active: parsed.sector === s.slug,
@@ -122,7 +122,7 @@ export function GerencialHubContent({ pathname }: { pathname: string }) {
   }, [has, parsed.sector]);
 
   const allowedCommercialPanels = useMemo(() => {
-    return GERENCIAL_COMERCIAL_PANELS.filter((p) => has(p.permission) || has('module.gerencial.view'));
+    return GERENCIAL_COMERCIAL_PANELS.filter((p) => has(p.permission));
   }, [has]);
 
   const commercialSubTabs = useMemo(() => {
@@ -138,7 +138,7 @@ export function GerencialHubContent({ pathname }: { pathname: string }) {
   }, [allowedCommercialPanels, parsed.holerite, parsed.panel, parsed.sector]);
 
   const allowedOperacaoPanels = useMemo(() => {
-    return GERENCIAL_OPERACAO_PANELS.filter((p) => has(p.permission) || has('module.gerencial.view'));
+    return GERENCIAL_OPERACAO_PANELS.filter((p) => has(p.permission));
   }, [has]);
 
   const operacaoSubTabs = useMemo(() => {
@@ -168,7 +168,7 @@ export function GerencialHubContent({ pathname }: { pathname: string }) {
     const parts = effectivePath.replace(/\/+$/, '').split('/').filter(Boolean);
     if (parts[0] !== 'app' || parts[1] !== 'gerencial') return;
     if (parts.length > 2) return;
-    const firstSector = GERENCIAL_SECTORS.find((s) => has(s.permission) || has('module.gerencial.view'))?.slug;
+    const firstSector = GERENCIAL_SECTORS.find((s) => has(s.permission))?.slug;
     if (firstSector) router.replace(gerencialHubPath(firstSector));
   }, [effectivePath, has, permissions, router]);
 
@@ -195,13 +195,13 @@ export function GerencialHubContent({ pathname }: { pathname: string }) {
   }, [allowedOperacaoPanels, effectivePath, permissions, router]);
 
   const canAnySector = sectorTabs.length > 0;
-  const canCommercial = has(GERENCIAL_BI_TAB.setorComercial) || has('module.gerencial.view');
+  const canCommercial = has(GERENCIAL_BI_TAB.setorComercial);
 
   const sectorDenied =
     permissions !== null &&
     ((parsed.sector === 'comercial' && !canCommercial) ||
-      (parsed.sector === 'financeiro' && !has(GERENCIAL_BI_TAB.setorFinanceiro) && !has('module.gerencial.view')) ||
-      (parsed.sector === 'operacao' && !has(GERENCIAL_BI_TAB.setorOperacao) && !has('module.gerencial.view')));
+      (parsed.sector === 'financeiro' && !has(GERENCIAL_BI_TAB.setorFinanceiro)) ||
+      (parsed.sector === 'operacao' && !has(GERENCIAL_BI_TAB.setorOperacao)));
 
   const panelKey = parsed.panel ? commercialTabKeyFromPanelSlug(parsed.panel) : null;
   const commercialPanelDenied =
@@ -209,22 +209,19 @@ export function GerencialHubContent({ pathname }: { pathname: string }) {
     permissions !== null &&
     !!parsed.panel &&
     !parsed.holerite &&
-    (!panelKey || !has(GERENCIAL_BI_TAB[panelKey])) &&
-    !has('module.gerencial.view');
+    (!panelKey || !has(GERENCIAL_BI_TAB[panelKey]));
 
   const operacaoPanelKey = parsed.panel ? operacaoTabKeyFromPanelSlug(parsed.panel) : null;
   const operacaoPanelDenied =
     parsed.sector === 'operacao' &&
     permissions !== null &&
     !!parsed.panel &&
-    (!operacaoPanelKey || !has(GERENCIAL_BI_TAB[operacaoPanelKey])) &&
-    !has('module.gerencial.view');
+    (!operacaoPanelKey || !has(GERENCIAL_BI_TAB[operacaoPanelKey]));
 
   const holeriteDenied =
     parsed.holerite &&
     permissions !== null &&
     !has('module.gerencial.comissoes_holerite') &&
-    !has('module.gerencial.view') &&
     !(has(GERENCIAL_BI_TAB.setorComercial) && has(GERENCIAL_BI_TAB.comissoes));
 
   if (permissions === null) {

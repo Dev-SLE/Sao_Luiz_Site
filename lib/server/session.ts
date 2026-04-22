@@ -9,6 +9,10 @@ type SessionPayload = {
   dest?: string | null;
   /** Vendedora restrita no BI (mesmo valor de `pendencias.users.linked_bi_vendedora`). */
   biVendedora?: string | null;
+  /** Versão para invalidação de sessão em mudanças de senha. */
+  sessionVersion?: number;
+  /** Timestamp ISO da última troca de senha na emissão do cookie. */
+  passwordChangedAt?: string | null;
   iat: number;
 };
 

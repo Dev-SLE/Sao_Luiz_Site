@@ -10,6 +10,8 @@ export type SessionContext = {
   dest?: string | null;
   /** Escopo BI: só dados desta vendedora quando preenchido no cadastro do usuário. */
   biVendedora?: string | null;
+  mustChangePassword?: boolean;
+  sessionVersion?: number;
   permissions: string[];
 };
 
@@ -37,12 +39,18 @@ export async function getSessionContext(req: Request): Promise<SessionContext | 
   if (!session) return null;
   const pool = getPool();
   await pool.query(`ALTER TABLE pendencias.users ADD COLUMN IF NOT EXISTS linked_bi_vendedora text`);
+  await pool.query(`ALTER TABLE pendencias.users ADD COLUMN IF NOT EXISTS must_change_password boolean DEFAULT true`);
+  await pool.query(`ALTER TABLE pendencias.users ADD COLUMN IF NOT EXISTS session_version integer DEFAULT 1`);
+  await pool.query(`ALTER TABLE pendencias.users ADD COLUMN IF NOT EXISTS password_changed_at timestamptz`);
   const p = await pool.query(
     `
       SELECT p.permissions,
              u.linked_origin_unit,
              u.linked_dest_unit,
-             u.linked_bi_vendedora
+             u.linked_bi_vendedora,
+             u.must_change_password,
+             u.session_version,
+             u.password_changed_at
       FROM pendencias.users u
       LEFT JOIN pendencias.profiles p ON LOWER(p.name) = LOWER(u.role)
       WHERE LOWER(u.username) = LOWER($1)
@@ -51,8 +59,22 @@ export async function getSessionContext(req: Request): Promise<SessionContext | 
     [session.username]
   );
   const row = p.rows?.[0] as
-    | { permissions?: unknown; linked_origin_unit?: unknown; linked_dest_unit?: unknown; linked_bi_vendedora?: unknown }
+    | {
+        permissions?: unknown;
+        linked_origin_unit?: unknown;
+        linked_dest_unit?: unknown;
+        linked_bi_vendedora?: unknown;
+        must_change_password?: unknown;
+        session_version?: unknown;
+        password_changed_at?: unknown;
+      }
     | undefined;
+  const dbSessionVersion = Number(row?.session_version ?? 1) || 1;
+  const tokenSessionVersion = Number(session.sessionVersion ?? 1) || 1;
+  if (dbSessionVersion !== tokenSessionVersion) return null;
+  const dbPwdAt = row?.password_changed_at ? new Date(String(row.password_changed_at)).toISOString() : null;
+  const tokenPwdAt = session.passwordChangedAt ? String(session.passwordChangedAt) : null;
+  if ((dbPwdAt || null) !== (tokenPwdAt || null)) return null;
   return {
     username: String(session.username),
     role: String(session.role || ""),
@@ -64,6 +86,8 @@ export async function getSessionContext(req: Request): Promise<SessionContext | 
         : session.biVendedora != null && String(session.biVendedora).trim() !== ""
           ? String(session.biVendedora).trim()
           : null,
+    mustChangePassword: Boolean(row?.must_change_password),
+    sessionVersion: dbSessionVersion,
     permissions: parsePermissions(row?.permissions),
   };
 }

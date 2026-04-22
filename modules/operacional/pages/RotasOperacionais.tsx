@@ -309,6 +309,21 @@ export function RotasOperacionaisPage() {
 
   const childMap = useMemo(() => buildChildMap(dataset?.hierarchy ?? []), [dataset?.hierarchy]);
   const visibleRows = useMemo(() => flattenVisible(childMap, expanded), [childMap, expanded]);
+  const hierarchyTotals = useMemo(() => {
+    const level1 = (dataset?.hierarchy ?? []).filter((r) => r.nivel === 1);
+    return level1.reduce(
+      (acc, row) => {
+        acc.faturamento_total += row.faturamento_total;
+        acc.peso_total += row.peso_total;
+        acc.total_ctes += row.total_ctes;
+        acc.volumes_total += row.volumes_total;
+        return acc;
+      },
+      { faturamento_total: 0, peso_total: 0, total_ctes: 0, volumes_total: 0 },
+    );
+  }, [dataset?.hierarchy]);
+  const hierarchyTicketMedio =
+    hierarchyTotals.total_ctes > 0 ? hierarchyTotals.faturamento_total / hierarchyTotals.total_ctes : 0;
 
   const kpis = dataset?.kpis;
   const mapaTotal = dataset?.mapaCidades?.length ?? 0;
@@ -684,6 +699,16 @@ export function RotasOperacionaisPage() {
                     </tr>
                   );
                 })}
+                <tr className="sticky bottom-0 border-t-2 border-slate-300 bg-slate-100/95 font-semibold text-slate-900">
+                  <td className="px-3 py-2">Total geral</td>
+                  <td className="px-3 py-2 tabular-nums">{formatBrl(hierarchyTotals.faturamento_total)}</td>
+                  <td className="px-3 py-2 tabular-nums">{formatKg(hierarchyTotals.peso_total)}</td>
+                  <td className="px-3 py-2 tabular-nums">{formatBrl(hierarchyTicketMedio)}</td>
+                  <td className="px-3 py-2 tabular-nums">{formatInt(hierarchyTotals.total_ctes)}</td>
+                  <td className="px-3 py-2 tabular-nums">{formatInt(hierarchyTotals.volumes_total)}</td>
+                  <td className="px-3 py-2 text-xs text-slate-600">—</td>
+                  <td className="px-3 py-2"> </td>
+                </tr>
               </tbody>
             </table>
           </div>

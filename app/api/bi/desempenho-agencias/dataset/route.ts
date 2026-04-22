@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireOperacionalDesempenhoAgenciasRead } from "@/lib/server/operacionalBiAuth";
+import { applyGerencialBiScopeToUrl } from "@/lib/server/gerencialBiScope";
 import { getCommercialPool } from "@/lib/server/db";
 import { selectDesempenhoAgenciasDataset } from "@/lib/server/biDesempenhoAgenciasRead";
 
@@ -11,6 +12,7 @@ export async function GET(req: Request) {
   try {
     const pool = getCommercialPool();
     const url = new URL(req.url);
+    applyGerencialBiScopeToUrl(url, guard.session, "desempenhoAgencias");
     const data = await selectDesempenhoAgenciasDataset(pool, url);
     return NextResponse.json(data, {
       headers: { "Cache-Control": "no-store, max-age=0" },

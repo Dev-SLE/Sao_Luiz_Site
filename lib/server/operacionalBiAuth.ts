@@ -6,12 +6,8 @@ import { GERENCIAL_BI_TAB } from "@/modules/gerencial/permissions";
 export function canAccessOperacionalDesempenhoAgencias(session: SessionContext | null): boolean {
   if (!session) return false;
   return (
-    can(session, "module.gerencial.view") ||
-    can(session, GERENCIAL_BI_TAB.setorOperacao) ||
-    can(session, GERENCIAL_BI_TAB.fluxoMonitor) ||
-    can(session, GERENCIAL_BI_TAB.taxasGerencial) ||
-    can(session, "module.operacional.view") ||
-    can(session, "VIEW_DASHBOARD")
+    can(session, GERENCIAL_BI_TAB.setorOperacao) &&
+    (can(session, GERENCIAL_BI_TAB.fluxoMonitor) || can(session, GERENCIAL_BI_TAB.taxasGerencial))
   );
 }
 
@@ -21,6 +17,9 @@ export async function requireOperacionalDesempenhoAgenciasRead(
   const session = await getSessionContext(req);
   if (!session) {
     return { session: null, denied: NextResponse.json({ error: "Não autorizado" }, { status: 401 }) };
+  }
+  if (session.mustChangePassword) {
+    return { session, denied: NextResponse.json({ error: "Troca de senha obrigatória antes de continuar." }, { status: 428 }) };
   }
   if (!canAccessOperacionalDesempenhoAgencias(session)) {
     return { session, denied: NextResponse.json({ error: "Sem permissão" }, { status: 403 }) };

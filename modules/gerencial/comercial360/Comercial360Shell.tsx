@@ -365,13 +365,18 @@ export function Comercial360Shell({
     setFilters((prev) => mergeFiltersFromSearchParams(new URLSearchParams(searchParams.toString()), prev));
   }, [searchParams]);
 
-  const queryString = useMemo(() => buildComercial360QueryString(filters), [filters]);
+  const queryString = useMemo(() => {
+    const qs = new URLSearchParams(buildComercial360QueryString(filters));
+    qs.set("tab", variant);
+    return qs.toString();
+  }, [filters, variant]);
 
   useEffect(() => {
     let cancelled = false;
     const qsPeriod = new URLSearchParams();
     qsPeriod.set("from", filters.from);
     qsPeriod.set("to", filters.to);
+    qsPeriod.set("tab", variant);
     (async () => {
       try {
         const out = await biGetJsonSafe<Comercial360FacetOptions>(
@@ -395,12 +400,13 @@ export function Comercial360Shell({
     return () => {
       cancelled = true;
     };
-  }, [filters.from, filters.to]);
+  }, [filters.from, filters.to, variant]);
 
   const pushUrl = useCallback(() => {
-    const qs = buildComercial360QueryString(filters);
-    router.replace(`${pathname}?${qs}`, { scroll: false });
-  }, [filters, pathname, router]);
+    const qs = new URLSearchParams(buildComercial360QueryString(filters));
+    qs.set("tab", variant);
+    router.replace(`${pathname}?${qs.toString()}`, { scroll: false });
+  }, [filters, pathname, router, variant]);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);

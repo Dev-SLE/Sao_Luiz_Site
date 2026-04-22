@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireOperacionalDesempenhoAgenciasRead } from "@/lib/server/operacionalBiAuth";
+import { applyGerencialBiScopeToUrl } from "@/lib/server/gerencialBiScope";
 import { getCommercialPool } from "@/lib/server/db";
 import {
   selectDesempenhoAgenciasDataset,
@@ -18,6 +19,7 @@ export async function GET(req: Request) {
   if (guard.denied) return guard.denied;
   try {
     const url = new URL(req.url);
+    applyGerencialBiScopeToUrl(url, guard.session, "desempenhoAgencias");
     const pool = getCommercialPool();
     const [{ table }, { rows: movimentos, truncated }] = await Promise.all([
       selectDesempenhoAgenciasDataset(pool, url),

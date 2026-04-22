@@ -68,6 +68,7 @@ export interface UserData {
   linkedDestUnit: string;
   /** Nome da vendedora no BI; quando preenchido, o usuário só vê dados dessa vendedora nos painéis aplicáveis. */
   linkedBiVendedora?: string;
+  mustChangePassword?: boolean;
   lastLoginAt?: string;
 }
 

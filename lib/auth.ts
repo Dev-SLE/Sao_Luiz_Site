@@ -13,6 +13,8 @@ export interface AuthUser {
   role: string;
   origin?: string;
   dest?: string;
+  biVendedora?: string;
+  mustChangePassword?: boolean;
 }
 
 export interface AuthResponse {

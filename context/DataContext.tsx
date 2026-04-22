@@ -250,7 +250,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const usersData = await authClient.getUsers().catch(() => []);
       const normalizedUsers = (usersData || []).map((row: any) => ({
         username: row.username || '',
-        password: row.password_hash || '',
+        password: '',
         role: row.role || '',
         linkedOriginUnit: row.linked_origin_unit || '',
         linkedDestUnit: row.linked_dest_unit || '',

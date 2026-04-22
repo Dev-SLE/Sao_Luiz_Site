@@ -126,32 +126,32 @@ function parseKpisRow(o: Record<string, unknown>): RotasOperacionaisKpis {
   };
 }
 
-export async function selectRotasOperacionaisFacetOptions(pool: Pool): Promise<RotasOperacionaisFacets> {
+export async function selectRotasOperacionaisFacetOptions(pool: Pool, url: URL): Promise<RotasOperacionaisFacets> {
+  const p = parseRotasScopedParams(url);
+  const values: unknown[] = [];
+  pushRotasScopeValues(values, p);
   const [ag, cd, ro] = await Promise.all([
     pool.query<{ a: string }>(`
-      SELECT DISTINCT trim(COALESCE(n.coleta, '')) AS a
-      FROM tb_nf_saidas_consolidada n
-      WHERE n.status_sistema = 'AUTORIZADA'::text
-        AND n.data_emissao IS NOT NULL
-        AND trim(COALESCE(n.coleta, '')) <> ''
+      WITH ${CTE_F_ROTAS}
+      SELECT DISTINCT trim(COALESCE(f.agencia_origem, '')) AS a
+      FROM f
+      WHERE trim(COALESCE(f.agencia_origem, '')) <> ''
       ORDER BY 1
-    `),
+    `, values),
     pool.query<{ c: string }>(`
-      SELECT DISTINCT trim(COALESCE(n.destino, '')) AS c
-      FROM tb_nf_saidas_consolidada n
-      WHERE n.status_sistema = 'AUTORIZADA'::text
-        AND n.data_emissao IS NOT NULL
-        AND trim(COALESCE(n.destino, '')) <> ''
+      WITH ${CTE_F_ROTAS}
+      SELECT DISTINCT trim(COALESCE(f.cidade_destino, '')) AS c
+      FROM f
+      WHERE trim(COALESCE(f.cidade_destino, '')) <> ''
       ORDER BY 1
-    `),
+    `, values),
     pool.query<{ r: string }>(`
-      SELECT DISTINCT trim(COALESCE(n.rota, '')) AS r
-      FROM tb_nf_saidas_consolidada n
-      WHERE n.status_sistema = 'AUTORIZADA'::text
-        AND n.data_emissao IS NOT NULL
-        AND trim(COALESCE(n.rota, '')) <> ''
+      WITH ${CTE_F_ROTAS}
+      SELECT DISTINCT trim(COALESCE(f.rota, '')) AS r
+      FROM f
+      WHERE trim(COALESCE(f.rota, '')) <> ''
       ORDER BY 1
-    `),
+    `, values),
   ]);
   return {
     agencias: ag.rows.map((x) => x.a).filter(Boolean),

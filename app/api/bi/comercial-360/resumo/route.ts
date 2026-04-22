@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireComercial360Read } from "@/lib/server/gerencialBiAuth";
+import { requireComercial360ReadFromUrl } from "@/lib/server/gerencialBiAuth";
 import { getCommercialPool } from "@/lib/server/db";
 import {
   select360ResumoCategoria,
@@ -13,10 +13,10 @@ export const runtime = "nodejs";
 const TIPOS = new Set(["contrato", "documento", "categoria", "status"]);
 
 export async function GET(req: Request) {
-  const guard = await requireComercial360Read(req);
+  const url = new URL(req.url);
+  const guard = await requireComercial360ReadFromUrl(req, url);
   if (guard.denied) return guard.denied;
   try {
-    const url = new URL(req.url);
     const tipo = String(url.searchParams.get("tipo") || "").toLowerCase();
     if (!TIPOS.has(tipo)) {
       return NextResponse.json(

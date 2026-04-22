@@ -5,7 +5,7 @@ import { UserData } from '../types';
 
 interface AuthContextType {
   user: UserData | null;
-  login: (username: string, password: string) => Promise<{ defaultPath: string }>;
+  login: (username: string, password: string) => Promise<{ defaultPath: string; mustChangePassword: boolean }>;
   logout: () => Promise<void>;
   loading: boolean;
   authMessage: string;
@@ -31,6 +31,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             role: session.user.role,
             linkedOriginUnit: session.user.origin || '',
             linkedDestUnit: session.user.dest || '',
+            linkedBiVendedora: session.user.biVendedora || '',
+            mustChangePassword: Boolean(session.user.mustChangePassword),
           });
         } else {
           setUser(null);
@@ -55,11 +57,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           role: authResponse.user.role,
           linkedOriginUnit: authResponse.user.origin || '',
           linkedDestUnit: authResponse.user.dest || '',
+          linkedBiVendedora: authResponse.user.biVendedora || '',
+          mustChangePassword: Boolean(authResponse.user.mustChangePassword),
         };
 
         setUser(u);
         const defaultPath = getDefaultPostLoginPath(authResponse.permissions, u.role);
-        return { defaultPath };
+        return { defaultPath, mustChangePassword: Boolean(u.mustChangePassword) };
       } else {
         throw new Error('Usuário não encontrado');
       }

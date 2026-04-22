@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireComercial360Read } from "@/lib/server/gerencialBiAuth";
+import { requireComercial360ReadFromUrl } from "@/lib/server/gerencialBiAuth";
 import { getCommercialPool } from "@/lib/server/db";
 import { select360Oportunidades, select360OportunidadesOrdered } from "@/lib/server/bi360Read";
 import { BI_COMERCIAL_360_CONFIG } from "@/modules/bi/comercial360/config";
@@ -7,10 +7,10 @@ import { BI_COMERCIAL_360_CONFIG } from "@/modules/bi/comercial360/config";
 export const runtime = "nodejs";
 
 export async function GET(req: Request) {
-  const guard = await requireComercial360Read(req);
+  const url = new URL(req.url);
+  const guard = await requireComercial360ReadFromUrl(req, url);
   if (guard.denied) return guard.denied;
   try {
-    const url = new URL(req.url);
     const pool = getCommercialPool();
     const mode = (url.searchParams.get("mode") || "page").toLowerCase();
     if (mode === "top") {

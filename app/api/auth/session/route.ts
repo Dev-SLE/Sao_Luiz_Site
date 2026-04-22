@@ -17,6 +17,7 @@ export async function GET(req: Request) {
       origin: ctx.origin || "",
       dest: ctx.dest || "",
       biVendedora: ctx.biVendedora || "",
+      mustChangePassword: Boolean(ctx.mustChangePassword),
     },
     permissions: ctx.permissions,
   });

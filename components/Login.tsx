@@ -60,7 +60,11 @@ const Login: React.FC = () => {
     setError('');
     setLoading(true);
     try {
-      const { defaultPath } = await login(username, password);
+      const { defaultPath, mustChangePassword } = await login(username, password);
+      if (mustChangePassword) {
+        router.replace('/app/operacional/mudar-senha');
+        return;
+      }
       const next = safeInternalPath(searchParams.get('from')) || defaultPath;
       router.replace(next);
     } catch (err) {

@@ -13,7 +13,16 @@ import { BI_TABELAS_COMBINADAS_CONFIG } from "@/modules/bi/tabelasCombinadas/con
 import { BI_FLUXO_CONFIG } from "@/modules/bi/fluxo/config";
 import { BI_TAXAS_CONFIG } from "@/modules/bi/taxas/config";
 
-export type GerencialBiModule = "comissoes" | "funil" | "sprint" | "metas" | "carteira" | "fluxo" | "taxas";
+export type GerencialBiModule =
+  | "comissoes"
+  | "funil"
+  | "sprint"
+  | "metas"
+  | "carteira"
+  | "fluxo"
+  | "taxas"
+  | "desempenhoAgencias"
+  | "rotasOperacionais";
 
 export type GerencialBiScope = {
   /** `upper(trim(...))` da unidade para bater com `agencia_normalizada` em metas. */
@@ -75,5 +84,15 @@ export function applyGerencialBiScopeToUrl(url: URL, session: SessionContext | n
     const ak = BI_TAXAS_CONFIG.filters.agencia;
     url.searchParams.delete(ak);
     url.searchParams.append(ak, scope.agenciaNormalizada);
+  }
+
+  if (scope.agenciaNormalizada && module === "desempenhoAgencias") {
+    url.searchParams.delete("agencia");
+    url.searchParams.append("agencia", scope.agenciaNormalizada);
+  }
+
+  if (scope.agenciaNormalizada && module === "rotasOperacionais") {
+    url.searchParams.delete("agencia");
+    url.searchParams.append("agencia", scope.agenciaNormalizada);
   }
 }

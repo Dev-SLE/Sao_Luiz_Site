@@ -12,6 +12,21 @@ export async function requireApiPermissions(
   if (!session) {
     return { session: null, denied: NextResponse.json({ error: "Não autorizado" }, { status: 401 }) };
   }
+  const pathname = new URL(req.url).pathname;
+  const allowWithoutPasswordChange = new Set<string>([
+    "/api/changePassword",
+    "/api/auth/session",
+    "/api/logout",
+  ]);
+  if (session.mustChangePassword && !allowWithoutPasswordChange.has(pathname)) {
+    return {
+      session,
+      denied: NextResponse.json(
+        { error: "Troca de senha obrigatória antes de continuar." },
+        { status: 428 },
+      ),
+    };
+  }
   if (!permissions.length) return { session, denied: null };
   const ok = permissions.some((p) => can(session, p));
   if (!ok) {

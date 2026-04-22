@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireOperacionalDesempenhoAgenciasRead } from "@/lib/server/operacionalBiAuth";
+import { applyGerencialBiScopeToUrl } from "@/lib/server/gerencialBiScope";
 import { getCommercialPool } from "@/lib/server/db";
 import {
   selectRotasOperacionaisDataset,
@@ -18,6 +19,7 @@ export async function GET(req: Request) {
   if (guard.denied) return guard.denied;
   try {
     const url = new URL(req.url);
+    applyGerencialBiScopeToUrl(url, guard.session, "rotasOperacionais");
     const pool = getCommercialPool();
     const drillMode = url.searchParams.get("export_drill") === "1";
     const dag = (url.searchParams.get("drill_agencia") || "").trim();

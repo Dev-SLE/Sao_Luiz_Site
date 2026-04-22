@@ -102,27 +102,36 @@ const CTE_F = `
   )
 `;
 
-export async function selectDesempenhoAgenciasFacetOptions(pool: Pool): Promise<DesempenhoAgenciasFacets> {
+export async function selectDesempenhoAgenciasFacetOptions(pool: Pool, url: URL): Promise<DesempenhoAgenciasFacets> {
+  const p = parseScopedParams(url);
+  const values: unknown[] = [];
+  pushScopeValues(values, p);
   const [ag, ro, tf] = await Promise.all([
     pool.query<{ a: string }>(`
-      SELECT DISTINCT trim(x) AS a FROM (
-        SELECT trim(COALESCE(n.coleta, '')) AS x FROM tb_nf_saidas_consolidada n
-        WHERE n.status_sistema = 'AUTORIZADA'::text AND n.data_emissao IS NOT NULL AND trim(COALESCE(n.coleta, '')) <> ''
+      WITH ${CTE_F}
+      SELECT DISTINCT trim(x) AS a
+      FROM (
+        SELECT trim(COALESCE(f.agencia_origem, '')) AS x FROM f
         UNION
-        SELECT trim(COALESCE(n.entrega, '')) FROM tb_nf_saidas_consolidada n
-        WHERE n.status_sistema = 'AUTORIZADA'::text AND n.data_emissao IS NOT NULL AND trim(COALESCE(n.entrega, '')) <> ''
-      ) s WHERE trim(x) <> '' ORDER BY 1
-    `),
+        SELECT trim(COALESCE(f.agencia_destino, '')) AS x FROM f
+      ) s
+      WHERE trim(x) <> ''
+      ORDER BY 1
+    `, values),
     pool.query<{ r: string }>(`
-      SELECT DISTINCT trim(COALESCE(n.rota, '')) AS r FROM tb_nf_saidas_consolidada n
-      WHERE n.status_sistema = 'AUTORIZADA'::text AND n.data_emissao IS NOT NULL AND trim(COALESCE(n.rota, '')) <> ''
+      WITH ${CTE_F}
+      SELECT DISTINCT trim(COALESCE(f.rota, '')) AS r
+      FROM f
+      WHERE trim(COALESCE(f.rota, '')) <> ''
       ORDER BY 1
-    `),
+    `, values),
     pool.query<{ t: string }>(`
-      SELECT DISTINCT trim(COALESCE(n.tipo_frete, '')) AS t FROM tb_nf_saidas_consolidada n
-      WHERE n.status_sistema = 'AUTORIZADA'::text AND n.data_emissao IS NOT NULL AND trim(COALESCE(n.tipo_frete, '')) <> ''
+      WITH ${CTE_F}
+      SELECT DISTINCT trim(COALESCE(f.tipo_frete, '')) AS t
+      FROM f
+      WHERE trim(COALESCE(f.tipo_frete, '')) <> ''
       ORDER BY 1
-    `),
+    `, values),
   ]);
   return {
     agencias: ag.rows.map((x) => x.a).filter(Boolean),

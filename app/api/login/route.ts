@@ -41,6 +41,10 @@ export async function POST(req: Request) {
 
     const pool = getPool();
     await pool.query(`ALTER TABLE pendencias.users ADD COLUMN IF NOT EXISTS linked_bi_vendedora text`);
+    await pool.query(`ALTER TABLE pendencias.users ADD COLUMN IF NOT EXISTS must_change_password boolean DEFAULT true`);
+    await pool.query(`ALTER TABLE pendencias.users ADD COLUMN IF NOT EXISTS session_version integer DEFAULT 1`);
+    await pool.query(`ALTER TABLE pendencias.users ADD COLUMN IF NOT EXISTS password_changed_at timestamptz`);
+    await pool.query(`UPDATE pendencias.users SET must_change_password = true WHERE must_change_password IS NULL`);
     const result = await pool.query(
       `
         SELECT u.*, p.permissions AS profile_permissions
@@ -56,12 +60,15 @@ export async function POST(req: Request) {
 
     const user = result.rows[0];
     const hash = user.password_hash;
-    let valid = false;
-    if (typeof hash === "string" && hash.startsWith("$2")) {
-      valid = await bcrypt.compare(password, hash);
-    } else {
-      valid = password === hash;
+    if (!(typeof hash === "string" && hash.startsWith("$2"))) {
+      await serverLog({
+        level: "ERROR",
+        event: "API_LOGIN_WEAK_HASH_BLOCKED",
+        username: String(username),
+      });
+      return NextResponse.json({ success: false, message: "Conta inválida para login seguro. Solicite redefinição de senha." }, { status: 401 });
     }
+    const valid = await bcrypt.compare(password, hash);
 
     if (!valid) {
       await serverLog({
@@ -118,6 +125,7 @@ export async function POST(req: Request) {
         origin: user.linked_origin_unit,
         dest: user.linked_dest_unit,
         biVendedora: user.linked_bi_vendedora ?? "",
+        mustChangePassword: Boolean(user.must_change_password),
       },
     });
     response.cookies.set(SESSION_COOKIE_NAME, encodeSession({
@@ -126,6 +134,8 @@ export async function POST(req: Request) {
       origin: user.linked_origin_unit,
       dest: user.linked_dest_unit,
       biVendedora: user.linked_bi_vendedora ?? null,
+      sessionVersion: Number(user.session_version ?? 1) || 1,
+      passwordChangedAt: user.password_changed_at ? new Date(String(user.password_changed_at)).toISOString() : null,
     }), {
       httpOnly: true,
       sameSite: "lax",

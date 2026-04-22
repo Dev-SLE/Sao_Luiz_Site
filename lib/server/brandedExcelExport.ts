@@ -42,6 +42,8 @@ export type BrandedExcelExportConfig = {
   generatedMetaLine: string;
   columns: BrandedExcelColumn[];
   rows: Record<string, unknown>[];
+  /** Exibe linha de totais para colunas numéricas (currency/integer). */
+  includeTotalRow?: boolean;
   /** Rodapé mesclado (opcional). */
   footerNote?: string;
   /** Metadado do arquivo. */
@@ -171,7 +173,43 @@ export function addBrandedSheetToWorkbook(wb: ExcelJS.Workbook, config: BrandedE
     r.height = 20;
   });
 
-  const footRow = 6 + config.rows.length + 1;
+  let nextRow = 6 + config.rows.length;
+  if (config.includeTotalRow !== false && config.rows.length > 0) {
+    const totals = config.columns.map((col) => {
+      const fmt = col.format ?? "text";
+      if (fmt !== "currency" && fmt !== "integer") return null;
+      let sum = 0;
+      for (const row of config.rows) sum += toNum(row[col.key]);
+      return sum;
+    });
+    const totalRow = ws.getRow(nextRow + 1);
+    config.columns.forEach((col, ci) => {
+      const cell = totalRow.getCell(ci + 1);
+      const fmt = col.format ?? "text";
+      if (ci === 0) {
+        cell.value = "Total";
+      } else if (totals[ci] != null) {
+        cell.value = totals[ci];
+        if (fmt === "currency") cell.numFmt = '"R$" #,##0.00';
+        if (fmt === "integer") cell.numFmt = "0";
+      } else {
+        cell.value = "";
+      }
+      cell.font = { size: 10, bold: true, color: { argb: C.text } };
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE8EEF6" } };
+      cell.border = {
+        top: { style: "thin", color: { argb: C.border } },
+        left: { style: "thin", color: { argb: C.border } },
+        bottom: { style: "thin", color: { argb: C.border } },
+        right: { style: "thin", color: { argb: C.border } },
+      };
+      cell.alignment = { vertical: "middle", wrapText: true } as ExcelJS.Alignment;
+    });
+    totalRow.height = 20;
+    nextRow += 1;
+  }
+
+  const footRow = nextRow + 1;
   ws.mergeCells(footRow, 1, footRow, lastCol);
   const foot = ws.getCell(footRow, 1);
   foot.value = config.footerNote ?? "Documento confidencial — uso interno.";
