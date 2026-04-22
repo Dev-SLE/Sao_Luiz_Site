@@ -54,6 +54,7 @@ function RedirectToGerencialRotasOperacionais() {
 
 export function OperacionalModule({ pathname, onNoteClick, navigateToPage, tracking }: OperacionalModuleProps) {
   const { hasPermission } = useData();
+  const pathNorm = (pathname || '').replace(/\/+$/, '') || '/';
   const { rest } = parseWorkspacePath(pathname);
   const r0 = rest[0]?.toLowerCase() ?? '';
 
@@ -69,8 +70,8 @@ export function OperacionalModule({ pathname, onNoteClick, navigateToPage, track
     hasPermission('VIEW_RELATORIOS') ||
     hasPermission('MANAGE_SOFIA');
 
-  const utilityPath = isOperacionalUtilityPath(pathname);
-  const utilityAllowed = utilityPath && canAccessOperacionalUtilityPath(pathname, hasPermission);
+  const utilityPath = isOperacionalUtilityPath(pathNorm);
+  const utilityAllowed = utilityPath && canAccessOperacionalUtilityPath(pathNorm, hasPermission);
 
   if (!canEnterOperacional && !utilityAllowed) {
     return <WorkspaceNoAccess message="Seu perfil não possui acesso ao módulo Operacional." />;
@@ -78,7 +79,7 @@ export function OperacionalModule({ pathname, onNoteClick, navigateToPage, track
 
   let body: React.ReactNode = null;
 
-  if (pathname.endsWith('/configuracoes')) {
+  if (pathNorm.endsWith('/configuracoes')) {
     if (!hasPermission('MANAGE_SETTINGS')) {
       body = (
         <WorkspaceNoAccess message="Apenas perfis com permissão 'Configurações e logs' (MANAGE_SETTINGS) podem aceder a esta área." />
@@ -86,19 +87,19 @@ export function OperacionalModule({ pathname, onNoteClick, navigateToPage, track
     } else {
       body = <Settings />;
     }
-  } else if (pathname.endsWith('/relatorios')) {
+  } else if (pathNorm.endsWith('/relatorios')) {
     if (!hasPermission('VIEW_RELATORIOS')) {
       body = <WorkspaceNoAccess message="Seu perfil não possui acesso aos Relatórios." />;
     } else {
       body = <Reports />;
     }
-  } else if (pathname.endsWith('/sofia-config')) {
+  } else if (pathNorm.endsWith('/sofia-config')) {
     if (!hasPermission('MANAGE_SETTINGS') || !hasPermission('MANAGE_SOFIA')) {
       body = <WorkspaceNoAccess message="Seu perfil não possui acesso às Configurações da Sofia." />;
     } else {
       body = <SofiaSettings />;
     }
-  } else if (pathname.endsWith('/mudar-senha')) {
+  } else if (pathNorm.endsWith('/mudar-senha')) {
     body = <ChangePassword onClose={() => navigateToPage(Page.DASHBOARD)} />;
   } else {
     switch (r0) {

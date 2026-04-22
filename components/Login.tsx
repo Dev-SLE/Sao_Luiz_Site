@@ -69,7 +69,11 @@ const Login: React.FC = () => {
       router.replace(next);
     } catch (err) {
       console.error('Erro no login:', err);
-      setError('Credenciais inválidas. Verifique seu usuário e senha.');
+      setError(
+        err instanceof Error && err.message
+          ? err.message
+          : 'Credenciais inválidas. Verifique seu usuário e senha.',
+      );
     } finally {
       setLoading(false);
     }

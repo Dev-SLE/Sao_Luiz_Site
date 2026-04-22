@@ -69,7 +69,17 @@ export class NeonDataClient {
       body: JSON.stringify({ username, password }),
     });
     if (!response.ok) {
-      throw new Error('Credenciais inválidas');
+      let detail = "Credenciais inválidas";
+      try {
+        const ct = response.headers.get("content-type") || "";
+        if (ct.includes("application/json")) {
+          const data = await response.json();
+          detail = String(data?.message || data?.error || detail);
+        }
+      } catch {
+        /* mantém mensagem padrão */
+      }
+      throw new Error(detail);
     }
     const data = await response.json();
     if (!data.success) {

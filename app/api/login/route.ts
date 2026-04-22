@@ -50,7 +50,8 @@ export async function POST(req: Request) {
         SELECT u.*, p.permissions AS profile_permissions
         FROM pendencias.users u
         LEFT JOIN pendencias.profiles p ON LOWER(p.name) = LOWER(u.role)
-        WHERE u.username = $1
+        WHERE LOWER(TRIM(u.username)) = LOWER(TRIM($1::text))
+        LIMIT 1
       `,
       [username]
     );
