@@ -221,6 +221,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Função para atualizar dados paginados
   const refreshData = async () => {
     if (!user) return;
+    if (user.mustChangePassword) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const [
@@ -310,7 +314,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setState: React.Dispatch<React.SetStateAction<{ data: CteData[]; page: number; limit: number; total: number }>>,
     countKey: keyof KPICounts
   ) => {
-    if (!user) return;
+    if (!user || user.mustChangePassword) return;
     try {
       const resp = await authClient.getCtesView(view, page, limit);
       const pageData = normalizeCtes(resp.data || []);
@@ -323,34 +327,39 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
 
   useEffect(() => {
-    if (user) refreshData();
+    if (user && !user.mustChangePassword) refreshData();
   }, [
     user
   ]);
 
   // Recarrega SOMENTE a aba que mudou (melhor performance na paginação).
   useEffect(() => {
-    if (user) refreshViewPage('pendencias', pendenciasState.page, pendenciasState.limit, setPendenciasState, 'pendencias');
+    if (user && !user.mustChangePassword)
+      refreshViewPage('pendencias', pendenciasState.page, pendenciasState.limit, setPendenciasState, 'pendencias');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, pendenciasState.page, pendenciasState.limit]);
 
   useEffect(() => {
-    if (user) refreshViewPage('criticos', criticosState.page, criticosState.limit, setCriticosState, 'criticos');
+    if (user && !user.mustChangePassword)
+      refreshViewPage('criticos', criticosState.page, criticosState.limit, setCriticosState, 'criticos');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, criticosState.page, criticosState.limit]);
 
   useEffect(() => {
-    if (user) refreshViewPage('em_busca', emBuscaState.page, emBuscaState.limit, setEmBuscaState, 'emBusca');
+    if (user && !user.mustChangePassword)
+      refreshViewPage('em_busca', emBuscaState.page, emBuscaState.limit, setEmBuscaState, 'emBusca');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, emBuscaState.page, emBuscaState.limit]);
 
   useEffect(() => {
-    if (user) refreshViewPage('ocorrencias', ocorrenciasState.page, ocorrenciasState.limit, setOcorrenciasState, 'ocorrencias');
+    if (user && !user.mustChangePassword)
+      refreshViewPage('ocorrencias', ocorrenciasState.page, ocorrenciasState.limit, setOcorrenciasState, 'ocorrencias');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, ocorrenciasState.page, ocorrenciasState.limit]);
 
   useEffect(() => {
-    if (user) refreshViewPage('concluidos', concluidosState.page, concluidosState.limit, setConcluidosState, 'concluidos');
+    if (user && !user.mustChangePassword)
+      refreshViewPage('concluidos', concluidosState.page, concluidosState.limit, setConcluidosState, 'concluidos');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, concluidosState.page, concluidosState.limit]);
 

@@ -1,4 +1,7 @@
+'use client';
+
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import { authClient, AuthUser } from '../lib/auth';
 import { getDefaultPostLoginPath } from '@/lib/post-login-path';
 import { UserData } from '../types';
@@ -13,6 +16,23 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+/** Redireciona para troca de senha antes de qualquer chamada que receberia 428 (ex.: portal /inicio). */
+function PasswordChangeEnforcer() {
+  const { user, loading } = useAuth();
+  const pathname = usePathname() || '';
+  const router = useRouter();
+
+  useEffect(() => {
+    if (loading) return;
+    if (!user?.mustChangePassword) return;
+    if (pathname.includes('/mudar-senha')) return;
+    if (pathname.startsWith('/recuperar-senha') || pathname.startsWith('/redefinir-senha')) return;
+    router.replace('/app/operacional/mudar-senha');
+  }, [loading, user?.mustChangePassword, user?.username, pathname, router]);
+
+  return null;
+}
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<UserData | null>(null);
@@ -91,6 +111,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   return (
     <AuthContext.Provider value={{ user, login, logout, loading, authMessage, clearAuthMessage: () => setAuthMessage('') }}>
+      <PasswordChangeEnforcer />
       {children}
     </AuthContext.Provider>
   );

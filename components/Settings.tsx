@@ -21,6 +21,7 @@ import { authClient } from '../lib/auth';
 import { AppConfirmModal, AppMessageModal, type AppMessageVariant } from './AppOverlays';
 import * as XLSX from 'xlsx';
 import { BI_COMISSOES_CONFIG } from '@/modules/bi/comissoes/config';
+import { validateStrongPassword } from '@/lib/server/passwordPolicy';
 import {
   PERMISSION_CATALOG,
   PERMISSION_GROUP_LABELS,
@@ -233,24 +234,49 @@ const Settings: React.FC = () => {
       const isEditing = !!editingUsername;
       if (!newUser.username || !newUser.role) {
           setSettingsNotice({
-            title: 'Campos obrigatórios',
-            message: 'Preencha usuário e perfil antes de salvar.',
-            variant: 'warning',
+              title: 'Campos obrigatórios',
+              message: 'Preencha usuário e perfil antes de salvar.',
+              variant: 'warning',
           });
           return;
       }
       if (!isEditing && !newUser.password) {
           setSettingsNotice({
-            title: 'Senha obrigatória',
-            message: 'Ao criar um novo usuário, é necessário definir uma senha inicial.',
-            variant: 'warning',
+              title: 'Senha obrigatória',
+              message: 'Ao criar um novo usuário, é necessário definir uma senha inicial.',
+              variant: 'warning',
           });
           return;
       }
-      await addUser(newUser);
-      setNewUser({ username: '', password: '', role: '', linkedOriginUnit: '', linkedDestUnit: '', linkedBiVendedora: '' });
-      setIsAddingUser(false);
-      setEditingUsername(null);
+      if (newUser.password) {
+        const policy = validateStrongPassword(newUser.password, newUser.username);
+        if (!policy.ok) {
+          setSettingsNotice({
+            title: 'Senha não atende à política de segurança',
+            message: policy.errors.join(' '),
+            variant: 'warning',
+          });
+          return;
+        }
+      }
+      try {
+        await addUser(newUser);
+        setNewUser({ username: '', password: '', role: '', linkedOriginUnit: '', linkedDestUnit: '', linkedBiVendedora: '' });
+        setIsAddingUser(false);
+        setEditingUsername(null);
+        setSettingsNotice({
+          title: 'Utilizador gravado',
+          message: isEditing ? 'Alterações guardadas com sucesso.' : 'Novo utilizador criado. Se marcou troca no primeiro acesso, o utilizador será encaminhado para definir senha ao entrar.',
+          variant: 'success',
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Não foi possível gravar o utilizador.';
+        setSettingsNotice({
+          title: 'Erro ao salvar utilizador',
+          message: msg.replace(/^Erro na API: \d+ - /, ''),
+          variant: 'error',
+        });
+      }
   };
 
   const startEditUser = (u: UserData) => {
@@ -414,11 +440,18 @@ const Settings: React.FC = () => {
                               </label>
                               <input 
                                 required={!editingUsername}
+                                type="password"
+                                autoComplete="new-password"
                                 className="w-full p-2 rounded border border-slate-200 bg-slate-50 text-slate-800 placeholder-gray-500 focus:ring-2 focus:ring-sl-navy/30 outline-none" 
                                 value={newUser.password} 
                                 onChange={e => setNewUser({...newUser, password: e.target.value})} 
                                 placeholder={editingUsername ? 'Deixe vazio para manter a senha atual' : ''}
                               />
+                              {!editingUsername ? (
+                                <p className="text-[11px] leading-snug text-slate-600">
+                                  Mínimo 12 caracteres, maiúscula, minúscula, número e símbolo. Evite sequências óbvias ou o nome de utilizador dentro da senha.
+                                </p>
+                              ) : null}
                           </div>
                           <div className="space-y-1">
                               <label className="text-xs font-bold text-slate-600 uppercase">Perfil</label>
