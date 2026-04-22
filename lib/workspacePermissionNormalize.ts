@@ -62,10 +62,16 @@ export function normalizeOperacionalPermissionsForSession(perms: string[]): stri
   const hasMod = raw.includes(OPERACIONAL_MODULE_KEY);
   const tabOp = raw.some((p) => p.startsWith("tab.operacional."));
   const legacyOp = raw.some((p) => OPERACIONAL_LEGACY_IMPLICIT_MODULE_KEYS.has(p));
+  const operacionalTabKeys = raw.filter((p) => p.startsWith("tab.operacional."));
 
   if (hasMod) return raw;
 
   if (tabOp && !legacyOp) {
+    const onlyDossieTab =
+      operacionalTabKeys.length === 1 && operacionalTabKeys[0] === "tab.operacional.dossie.view";
+    if (onlyDossieTab) {
+      return dedupeTrim([...raw, OPERACIONAL_MODULE_KEY]);
+    }
     return raw.filter((p) => !p.startsWith("tab.operacional."));
   }
 
