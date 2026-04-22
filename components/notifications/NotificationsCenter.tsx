@@ -42,14 +42,18 @@ export function NotificationsCenter({ variant = 'workspace' }: Props) {
   }, [load]);
 
   const markOperationalRead = async () => {
+    const assignmentEvents = new Set(['CTE_ASSIGNMENT_UPSERT', 'CTE_ASSIGNMENT_CLEAR']);
     const opIds = items
-      .filter((n) => n.kind === 'operational' && n.meta && typeof (n.meta as any).sourceLogId === 'number')
+      .filter((n) => {
+        if (n.kind !== 'operational' || !n.meta || typeof (n.meta as any).sourceLogId !== 'number') return false;
+        const ev = String((n.meta as any).event || '');
+        return assignmentEvents.has(ev);
+      })
       .map((n) => Number((n.meta as any).sourceLogId));
-    const maxId = Math.max(0, ...opIds);
+    const maxId = opIds.length ? Math.max(...opIds) : 0;
     if (maxId > 0) {
       await authClient.ackOperationalNotifications(maxId).catch(() => null);
     }
-    setUnread(0);
     setOpen(false);
     await load();
   };
@@ -73,15 +77,15 @@ export function NotificationsCenter({ variant = 'workspace' }: Props) {
         <button
           type="button"
           className={clsx(
-            'text-[11px] hover:underline',
+            'text-[11px] font-bold hover:underline',
             variant === 'portal' ? 'text-sl-red-light' : 'text-sl-navy',
           )}
           onClick={() => void markOperationalRead()}
         >
-          Marcar lidas
+          Marcar atribuições como lidas
         </button>
       </div>
-      <div className="max-h-72 overflow-y-auto">
+      <div className="max-h-[min(70vh,420px)] overflow-y-auto">
         {loading && items.length === 0 ? (
           <div className={clsx('px-3 py-3 text-[11px]', variant === 'portal' ? 'text-white/60' : 'text-slate-500')}>
             Carregando…
@@ -158,7 +162,7 @@ export function NotificationsCenter({ variant = 'workspace' }: Props) {
           open={open}
           onClose={() => setOpen(false)}
           anchorRef={bellRef}
-          width={320}
+          width={380}
           className={clsx(
             'overflow-hidden rounded-xl border shadow-xl',
             'border-slate-200 bg-white text-slate-800',

@@ -1,7 +1,24 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { CteData } from '../types';
 import StatusBadge from './StatusBadge';
-import { MessageSquare, Filter, X, CheckCircle, Package, ArrowUpDown, ArrowUp, ArrowDown, FileSpreadsheet, Search, AlertTriangle, CalendarCheck2, Archive, UserPlus, UserX } from 'lucide-react';
+import {
+  MessageSquare,
+  Filter,
+  X,
+  CheckCircle,
+  Package,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  FileSpreadsheet,
+  Search,
+  AlertTriangle,
+  CalendarCheck2,
+  Archive,
+  UserPlus,
+  UserX,
+  Layers2,
+} from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
@@ -116,6 +133,13 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
     variant: AppMessageVariant;
   } | null>(null);
   const [assignmentOverrides, setAssignmentOverrides] = useState<Record<string, AssignmentOverride>>({});
+  const [bulkSelected, setBulkSelected] = useState<Set<string>>(() => new Set());
+  const [bulkAssignOpen, setBulkAssignOpen] = useState(false);
+  const [bulkDraft, setBulkDraft] = useState<{ agencyUnit: string; assignedUsername: string; notes: string }>({
+    agencyUnit: '',
+    assignedUsername: '',
+    notes: '',
+  });
   const [dateField, setDateField] = useState<'EMISSAO' | 'LIMITE' | 'BAIXA'>('LIMITE');
   const [draftDateFrom, setDraftDateFrom] = useState('');
   const [draftDateTo, setDraftDateTo] = useState('');
@@ -142,6 +166,25 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
     if (canReassignOperational) return true;
     return user?.username && u.toLowerCase() === user.username.toLowerCase();
   };
+
+  const serverView = useMemo(() => {
+    const t = (title || '').toLowerCase();
+    if (t.includes('crític') || t.includes('critic')) return 'criticos' as const;
+    if (t.includes('em busca')) return 'em_busca' as const;
+    if (t.includes('ocorr')) return 'ocorrencias' as const;
+    if (t.includes('tad')) return 'ocorrencias' as const;
+    if (t.includes('conclu')) return 'concluidos' as const;
+    return 'pendencias' as const;
+  }, [title]);
+
+  const allowBulkRowSelect = useMemo(
+    () =>
+      canAssignOperational &&
+      (isPendencyView || isCriticalView || enableFilters) &&
+      serverView !== 'concluidos' &&
+      serverView !== 'ocorrencias',
+    [canAssignOperational, isPendencyView, isCriticalView, enableFilters, serverView],
+  );
 
   // --- Paginação (local ou server-side) ---
   const [pageLocal, setPageLocal] = useState(1);
@@ -175,16 +218,6 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
     setLimitLocal(l);
     setPageLocal(1);
   };
-
-  const serverView = useMemo(() => {
-    const t = (title || '').toLowerCase();
-    if (t.includes('crític') || t.includes('critic')) return 'criticos' as const;
-    if (t.includes('em busca')) return 'em_busca' as const;
-    if (t.includes('ocorr')) return 'ocorrencias' as const;
-    if (t.includes('tad')) return 'ocorrencias' as const;
-    if (t.includes('conclu')) return 'concluidos' as const;
-    return 'pendencias' as const;
-  }, [title]);
 
   const [allViewData, setAllViewData] = useState<CteData[] | null>(null);
   const [allViewLoading, setAllViewLoading] = useState(false);
@@ -517,6 +550,47 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
     return sortedData.slice(start, end);
   }, [sortedData, page, limit, useServerPagination]);
 
+  const bulkSelectedItems = useMemo(() => {
+    return filteredData
+      .filter((d) => bulkSelected.has(rowKey(d.CTE, d.SERIE)))
+      .map((d) => ({ cte: d.CTE, serie: d.SERIE || '0' }));
+  }, [filteredData, bulkSelected]);
+
+  const selectablePageKeys = useMemo(() => {
+    return paginatedData
+      .filter((d) => !d.IS_HISTORICAL && canOpenAssignForRow(d.ASSIGNED_USERNAME))
+      .map((d) => rowKey(d.CTE, d.SERIE));
+  }, [paginatedData, user?.username, canReassignOperational]);
+
+  const pageBulkFullySelected = useMemo(() => {
+    if (!allowBulkRowSelect || selectablePageKeys.length === 0) return false;
+    return selectablePageKeys.every((k) => bulkSelected.has(k));
+  }, [allowBulkRowSelect, selectablePageKeys, bulkSelected]);
+
+  const togglePageBulkSelect = () => {
+    if (!allowBulkRowSelect) return;
+    setBulkSelected((prev) => {
+      const n = new Set(prev);
+      if (pageBulkFullySelected) {
+        selectablePageKeys.forEach((k) => n.delete(k));
+      } else {
+        selectablePageKeys.forEach((k) => n.add(k));
+      }
+      return n;
+    });
+  };
+
+  const toggleRowBulkSelect = (row: CteData) => {
+    if (!allowBulkRowSelect || row.IS_HISTORICAL || !canOpenAssignForRow(row.ASSIGNED_USERNAME)) return;
+    const k = rowKey(row.CTE, row.SERIE);
+    setBulkSelected((prev) => {
+      const n = new Set(prev);
+      if (n.has(k)) n.delete(k);
+      else n.add(k);
+      return n;
+    });
+  };
+
   // --- Constants ---
   const STATUS_OPTIONS = useMemo(() => {
     if (isCriticalView) return [];
@@ -659,6 +733,83 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
     return Array.from(set).sort();
   }, [users, data, allViewData, shouldUseLocalPagination, assignmentOverrides]);
 
+  const applyBulkAssignment = async () => {
+    if (bulkSelectedItems.length === 0) return;
+    if (!canAssignOperational) {
+      setAssignmentNotice({
+        title: 'Permissão',
+        message: 'Seu perfil não possui permissão para atribuir pendências operacionais.',
+        variant: 'warning',
+      });
+      return;
+    }
+    if (!bulkDraft.agencyUnit || !bulkDraft.assignedUsername) {
+      setAssignmentNotice({
+        title: 'Atribuição em lote',
+        message: 'Selecione unidade/agência e responsável interno.',
+        variant: 'warning',
+      });
+      return;
+    }
+    setAssignmentBusy(true);
+    try {
+      const res = await authClient.bulkUpsertCteAssignment({
+        items: bulkSelectedItems,
+        agencyUnit: bulkDraft.agencyUnit,
+        assignedUsername: bulkDraft.assignedUsername,
+        notes: bulkDraft.notes,
+        actor: user?.username || undefined,
+      });
+      const saved = Number(res?.saved ?? 0);
+      const failures = Array.isArray(res?.failures) ? res.failures : [];
+      if (saved === 0) {
+        setAssignmentNotice({
+          title: 'Atribuição em lote',
+          message:
+            failures.length > 0
+              ? 'Nenhum CTE foi atualizado. Verifique escopo de unidade ou tente novamente.'
+              : 'Nenhum CTE foi atualizado.',
+          variant: 'error',
+        });
+        return;
+      }
+      if (failures.length === 0) {
+        setAssignmentOverrides((prev) => {
+          const n = { ...prev };
+          bulkSelectedItems.forEach(({ cte, serie }) => {
+            n[rowKey(cte, serie)] = {
+              ASSIGNMENT_TYPE: 'PENDENTE_AG_BAIXAR',
+              ASSIGNMENT_AGENCY_UNIT: bulkDraft.agencyUnit,
+              ASSIGNED_USERNAME: bulkDraft.assignedUsername,
+              ASSIGNMENT_UPDATED_AT: new Date().toISOString(),
+            };
+          });
+          return n;
+        });
+      }
+      setBulkAssignOpen(false);
+      setBulkSelected(new Set());
+      setBulkDraft({ agencyUnit: '', assignedUsername: '', notes: '' });
+      const failMsg =
+        failures.length > 0
+          ? ` ${failures.length} CTE(s) não puderam ser atribuídos (ex.: fora do escopo).`
+          : '';
+      setAssignmentNotice({
+        title: 'Atribuição em lote',
+        message: `${saved} CTE(s) atualizados com o mesmo responsável.${failMsg}`,
+        variant: failures.length > 0 ? 'warning' : 'success',
+      });
+    } catch {
+      setAssignmentNotice({
+        title: 'Erro ao atribuir',
+        message: 'Não foi possível concluir a atribuição em lote. Tente novamente.',
+        variant: 'error',
+      });
+    } finally {
+      setAssignmentBusy(false);
+    }
+  };
+
   const applyAssignment = async () => {
     if (!assigningDraft) return;
     if (!canAssignOperational) {
@@ -784,6 +935,8 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
     setGlobalSearch('');
     setSortConfig({ key: 'DATA_LIMITE_DATE', direction: 'asc' });
     setPage(1);
+    setBulkSelected(new Set());
+    setBulkAssignOpen(false);
   }, [title]);
 
   // Evita “sumir dados” quando filtros/dados mudam e a página atual fica fora do range
@@ -1182,10 +1335,30 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
       )}
 
       {/* Main Table Title & Action */}
-      <div className="mb-4 mt-6 flex items-center justify-between">
-        <h2 className="text-xl font-bold text-slate-900">
-          {title} <span className="text-sm font-medium text-slate-600">({filteredData.length})</span>
-        </h2>
+      <div className="mb-4 mt-6 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <h2 className="text-xl font-bold text-slate-900">
+            {title} <span className="text-sm font-medium text-slate-600">({filteredData.length})</span>
+          </h2>
+          {allowBulkRowSelect && bulkSelected.size > 0 ? (
+            <button
+              type="button"
+              onClick={() => {
+                const first = filteredData.find((d) => bulkSelected.has(rowKey(d.CTE, d.SERIE)));
+                setBulkDraft({
+                  agencyUnit: first?.ASSIGNMENT_AGENCY_UNIT || first?.ENTREGA || '',
+                  assignedUsername: user?.username || '',
+                  notes: '',
+                });
+                setBulkAssignOpen(true);
+              }}
+              className="inline-flex items-center gap-1 rounded-xl border border-sl-navy/30 bg-gradient-to-r from-sl-navy to-sl-navy-light px-3 py-2 text-xs font-black text-white shadow-[0_2px_8px_rgba(44,52,140,0.2)] transition-all hover:brightness-105"
+            >
+              <Layers2 size={14} />
+              Atribuir {bulkSelected.size} selecionado(s)…
+            </button>
+          ) : null}
+        </div>
         {hasPermission('EXPORT_DATA') && (
           <button
             type="button"
@@ -1221,6 +1394,18 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
         <table className="w-full text-left text-sm">
           <thead className="border-b border-slate-300/70 bg-gradient-to-b from-slate-100 to-slate-50 text-xs font-bold uppercase text-slate-600">
             <tr>
+              {allowBulkRowSelect ? (
+                <th className="w-10 px-2 py-3 text-center">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 accent-sl-navy"
+                    checked={pageBulkFullySelected}
+                    onChange={togglePageBulkSelect}
+                    title="Selecionar todos desta página"
+                    aria-label="Selecionar todos desta página"
+                  />
+                </th>
+              ) : null}
               <SortHeader label="Status" sortKey="STATUS_CALCULADO" />
               <SortHeader label="CTE / Série" sortKey="CTE" />
               <SortHeader label="Data Emissão" sortKey="DATA_EMISSAO" />
@@ -1253,6 +1438,21 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
                           : "bg-slate-50/45 hover:bg-slate-100/90 hover:shadow-[inset_3px_0_0_rgb(10,22,40)]"
                   )}
                 >
+                  {allowBulkRowSelect ? (
+                    <td className="w-10 px-2 py-3 text-center align-middle">
+                      {!rowView.IS_HISTORICAL && canOpenAssignForRow(rowView.ASSIGNED_USERNAME) ? (
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 accent-sl-navy"
+                          checked={bulkSelected.has(rowKey(rowView.CTE, rowView.SERIE))}
+                          onChange={() => toggleRowBulkSelect(rowView)}
+                          aria-label={`Selecionar CTE ${rowView.CTE}`}
+                        />
+                      ) : (
+                        <span className="inline-block w-4" />
+                      )}
+                    </td>
+                  ) : null}
                   <td className="px-4 py-3">
                     <div className="flex flex-col gap-1 items-start">
                       {row.IS_HISTORICAL ? (
@@ -1386,12 +1586,23 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
               )}
             >
               <div className="mb-2 flex items-start justify-between">
-                <div>
+                <div className="flex items-start gap-2">
+                  {allowBulkRowSelect && !rowView.IS_HISTORICAL && canOpenAssignForRow(rowView.ASSIGNED_USERNAME) ? (
+                    <input
+                      type="checkbox"
+                      className="mt-1 h-4 w-4 shrink-0 accent-sl-navy"
+                      checked={bulkSelected.has(rowKey(rowView.CTE, rowView.SERIE))}
+                      onChange={() => toggleRowBulkSelect(rowView)}
+                      aria-label={`Selecionar CTE ${rowView.CTE}`}
+                    />
+                  ) : null}
+                  <div>
                     <div className="flex items-center gap-2 text-lg font-bold text-slate-900">
                         CTE {rowView.CTE} 
                         {rowView.IS_HISTORICAL && <Archive size={14} className="text-slate-400"/>}
                     </div>
                     <div className="text-xs text-slate-500">Série {rowView.SERIE}</div>
+                  </div>
                 </div>
                     <div className="flex flex-col items-end gap-1">
                       {rowView.IS_HISTORICAL ? (
@@ -1477,6 +1688,77 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
            );
         })}
       </div>
+
+      {bulkAssignOpen && (
+        <div className="fixed inset-0 z-[220] flex items-center justify-center p-4 bg-black/50">
+          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-slate-200 bg-white p-5 shadow-2xl">
+            <h3 className="mb-1 text-base font-black text-sl-navy">Atribuir em lote</h3>
+            <p className="mb-3 text-xs text-slate-600">
+              {bulkSelectedItems.length} CTE(s) selecionado(s). A mesma agência e o mesmo responsável serão aplicados a todos.
+            </p>
+            <div className="mb-3 max-h-40 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50 p-2 text-[11px] font-mono text-slate-800">
+              {bulkSelectedItems.slice(0, 80).map((it) => (
+                <div key={`${it.cte}-${it.serie}`}>
+                  {it.cte} / {it.serie}
+                </div>
+              ))}
+              {bulkSelectedItems.length > 80 ? <div className="text-slate-500">… e mais {bulkSelectedItems.length - 80}</div> : null}
+            </div>
+            <div className="grid grid-cols-1 gap-2">
+              <select
+                value={bulkDraft.agencyUnit}
+                onChange={(e) => setBulkDraft((p) => ({ ...p, agencyUnit: e.target.value }))}
+                className="rounded border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800"
+              >
+                <option value="">Selecione unidade/agência</option>
+                {availableAssignmentUnits.map((u) => (
+                  <option key={u} value={u}>
+                    {u}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={bulkDraft.assignedUsername}
+                onChange={(e) => setBulkDraft((p) => ({ ...p, assignedUsername: e.target.value }))}
+                className="rounded border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800"
+              >
+                <option value="">Selecione responsável interno</option>
+                {availableAssignmentUsers.map((u) => (
+                  <option key={u} value={u}>
+                    {u}
+                  </option>
+                ))}
+              </select>
+              <input
+                value={bulkDraft.notes}
+                onChange={(e) => setBulkDraft((p) => ({ ...p, notes: e.target.value }))}
+                placeholder="Observação (opcional, comum a todos)"
+                className="rounded border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800"
+              />
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                disabled={assignmentBusy}
+                onClick={() => {
+                  setBulkAssignOpen(false);
+                }}
+                className="rounded border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={assignmentBusy}
+                onClick={() => void applyBulkAssignment()}
+                className="rounded bg-gradient-to-r from-sl-navy to-sl-navy-light px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50"
+              >
+                {assignmentBusy ? 'Salvando…' : 'Confirmar atribuição'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {!!assigningDraft && (
         <div className="fixed inset-0 z-[210] flex items-center justify-center p-4 bg-black/40">

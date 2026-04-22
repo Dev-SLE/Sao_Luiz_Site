@@ -1430,8 +1430,20 @@ export async function ensureStorageCatalogTables() {
       WHERE NOT EXISTS (SELECT 1 FROM pendencias.storage_providers WHERE name = 'sharepoint')
     `);
     const ruleSeeds: { module: string; entity: string; provider: string; path_template: string; library_name: string | null }[] = [
-      { module: "operacional", entity: "dossier", provider: "sharepoint", path_template: "Ocorrencias/{year}/{month}/{entity_id}", library_name: "Ocorrencias" },
-      { module: "operacional", entity: "note", provider: "sharepoint", path_template: "OperacionalAnexos/notes/{year}/{month}/{entity_id}", library_name: null },
+      {
+        module: "operacional",
+        entity: "dossier",
+        provider: "sharepoint",
+        path_template: "Ocorrencias/cte-{cte}-serie-{serie}/{year}/{month}",
+        library_name: "Ocorrencias",
+      },
+      {
+        module: "operacional",
+        entity: "note",
+        provider: "sharepoint",
+        path_template: "OperacionalAnexos/cte-{cte}-serie-{serie}/notes/{year}/{month}",
+        library_name: null,
+      },
       { module: "financeiro", entity: "*", provider: "sharepoint", path_template: "Financeiro/{subtype}/{year}/{month}/{entity_id}", library_name: "Financeiro" },
       { module: "portal", entity: "banner", provider: "sharepoint", path_template: "PortalMidia/home/banners/{year}/{month}", library_name: "PortalMidia" },
       { module: "portal", entity: "campaign", provider: "sharepoint", path_template: "PortalMidia/campanhas/{year}/{month}", library_name: "PortalMidia" },
@@ -1454,6 +1466,16 @@ export async function ensureStorageCatalogTables() {
         [r.module, r.entity, r.provider, r.library_name, r.path_template]
       );
     }
+    await pool.query(`
+      UPDATE pendencias.storage_rules
+      SET path_template = 'Ocorrencias/cte-{cte}-serie-{serie}/{year}/{month}'
+      WHERE module = 'operacional' AND entity = 'dossier' AND provider = 'sharepoint'
+    `);
+    await pool.query(`
+      UPDATE pendencias.storage_rules
+      SET path_template = 'OperacionalAnexos/cte-{cte}-serie-{serie}/notes/{year}/{month}'
+      WHERE module = 'operacional' AND entity = 'note' AND provider = 'sharepoint'
+    `);
     await pool.query(`UPDATE pendencias.storage_rules SET visibility_scope = 'portal' WHERE module = 'portal' AND provider = 'sharepoint'`);
     await pool.query(`
       UPDATE pendencias.storage_rules SET path_template = 'PortalMidia/home/banners/{year}/{month}', library_name = 'PortalMidia'

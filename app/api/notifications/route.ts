@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getPool } from '@/lib/server/db';
 import { can, getSessionContext } from '@/lib/server/authorization';
 import type { UnifiedNotification } from '@/lib/notifications-types';
+import { operationalAssignmentLogsVisibilitySql } from '@/lib/server/operationalAssignmentLogFilter';
 import { ensureFase1InfrastructureTables } from '@/lib/server/ensureFase1Infrastructure';
 
 export const runtime = 'nodejs';
@@ -80,17 +81,19 @@ export async function GET(req: Request) {
         [session.username]
       );
       const lastLogId = Number(ackRes.rows?.[0]?.last_log_id || 0);
+      const vis = operationalAssignmentLogsVisibilitySql(1);
       const logsRes = await pool.query(
         `
           SELECT id, created_at, event, cte, serie, payload
           FROM pendencias.app_logs
           WHERE source = 'operacional'
             AND event IN ('CTE_ASSIGNMENT_UPSERT', 'CTE_ASSIGNMENT_CLEAR')
-            AND id > $1
+            ${vis}
+            AND id > $2
           ORDER BY id DESC
-          LIMIT $2
+          LIMIT $3
         `,
-        [lastLogId, limit]
+        [session.username, lastLogId, limit]
       );
       for (const r of logsRes.rows || []) {
         const id = Number(r.id);

@@ -423,6 +423,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
           }
           formData.append('username', user?.username || ''); // Passar username
+          formData.append('caseCte', String(notePayload.CTE || '').trim());
+          formData.append('caseSerie', String(notePayload.SERIE || '0').trim() || '0');
           // Enviar para o backend
           const resp = await fetch('/api/uploadImage', {
             method: 'POST',

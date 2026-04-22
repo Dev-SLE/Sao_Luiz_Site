@@ -98,31 +98,24 @@ export async function GET(req: Request) {
   }
 }
 
-export async function POST(req: Request) {
-  try {
-    const session = await getSessionContext(req);
-    if (!session || !can(session, "operacional.assignment.assign")) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
-    }
-    await ensureOperationalAssignmentsTable();
-    const body = await req.json().catch(() => ({}));
-    const cte = norm(body?.cte);
-    const serie = normSerie(body?.serie);
-    const agencyUnit = norm(body?.agencyUnit);
-    const assignedUsername = norm(body?.assignedUsername);
-    const notes = norm(body?.notes);
-    const actor = norm(body?.actor) || session.username || null;
-
-    if (!cte) return NextResponse.json({ error: "cte é obrigatório" }, { status: 400 });
-    if (!agencyUnit) return NextResponse.json({ error: "agencyUnit é obrigatório" }, { status: 400 });
-    if (!assignedUsername) return NextResponse.json({ error: "assignedUsername é obrigatório" }, { status: 400 });
-
-    const pool = getPool();
-    if (!(await operationalCteAccessible(pool, session, cte, serie))) {
-      return NextResponse.json({ error: "CTE fora do escopo da sua unidade" }, { status: 403 });
-    }
-    const result = await pool.query(
-      `
+async function upsertOneAssignment(
+  pool: Pool,
+  session: NonNullable<Awaited<ReturnType<typeof getSessionContext>>>,
+  input: {
+    cte: string;
+    serie: string;
+    agencyUnit: string;
+    assignedUsername: string;
+    notes: string;
+    actor: string | null;
+  },
+) {
+  const { cte, serie, agencyUnit, assignedUsername, notes, actor } = input;
+  if (!(await operationalCteAccessible(pool, session, cte, serie))) {
+    return { ok: false as const, error: "CTE fora do escopo da sua unidade" };
+  }
+  const result = await pool.query(
+    `
         INSERT INTO pendencias.cte_assignments (
           cte, serie, assignment_type, agency_unit, assigned_username, notes,
           active, created_by, updated_by, created_at, updated_at
@@ -139,21 +132,82 @@ export async function POST(req: Request) {
           updated_at = NOW()
         RETURNING *
       `,
-      [cte, serie, ASSIGNMENT_TYPE, agencyUnit, assignedUsername, notes || null, actor]
-    );
-    const assignment = result.rows?.[0] || null;
-    await logAssignmentEvent({
-      event: "CTE_ASSIGNMENT_UPSERT",
-      username: actor,
+    [cte, serie, ASSIGNMENT_TYPE, agencyUnit, assignedUsername, notes || null, actor]
+  );
+  const assignment = result.rows?.[0] || null;
+  await logAssignmentEvent({
+    event: "CTE_ASSIGNMENT_UPSERT",
+    username: actor,
+    cte,
+    serie,
+    data: {
+      assignmentType: ASSIGNMENT_TYPE,
+      agencyUnit,
+      assignedUsername,
+    },
+  });
+  return { ok: true as const, assignment };
+}
+
+export async function POST(req: Request) {
+  try {
+    const session = await getSessionContext(req);
+    if (!session || !can(session, "operacional.assignment.assign")) {
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+    }
+    await ensureOperationalAssignmentsTable();
+    const body = await req.json().catch(() => ({}));
+    const agencyUnit = norm(body?.agencyUnit);
+    const assignedUsername = norm(body?.assignedUsername);
+    const notes = norm(body?.notes);
+    const actor = norm(body?.actor) || session.username || null;
+    const pool = getPool();
+
+    const bulkRaw = Array.isArray(body?.items) ? body.items : null;
+    if (bulkRaw && bulkRaw.length > 0) {
+      if (!agencyUnit) return NextResponse.json({ error: "agencyUnit é obrigatório" }, { status: 400 });
+      if (!assignedUsername) return NextResponse.json({ error: "assignedUsername é obrigatório" }, { status: 400 });
+      const maxBulk = 200;
+      const items = bulkRaw.slice(0, maxBulk);
+      let saved = 0;
+      const failures: { cte: string; serie: string; error: string }[] = [];
+      for (const it of items) {
+        const cte = norm((it as { cte?: string })?.cte);
+        const serie = normSerie((it as { serie?: string })?.serie);
+        if (!cte) continue;
+        const r = await upsertOneAssignment(pool, session, {
+          cte,
+          serie,
+          agencyUnit,
+          assignedUsername,
+          notes,
+          actor,
+        });
+        if (r.ok) saved += 1;
+        else failures.push({ cte, serie, error: r.error });
+      }
+      return NextResponse.json({ success: true, saved, failures, bulk: true });
+    }
+
+    const cte = norm(body?.cte);
+    const serie = normSerie(body?.serie);
+
+    if (!cte) return NextResponse.json({ error: "cte é obrigatório" }, { status: 400 });
+    if (!agencyUnit) return NextResponse.json({ error: "agencyUnit é obrigatório" }, { status: 400 });
+    if (!assignedUsername) return NextResponse.json({ error: "assignedUsername é obrigatório" }, { status: 400 });
+
+    const r = await upsertOneAssignment(pool, session, {
       cte,
       serie,
-      data: {
-        assignmentType: ASSIGNMENT_TYPE,
-        agencyUnit,
-        assignedUsername,
-      },
+      agencyUnit,
+      assignedUsername,
+      notes,
+      actor,
     });
-    return NextResponse.json({ success: true, assignment });
+    if (!r.ok) {
+      return NextResponse.json({ error: r.error }, { status: 403 });
+    }
+    return NextResponse.json({ success: true, assignment: r.assignment, bulk: false });
   } catch (error) {
     console.error("Erro ao salvar atribuição operacional:", error);
     return NextResponse.json({ error: "Erro interno" }, { status: 500 });
@@ -196,12 +250,19 @@ export async function DELETE(req: Request) {
       `,
       [cte, serie, actor, ASSIGNMENT_TYPE, reason]
     );
+    const prevRow = result.rows?.[0] as { assigned_username?: string } | undefined;
+    const previousAssignedUsername = norm(prevRow?.assigned_username);
     await logAssignmentEvent({
       event: "CTE_ASSIGNMENT_CLEAR",
       username: actor,
       cte,
       serie,
-      data: { assignmentType: ASSIGNMENT_TYPE, affected: result.rowCount || 0, reason },
+      data: {
+        assignmentType: ASSIGNMENT_TYPE,
+        affected: result.rowCount || 0,
+        reason,
+        previousAssignedUsername: previousAssignedUsername || undefined,
+      },
     });
     return NextResponse.json({ success: true, cleared: result.rowCount || 0 });
   } catch (error) {

@@ -260,6 +260,17 @@ export class NeonDataClient {
     return this.postJson('/cte_assignments', payload);
   }
 
+  /** Várias pendências com a mesma agência / responsável (máx. 200 no servidor). */
+  async bulkUpsertCteAssignment(payload: {
+    items: { cte: string; serie?: string }[];
+    agencyUnit: string;
+    assignedUsername: string;
+    notes?: string;
+    actor?: string;
+  }): Promise<any> {
+    return this.postJson('/cte_assignments', payload);
+  }
+
   async clearCteAssignment(payload: {
     cte: string;
     serie: string;

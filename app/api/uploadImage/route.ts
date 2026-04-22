@@ -43,24 +43,61 @@ export async function POST(req: Request) {
     const year = String(now.getFullYear());
     const month = pad2(now.getMonth() + 1);
 
-    if (uploadTarget === "processos" && caseCte) {
-      await pool.query(
-        `INSERT INTO pendencias.dossiers (cte, serie, title, status, generated_by, generated_at, created_at, updated_at)
+    if (caseCte) {
+      if (uploadTarget === "processos") {
+        await pool.query(
+          `INSERT INTO pendencias.dossiers (cte, serie, title, status, generated_by, generated_at, created_at, updated_at)
          VALUES ($1,$2,$3,'ATIVO',$4,NOW(),NOW(),NOW())
          ON CONFLICT (cte, serie) DO UPDATE SET updated_at = NOW()`,
-        [caseCte, caseSerie, `Dossiê CTE ${caseCte}/${caseSerie}`, username]
-      );
-      const dr = await pool.query(`SELECT id FROM pendencias.dossiers WHERE cte = $1 AND (serie = $2 OR ltrim(serie,'0') = ltrim($2,'0')) LIMIT 1`, [
-        caseCte,
-        caseSerie,
-      ]);
-      const dossierId = dr.rows?.[0]?.id as string | undefined;
-      if (!dossierId) throw new Error("Dossiê não encontrado após upsert");
+          [caseCte, caseSerie, `Dossiê CTE ${caseCte}/${caseSerie}`, username]
+        );
+        const dr = await pool.query(
+          `SELECT id FROM pendencias.dossiers WHERE cte = $1 AND (serie = $2 OR ltrim(serie,'0') = ltrim($2,'0')) LIMIT 1`,
+          [caseCte, caseSerie]
+        );
+        const dossierId = dr.rows?.[0]?.id as string | undefined;
+        if (!dossierId) throw new Error("Dossiê não encontrado após upsert");
+        const fileRow = await uploadFileToSharePoint({
+          pool,
+          module: "operacional",
+          entity: "dossier",
+          entityId: dossierId,
+          originalName: f.name,
+          mimeType: f.type || "application/octet-stream",
+          buffer,
+          uploadedBy: username,
+          pathContext: {
+            year,
+            month,
+            entity_id: dossierId,
+            dossier_id: dossierId,
+            cte: caseCte,
+            serie: caseSerie,
+          },
+        });
+        const previewUrl = `/api/files/${fileRow.id}/view`;
+        try {
+          await ensureAppLogsTable();
+          await pool.query(
+            `INSERT INTO pendencias.app_logs (level, source, event, username, payload)
+           VALUES ('INFO', 'operacional', 'NOTE_FILE_UPLOAD_SUCCESS', $1, $2)`,
+            [username, JSON.stringify({ fileName: f.name, mimeType: f.type || "", fileId: fileRow.id, storage: "sharepoint" })]
+          );
+        } catch {}
+        return NextResponse.json({
+          success: true,
+          url: previewUrl,
+          downloadUrl: `/api/files/${fileRow.id}/download`,
+          id: fileRow.id,
+        });
+      }
+
+      const noteEntityId = `${caseCte}_${caseSerie}`.replace(/[^\w\-]+/g, "_").slice(0, 120);
       const fileRow = await uploadFileToSharePoint({
         pool,
         module: "operacional",
-        entity: "dossier",
-        entityId: dossierId,
+        entity: "note",
+        entityId: noteEntityId,
         originalName: f.name,
         mimeType: f.type || "application/octet-stream",
         buffer,
@@ -68,8 +105,7 @@ export async function POST(req: Request) {
         pathContext: {
           year,
           month,
-          entity_id: dossierId,
-          dossier_id: dossierId,
+          entity_id: noteEntityId,
           cte: caseCte,
           serie: caseSerie,
         },
@@ -78,9 +114,14 @@ export async function POST(req: Request) {
       try {
         await ensureAppLogsTable();
         await pool.query(
-          `INSERT INTO pendencias.app_logs (level, source, event, username, payload)
-           VALUES ('INFO', 'operacional', 'NOTE_FILE_UPLOAD_SUCCESS', $1, $2)`,
-          [username, JSON.stringify({ fileName: f.name, mimeType: f.type || "", fileId: fileRow.id, storage: "sharepoint" })]
+          `INSERT INTO pendencias.app_logs (level, source, event, username, cte, serie, payload)
+           VALUES ('INFO', 'operacional', 'NOTE_FILE_UPLOAD_SUCCESS', $1, $2, $3, $4)`,
+          [
+            username,
+            caseCte,
+            caseSerie,
+            JSON.stringify({ fileName: f.name, mimeType: f.type || "", fileId: fileRow.id, storage: "sharepoint" }),
+          ]
         );
       } catch {}
       return NextResponse.json({
