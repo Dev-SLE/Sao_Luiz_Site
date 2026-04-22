@@ -9,6 +9,7 @@ import {
 } from "../../../lib/server/session";
 import { recordAuditEvent } from "../../../lib/server/ensureFase1Infrastructure";
 import { isAdminSuperRole } from "../../../lib/adminSuperRoles";
+import { normalizeOperacionalPermissionsForSession } from "../../../lib/workspacePermissionNormalize";
 
 export const runtime = "nodejs";
 
@@ -119,9 +120,10 @@ export async function POST(req: Request) {
     }
 
     const bypassRestrictions = isAdminSuperRole(user.role, user.username);
+    const permissionsNormalized = normalizeOperacionalPermissionsForSession(permissions);
     const response = NextResponse.json({
       success: true,
-      permissions,
+      permissions: permissionsNormalized,
       user: {
         username: user.username,
         role: user.role,

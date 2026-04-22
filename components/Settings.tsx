@@ -31,6 +31,7 @@ import {
   type PermissionGroup,
   type PermissionSectionId,
 } from '../lib/permissions';
+import { OPERACIONAL_MODULE_KEY, stripOperacionalPermissionsWithoutModule } from '@/lib/workspacePermissionNormalize';
 
 type ProfilePermissionRow = {
   key: string;
@@ -310,7 +311,10 @@ const Settings: React.FC = () => {
     if (!editingProfile) return;
     const current = editingProfile.permissions || [];
     const has = current.includes(perm);
-    const newPerms = has ? current.filter((p) => p !== perm) : [...current, perm];
+    let newPerms = has ? current.filter((p) => p !== perm) : [...current, perm];
+    if (has && perm === OPERACIONAL_MODULE_KEY) {
+      newPerms = stripOperacionalPermissionsWithoutModule(newPerms);
+    }
     setEditingProfile({ ...editingProfile, permissions: newPerms });
   };
 

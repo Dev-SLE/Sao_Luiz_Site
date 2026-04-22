@@ -2,6 +2,7 @@ import { decodeSession, parseCookieValue, SESSION_COOKIE_NAME } from "./session"
 import { getPool } from "./db";
 import { hasPermissionWithAliases } from "../permissions";
 import { isAdminSuperRole } from "../adminSuperRoles";
+import { normalizeOperacionalPermissionsForSession } from "../workspacePermissionNormalize";
 
 export type SessionContext = {
   username: string;
@@ -108,7 +109,7 @@ export async function getSessionContext(req: Request): Promise<SessionContext | 
           : null,
     mustChangePassword: bypassRestrictions ? false : rawMustChange,
     sessionVersion: dbSessionVersion,
-    permissions: parsePermissions(row?.permissions),
+    permissions: normalizeOperacionalPermissionsForSession(parsePermissions(row?.permissions)),
   };
 }
 

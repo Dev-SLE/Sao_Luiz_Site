@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getPool } from "../../../lib/server/db";
 import { serverLog } from "../../../lib/server/appLog";
 import { requireApiPermissions } from "../../../lib/server/apiAuth";
+import { stripOperacionalPermissionsWithoutModule } from "../../../lib/workspacePermissionNormalize";
 
 export const runtime = "nodejs";
 
@@ -31,7 +32,8 @@ export async function POST(req: Request) {
     const body = await req.json();
     const name = String(body?.name || "").trim();
     const description = String(body?.description || "").trim();
-    const permissions = Array.isArray(body?.permissions) ? body.permissions.map(String) : [];
+    let permissions = Array.isArray(body?.permissions) ? body.permissions.map(String) : [];
+    permissions = stripOperacionalPermissionsWithoutModule(permissions);
     if (!name) return NextResponse.json({ error: "name obrigatório" }, { status: 400 });
 
     const pool = getPool();

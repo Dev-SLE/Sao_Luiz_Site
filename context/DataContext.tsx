@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useMemo, useState, useEffect, useCallback } from 'react';
 import { authClient } from '../lib/auth';
 import { hasPermissionWithAliases } from '../lib/permissions';
+import { normalizeOperacionalPermissionsForSession } from '@/lib/workspacePermissionNormalize';
 import { isAdminSuperRole } from '@/lib/adminSuperRoles';
 import { CteData, NoteData, UserData, GlobalData, ProfileData, ProcessData } from '../types';
 import { useAuth } from './AuthContext';
@@ -182,11 +183,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return profiles.find(p => (p.name || '').toLowerCase() === roleName.toLowerCase()) || null;
   }, [profiles, user?.role]);
 
+  const effectiveProfilePermissions = useMemo(
+    () => normalizeOperacionalPermissionsForSession(currentProfile?.permissions || []),
+    [currentProfile?.permissions],
+  );
+
   const hasPermission = (perm: string) => {
     const roleName = (user?.role || '').trim();
     if (isAdminSuperRole(roleName, user?.username)) return true;
     if (!perm) return true;
-    const perms = currentProfile?.permissions || [];
+    const perms = effectiveProfilePermissions;
     return hasPermissionWithAliases(perms, perm) || !!perms.includes(perm);
   };
 

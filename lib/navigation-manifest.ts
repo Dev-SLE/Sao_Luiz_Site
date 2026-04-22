@@ -152,7 +152,10 @@ function buildOperacionalChildren(
 ): WorkspaceNavChild[] {
   const out: WorkspaceNavChild[] = [];
   for (const t of OPERACIONAL_TABS) {
-    if (!hasPermission(t.permission)) continue;
+    const visible =
+      hasPermission(t.permission) ||
+      (t.slug === 'ocorrencias' && hasPermission('tab.operacional.dossie.view'));
+    if (!visible) continue;
     const href = operacionalPath(t.slug);
     const c = operacionalChildCount(t.slug, counts);
     out.push({ label: t.label, href, status: 'implemented', ...(c !== undefined ? { count: c } : {}) });
@@ -236,15 +239,8 @@ export function buildWorkspaceNavSections(input: {
     return { ...partial, href, matchPrefix: href };
   };
 
-  const showOperacional =
-    hasPermission('module.operacional.view') ||
-    hasPermission('VIEW_DASHBOARD') ||
-    hasPermission('VIEW_PENDENCIAS') ||
-    hasPermission('VIEW_CRITICOS') ||
-    hasPermission('VIEW_EM_BUSCA') ||
-    hasPermission('tab.operacional.ocorrencias.view') ||
-    hasPermission('VIEW_RASTREIO_OPERACIONAL') ||
-    hasPermission('VIEW_CONCLUIDOS');
+  /** Camada módulo: sem `module.operacional.view` (após normalização no cliente) não exibe o bloco, mesmo com legado VIEW_* órfão. */
+  const showOperacional = hasPermission('module.operacional.view');
 
   const opChildren = showOperacional ? buildOperacionalChildren(hasPermission, counts) : [];
 

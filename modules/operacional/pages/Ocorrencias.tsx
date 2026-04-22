@@ -8,7 +8,7 @@ import { WorkspaceNoAccess } from '@/components/workspace/WorkspaceNoAccess';
 
 export function OcorrenciasPage({ onNoteClick }: { onNoteClick: (cte: CteData) => void }) {
   const { ocorrencias, setOcorrenciasPage, setOcorrenciasLimit, hasPermission } = useData();
-  if (!hasPermission('tab.operacional.ocorrencias.view')) {
+  if (!hasPermission('tab.operacional.ocorrencias.view') && !hasPermission('tab.operacional.dossie.view')) {
     return <WorkspaceNoAccess message="Seu perfil não possui acesso à tela de Ocorrências." />;
   }
   return (

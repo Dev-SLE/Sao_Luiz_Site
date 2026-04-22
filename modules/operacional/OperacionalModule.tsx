@@ -57,22 +57,13 @@ export function OperacionalModule({ pathname, onNoteClick, tracking }: Operacion
   const { rest } = parseWorkspacePath(pathname);
   const r0 = rest[0]?.toLowerCase() ?? '';
 
-  const canEnterOperacional =
-    hasPermission('module.operacional.view') ||
-    hasPermission('VIEW_DASHBOARD') ||
-    hasPermission('VIEW_PENDENCIAS') ||
-    hasPermission('VIEW_CRITICOS') ||
-    hasPermission('VIEW_EM_BUSCA') ||
-    hasPermission('tab.operacional.ocorrencias.view') ||
-    hasPermission('VIEW_RASTREIO_OPERACIONAL') ||
-    hasPermission('VIEW_CONCLUIDOS') ||
-    hasPermission('VIEW_RELATORIOS') ||
-    hasPermission('MANAGE_SOFIA');
-
   const utilityPath = isOperacionalUtilityPath(pathNorm);
   const utilityAllowed = utilityPath && canAccessOperacionalUtilityPath(pathNorm, hasPermission);
 
-  if (!canEnterOperacional && !utilityAllowed) {
+  const hasOperacionalModuleLayer = hasPermission('module.operacional.view');
+  const canEnterOperacional = hasOperacionalModuleLayer || utilityAllowed;
+
+  if (!canEnterOperacional) {
     return <WorkspaceNoAccess message="Seu perfil não possui acesso ao módulo Operacional." />;
   }
 
