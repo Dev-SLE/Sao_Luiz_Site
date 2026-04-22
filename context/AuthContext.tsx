@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { authClient, AuthUser } from '../lib/auth';
+import { authClient } from '../lib/auth';
 import { getDefaultPostLoginPath } from '@/lib/post-login-path';
 import { UserData } from '../types';
 
@@ -10,6 +10,8 @@ interface AuthContextType {
   user: UserData | null;
   login: (username: string, password: string) => Promise<{ defaultPath: string; mustChangePassword: boolean }>;
   logout: () => Promise<void>;
+  /** Re-lê a sessão no servidor (ex.: após trocar senha, o cookie já vem atualizado na resposta). */
+  refreshSession: () => Promise<void>;
   loading: boolean;
   authMessage: string;
   clearAuthMessage: () => void;
@@ -66,6 +68,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     checkAuth();
   }, []);
 
+  const refreshSession = async () => {
+    setLoading(true);
+    try {
+      const session = await authClient.getSession();
+      if (session?.user) {
+        setUser({
+          username: session.user.username,
+          role: session.user.role,
+          linkedOriginUnit: session.user.origin || '',
+          linkedDestUnit: session.user.dest || '',
+          linkedBiVendedora: session.user.biVendedora || '',
+          mustChangePassword: Boolean(session.user.mustChangePassword),
+        });
+      } else {
+        setUser(null);
+      }
+    } catch {
+      setUser(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const login = async (username: string, password: string) => {
     try {
       setLoading(true);
@@ -110,7 +135,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, loading, authMessage, clearAuthMessage: () => setAuthMessage('') }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        login,
+        logout,
+        refreshSession,
+        loading,
+        authMessage,
+        clearAuthMessage: () => setAuthMessage(''),
+      }}
+    >
       <PasswordChangeEnforcer />
       {children}
     </AuthContext.Provider>

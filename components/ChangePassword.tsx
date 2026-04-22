@@ -20,7 +20,7 @@ function validatePasswordClient(password: string, username: string): string | nu
 }
 
 const ChangePassword: React.FC<Props> = ({ onClose }) => {
-  const { user } = useAuth();
+  const { user, refreshSession } = useAuth();
   const [currentPass, setCurrentPass] = useState('');
   const [newPass, setNewPass] = useState('');
   const [confirmPass, setConfirmPass] = useState('');
@@ -54,6 +54,7 @@ const ChangePassword: React.FC<Props> = ({ onClose }) => {
       });
 
       if (resp?.success) {
+        await refreshSession();
         setSuccess(true);
         setCurrentPass('');
         setNewPass('');
@@ -68,7 +69,9 @@ const ChangePassword: React.FC<Props> = ({ onClose }) => {
         setError('Erro ao salvar senha no servidor. Verifique se a senha atual está correta.');
       }
     } catch (err) {
-      setError('Erro de conexão. Tente novamente.');
+      const raw = err instanceof Error ? err.message : String(err);
+      const cleaned = raw.replace(/^Erro na API: \d+ - /i, '').replace(/^Erro na API: /i, '');
+      setError(cleaned || 'Erro de conexão. Tente novamente.');
       try {
         await authClient.logEvent({
           level: 'ERROR',

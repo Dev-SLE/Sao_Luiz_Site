@@ -2,6 +2,24 @@ import { createHmac, timingSafeEqual } from "crypto";
 
 export const SESSION_COOKIE_NAME = "sle_session";
 
+/** Extrai o valor do cookie (suporta `=` no payload assinado). */
+export function parseCookieValue(rawCookieHeader: string | null | undefined, cookieName: string): string | null {
+  if (!rawCookieHeader) return null;
+  const needle = `${cookieName}=`;
+  for (const part of rawCookieHeader.split(";")) {
+    const s = part.trim();
+    if (s.startsWith(needle)) {
+      const raw = s.slice(needle.length);
+      try {
+        return decodeURIComponent(raw);
+      } catch {
+        return raw;
+      }
+    }
+  }
+  return null;
+}
+
 type SessionPayload = {
   username: string;
   role: string;

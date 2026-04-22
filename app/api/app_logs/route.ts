@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getPool } from "../../../lib/server/db";
 import { ensureAppLogsTable } from "../../../lib/server/ensureSchema";
 import { requireApiPermissions } from "../../../lib/server/apiAuth";
+import { getSessionContext } from "../../../lib/server/authorization";
 import { getRequestId } from "../../../lib/server/requestId";
 
 export const runtime = "nodejs";
@@ -9,8 +10,14 @@ export const runtime = "nodejs";
 export async function POST(req: Request) {
   try {
     const requestId = getRequestId(req);
-    const guard = await requireApiPermissions(req, ["module.operacional.view", "module.crm.view", "module.comercial.view"]);
-    if (guard.denied) return guard.denied;
+    const session = await getSessionContext(req);
+    if (!session) {
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+    }
+    if (!session.mustChangePassword) {
+      const guard = await requireApiPermissions(req, ["module.operacional.view", "module.crm.view", "module.comercial.view"]);
+      if (guard.denied) return guard.denied;
+    }
     await ensureAppLogsTable();
     const body = await req.json().catch(() => ({}));
     const level = String(body?.level || "INFO").trim().toUpperCase();
