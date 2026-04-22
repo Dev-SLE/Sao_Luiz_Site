@@ -23,9 +23,14 @@ export const viewport: Viewport = {
   themeColor: '#0a1628',
 };
 
+const stripLegacyDarkTheme = `(function(){try{document.documentElement.classList.remove("sle-theme-dark");localStorage.removeItem("sle_theme_dark");}catch(e){}})();`;
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="pt-BR" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: stripLegacyDarkTheme }} />
+      </head>
       <body className="min-h-dvh antialiased font-body" data-theme="workspace">
         <AppProviders>{children}</AppProviders>
       </body>

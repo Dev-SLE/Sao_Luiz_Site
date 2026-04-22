@@ -149,7 +149,7 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
   const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'DATA_LIMITE_DATE', direction: 'asc' });
 
   const { user } = useAuth();
-  const { notes, fullData, processControlData, isCteEmBusca, hasPermission, users } = useData();
+  const { notes, fullData, processControlData, isCteEmBusca, hasPermission, users, refreshData } = useData();
   const canAssignOperational =
     hasPermission('ASSIGN_OPERATIONAL_PENDING') ||
     hasPermission('operacional.assignment.assign') ||
@@ -773,19 +773,8 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
         });
         return;
       }
-      if (failures.length === 0) {
-        setAssignmentOverrides((prev) => {
-          const n = { ...prev };
-          bulkSelectedItems.forEach(({ cte, serie }) => {
-            n[rowKey(cte, serie)] = {
-              ASSIGNMENT_TYPE: 'PENDENTE_AG_BAIXAR',
-              ASSIGNMENT_AGENCY_UNIT: bulkDraft.agencyUnit,
-              ASSIGNED_USERNAME: bulkDraft.assignedUsername,
-              ASSIGNMENT_UPDATED_AT: new Date().toISOString(),
-            };
-          });
-          return n;
-        });
+      if (saved > 0) {
+        await refreshData();
       }
       setBulkAssignOpen(false);
       setBulkSelected(new Set());
@@ -838,15 +827,7 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
         notes: assigningDraft.notes,
         actor: user?.username || undefined,
       });
-      setAssignmentOverrides(prev => ({
-        ...prev,
-        [rowKey(assigningDraft.cte, assigningDraft.serie)]: {
-          ASSIGNMENT_TYPE: 'PENDENTE_AG_BAIXAR',
-          ASSIGNMENT_AGENCY_UNIT: assigningDraft.agencyUnit,
-          ASSIGNED_USERNAME: assigningDraft.assignedUsername,
-          ASSIGNMENT_UPDATED_AT: new Date().toISOString(),
-        },
-      }));
+      await refreshData();
       setAssigningDraft(null);
       setAssignmentNotice({
         title: 'Atribuição salva',
@@ -890,15 +871,7 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
         actor: user?.username || undefined,
         reason: clearReason.trim(),
       });
-      setAssignmentOverrides(prev => ({
-        ...prev,
-        [rowKey(clearTarget.cte, clearTarget.serie)]: {
-          ASSIGNMENT_TYPE: '',
-          ASSIGNMENT_AGENCY_UNIT: '',
-          ASSIGNED_USERNAME: '',
-          ASSIGNMENT_UPDATED_AT: '',
-        },
-      }));
+      await refreshData();
       setClearTarget(null);
       setClearReason('');
       setAssignmentNotice({

@@ -1,11 +1,8 @@
 'use client';
 
-/** Reativar quando o tema escuro estiver revisado (não remover o botão abaixo). */
-const ENABLE_WORKSPACE_THEME_TOGGLE = false;
-
 import React, { useRef } from 'react';
 import Link from 'next/link';
-import { ChevronDown, CircleDot, LogOut, User as UserIcon, Moon, Sun, LayoutDashboard } from 'lucide-react';
+import { ChevronDown, CircleDot, LogOut, User as UserIcon, LayoutDashboard } from 'lucide-react';
 import clsx from 'clsx';
 import { useWorkspaceShell } from '@/context/WorkspaceShellContext';
 import { FloatingDropdownPortal } from '@/components/workspace/FloatingDropdownPortal';
@@ -15,13 +12,6 @@ import { useData } from '@/context/DataContext';
 type Props = {
   /** Variante visual dos botões (alinhar ao módulo) */
   variant?: 'default' | 'crm' | 'comercial' | 'hub';
-};
-
-const ring: Record<NonNullable<Props['variant']>, string> = {
-  default: 'border-sl-navy/20 bg-white/80 text-slate-700 hover:text-sl-navy',
-  crm: 'border-sl-navy/20 bg-white/80 text-slate-700 hover:text-sl-navy',
-  comercial: 'border-sl-navy/20 bg-white/80 text-slate-700 hover:text-sl-navy',
-  hub: 'border-sl-navy/20 bg-white/80 text-slate-700 hover:text-sl-navy',
 };
 
 const profileRing: Record<NonNullable<Props['variant']>, string> = {
@@ -39,25 +29,12 @@ const avatarGrad: Record<NonNullable<Props['variant']>, string> = {
 };
 
 export function WorkspaceUserChrome({ variant = 'default' }: Props) {
-  const { user, logout, themeDark, setThemeDark, profileOpen, setProfileOpen } = useWorkspaceShell();
+  const { user, logout, profileOpen, setProfileOpen } = useWorkspaceShell();
   const { hasPermission } = useData();
   const profileBtnRef = useRef<HTMLButtonElement>(null);
 
   return (
     <div className="flex shrink-0 items-center gap-2 sm:gap-3">
-      {ENABLE_WORKSPACE_THEME_TOGGLE ? (
-        <button
-          type="button"
-          onClick={() => setThemeDark((v) => !v)}
-          className={clsx(
-            'relative inline-flex h-9 w-9 items-center justify-center rounded-full border text-slate-700 transition-colors',
-            ring[variant],
-          )}
-          title={themeDark ? 'Tema claro' : 'Tema escuro'}
-        >
-          {themeDark ? <Sun size={16} /> : <Moon size={16} />}
-        </button>
-      ) : null}
       <NotificationsCenter variant="workspace" />
       <button
         ref={profileBtnRef}

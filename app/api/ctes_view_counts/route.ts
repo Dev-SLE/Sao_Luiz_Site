@@ -99,10 +99,7 @@ export async function POST(req: Request) {
     const assignmentAgencyExpr = assignmentAvailable ? "a.agency_unit" : "NULL";
     const assignmentUserExpr = assignmentAvailable ? "a.assigned_username" : "NULL";
 
-    const assignPoolNarrow =
-      assignmentAvailable &&
-      can(session, "ASSIGN_OPERATIONAL_PENDING") &&
-      !hasOperationalGlobal;
+    const assignPoolNarrow = assignmentAvailable && !hasOperationalGlobal;
     const sessionUserForPool = String(session.username || "").trim();
     const extraAssignClause = assignmentAvailable
       ? ` AND (NOT $11::boolean OR COALESCE(TRIM(a.assigned_username), '') = '' OR LOWER(TRIM(a.assigned_username)) = LOWER(TRIM($12::text))) `

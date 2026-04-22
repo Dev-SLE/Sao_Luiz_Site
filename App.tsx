@@ -101,7 +101,8 @@ export const WorkspaceApp: React.FC<{ workspaceClient?: WorkspaceNavigationClien
   const [selectedTrackingCte, setSelectedTrackingCte] = useState<string | null>(null);
   const [selectedTrackingSerie, setSelectedTrackingSerie] = useState<string | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
-  const [themeDark, setThemeDark] = useState(false);
+  /** Tema escuro desativado (sem suporte); manter no-op até reativar produto. */
+  const noopSetThemeDark = useCallback((_v: React.SetStateAction<boolean>) => {}, []);
   const isCrmModule = pathname.startsWith('/app/crm');
 
   useEffect(() => {
@@ -134,17 +135,13 @@ export const WorkspaceApp: React.FC<{ workspaceClient?: WorkspaceNavigationClien
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const v = window.localStorage.getItem("sle_theme_dark");
-    const enabled = v === "1";
-    setThemeDark(enabled);
-    document.documentElement.classList.toggle("sle-theme-dark", enabled);
+    try {
+      window.localStorage.removeItem("sle_theme_dark");
+    } catch {
+      /* ignore */
+    }
+    document.documentElement.classList.remove("sle-theme-dark");
   }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    document.documentElement.classList.toggle("sle-theme-dark", themeDark);
-    window.localStorage.setItem("sle_theme_dark", themeDark ? "1" : "0");
-  }, [themeDark]);
 
   if (loading) {
     return (
@@ -190,8 +187,8 @@ export const WorkspaceApp: React.FC<{ workspaceClient?: WorkspaceNavigationClien
           user: { username: user.username },
           logout,
           navigateToPage,
-          themeDark,
-          setThemeDark,
+          themeDark: false,
+          setThemeDark: noopSetThemeDark,
           profileOpen,
           setProfileOpen,
         }}

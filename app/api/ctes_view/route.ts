@@ -64,11 +64,8 @@ export async function GET(req: Request) {
       `
       : ``;
 
-    /** Quem pode atribuir mas não vê operação global: não lista linhas já atribuídas a outro utilizador. */
-    const assignPoolNarrow =
-      assignmentAvailable &&
-      can(session, "ASSIGN_OPERATIONAL_PENDING") &&
-      !hasOperationalGlobal;
+    /** Sem visão operacional global: fila partilhada só mostra sem responsável ou já atribuídos ao próprio (quem atribuiu deixa de ver após passar a outro). */
+    const assignPoolNarrow = assignmentAvailable && !hasOperationalGlobal;
     const sessionUser = String(session.username || "").trim();
 
     const filterParams: unknown[] = [viewKey];
