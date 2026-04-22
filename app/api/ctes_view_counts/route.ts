@@ -2,20 +2,13 @@ import { NextResponse } from "next/server";
 import { getPool } from "../../../lib/server/db";
 import { ensureOperationalAssignmentsTable } from "../../../lib/server/ensureSchema";
 import { can, getSessionContext } from "../../../lib/server/authorization";
+import { canAccessOperationalCtesView } from "../../../lib/server/operacionalCteViewAccess";
 import { isAdminSuperRole } from "../../../lib/adminSuperRoles";
 import { OPERATIONAL_CTE_STATUS_NORM_SQL, operationalCteUnitScopeAndClause } from "../../../lib/server/operationalCteUnitScope";
 
 export const runtime = "nodejs";
 
 const NORMALIZED_STATUS_SQL = OPERATIONAL_CTE_STATUS_NORM_SQL;
-
-const VIEW_TAB_PERMISSION: Record<string, string> = {
-  pendencias: "tab.operacional.pendencias.view",
-  criticos: "tab.operacional.criticos.view",
-  em_busca: "tab.operacional.em_busca.view",
-  ocorrencias: "tab.operacional.ocorrencias.view",
-  concluidos: "tab.operacional.concluidos.view",
-};
 
 export async function POST(req: Request) {
   try {
@@ -47,8 +40,7 @@ export async function POST(req: Request) {
 
     const rawViewKey = ["pendencias", "criticos", "em_busca", "ocorrencias", "tad", "concluidos"].includes(String(view)) ? String(view) : "pendencias";
     const viewKey = rawViewKey === "tad" ? "ocorrencias" : rawViewKey;
-    const tabPerm = VIEW_TAB_PERMISSION[viewKey];
-    if (tabPerm && !can(session, tabPerm)) {
+    if (!canAccessOperationalCtesView(session, viewKey)) {
       return NextResponse.json({ error: "Sem permissão para esta visualização" }, { status: 403 });
     }
     const hasOperationalGlobal = can(session, "scope.operacional.all") || isAdminSuperRole(session.role, session.username);
