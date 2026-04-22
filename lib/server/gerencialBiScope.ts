@@ -35,7 +35,7 @@ export function resolveGerencialBiScope(session: SessionContext | null): Gerenci
   if (!session) {
     return { agenciaNormalizada: null, vendedorRestrito: null };
   }
-  if (isAdminSuperRole(session.role)) {
+  if (isAdminSuperRole(session.role, session.username)) {
     return { agenciaNormalizada: null, vendedorRestrito: null };
   }
   const bv = String(session.biVendedora ?? "").trim();

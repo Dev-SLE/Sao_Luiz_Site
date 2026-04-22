@@ -35,10 +35,11 @@ export function isPortalPathAllowed(
   pathname: string,
   hasPermission: (k: string) => boolean,
   role: string | null | undefined,
+  username?: string | null | undefined,
 ): boolean {
   const rule = matchPortalRouteRule(pathname);
   if (!rule) return false;
-  if (isSuperRole(role)) return true;
-  if (rule.mode === 'editor') return canEditPortalContent(hasPermission, { role });
+  if (isSuperRole(role, username)) return true;
+  if (rule.mode === 'editor') return canEditPortalContent(hasPermission, { role, username });
   return hasPermission(rule.permission);
 }

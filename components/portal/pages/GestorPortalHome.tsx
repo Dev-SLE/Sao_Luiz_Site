@@ -24,7 +24,7 @@ export function GestorPortalHome() {
 
   const links = [
     ...sectionsVisible,
-    ...(canEditPortalContent(hasPermission, { role: user?.role })
+    ...(canEditPortalContent(hasPermission, { role: user?.role, username: user?.username })
       ? [
           {
             href: '/portal-edicao',

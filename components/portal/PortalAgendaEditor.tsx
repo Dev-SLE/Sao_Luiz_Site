@@ -49,7 +49,7 @@ const emptyForm = {
 export function PortalAgendaEditor() {
   const { user } = useAuth();
   const { hasPermission } = useData();
-  const allowed = canEditPortalContent(hasPermission, { role: user?.role });
+  const allowed = canEditPortalContent(hasPermission, { role: user?.role, username: user?.username });
   const [items, setItems] = useState<AgendaRow[]>([]);
   const [msg, setMsg] = useState('');
   const [loading, setLoading] = useState(true);

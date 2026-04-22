@@ -89,7 +89,7 @@ export const PORTAL_NAV_LINKS: PortalNavLink[] = [
 export function filterPortalNavLinks(
   links: PortalNavLink[],
   hasPermission: (perm: string) => boolean,
-  opts?: { role?: string | null },
+  opts?: { role?: string | null; username?: string | null },
 ): PortalNavLink[] {
   return links.filter((l) => {
     if (l.href === '/portal-edicao') {

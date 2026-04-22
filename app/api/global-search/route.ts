@@ -31,7 +31,7 @@ export async function GET(req: Request) {
     const groups: GlobalSearchGroup[] = [];
 
     if (can(session, 'module.operacional.view')) {
-      const hasOperationalGlobal = can(session, 'scope.operacional.all') || isAdminSuperRole(session.role);
+      const hasOperationalGlobal = can(session, 'scope.operacional.all') || isAdminSuperRole(session.role, session.username);
       const linkedDestUnit = String(session.dest || '').trim();
       const linkedOriginUnit = String(session.origin || '').trim();
       const scopeNeeded =

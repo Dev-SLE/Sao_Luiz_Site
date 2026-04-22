@@ -28,8 +28,8 @@ export function Navbar() {
   const pathname = usePathname();
   const { user } = useAuth();
   const { hasPermission } = useData();
-  const links = filterPortalNavLinks(PORTAL_NAV_LINKS, hasPermission, { role: user?.role });
-  const canPortalEdit = canEditPortalContent(hasPermission, { role: user?.role });
+  const links = filterPortalNavLinks(PORTAL_NAV_LINKS, hasPermission, { role: user?.role, username: user?.username });
+  const canPortalEdit = canEditPortalContent(hasPermission, { role: user?.role, username: user?.username });
   const showWorkspace = hasPermission('workspace.app.view');
   const isWorkspaceActive = Boolean(pathname?.startsWith('/app'));
 

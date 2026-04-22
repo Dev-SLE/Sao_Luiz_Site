@@ -75,6 +75,8 @@ export async function getSessionContext(req: Request): Promise<SessionContext | 
   const dbPwdAt = row?.password_changed_at ? new Date(String(row.password_changed_at)).toISOString() : null;
   const tokenPwdAt = session.passwordChangedAt ? String(session.passwordChangedAt) : null;
   if ((dbPwdAt || null) !== (tokenPwdAt || null)) return null;
+  const rawMustChange = Boolean(row?.must_change_password);
+  const bypassRestrictions = isAdminSuperRole(String(session.role), String(session.username));
   return {
     username: String(session.username),
     role: String(session.role || ""),
@@ -86,7 +88,7 @@ export async function getSessionContext(req: Request): Promise<SessionContext | 
         : session.biVendedora != null && String(session.biVendedora).trim() !== ""
           ? String(session.biVendedora).trim()
           : null,
-    mustChangePassword: Boolean(row?.must_change_password),
+    mustChangePassword: bypassRestrictions ? false : rawMustChange,
     sessionVersion: dbSessionVersion,
     permissions: parsePermissions(row?.permissions),
   };
@@ -94,6 +96,6 @@ export async function getSessionContext(req: Request): Promise<SessionContext | 
 
 export function can(ctx: SessionContext | null, permission: string) {
   if (!ctx) return false;
-  if (isAdminSuperRole(ctx.role)) return true;
+  if (isAdminSuperRole(ctx.role, ctx.username)) return true;
   return hasPermissionWithAliases(ctx.permissions, permission);
 }

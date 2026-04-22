@@ -62,7 +62,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
 
         setUser(u);
-        const defaultPath = getDefaultPostLoginPath(authResponse.permissions, u.role);
+        const defaultPath = getDefaultPostLoginPath(authResponse.permissions, u.role, u.username);
         return { defaultPath, mustChangePassword: Boolean(u.mustChangePassword) };
       } else {
         throw new Error('Usuário não encontrado');

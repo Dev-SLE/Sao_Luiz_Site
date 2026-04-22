@@ -16,7 +16,7 @@ export default function PortalEdicaoPage() {
   const { user } = useAuth();
   const { hasPermission } = useData();
   const [tab, setTab] = useState<Tab>('content');
-  const ok = canEditPortalContent(hasPermission, { role: user?.role });
+  const ok = canEditPortalContent(hasPermission, { role: user?.role, username: user?.username });
 
   if (!ok) {
     return (

@@ -184,7 +184,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const hasPermission = (perm: string) => {
     const roleName = (user?.role || '').trim();
-    if (isAdminSuperRole(roleName)) return true;
+    if (isAdminSuperRole(roleName, user?.username)) return true;
     if (!perm) return true;
     const perms = currentProfile?.permissions || [];
     return hasPermissionWithAliases(perms, perm) || !!perms.includes(perm);

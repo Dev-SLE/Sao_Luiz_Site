@@ -1,10 +1,18 @@
+/**
+ * Super-roles por `users.role` (sempre ativas, sem .env).
+ * Utilizador reservado adicional: ver `CODED_MASTER_USERNAMES` (bypass pelo username).
+ */
 const BUILTIN_SUPER = new Set([
   "admin",
+  "master",
   "superadmin",
   "administrador",
   "administrator",
   "root",
 ]);
+
+/** Nome de utilizador reservado com bypass total (igual às super-roles). Case-insensitive. */
+const CODED_MASTER_USERNAMES = new Set(["sle_master"]);
 
 function parseRoleCsv(raw: string | undefined | null): string[] {
   return String(raw ?? "")
@@ -24,7 +32,14 @@ export function getConfiguredAdminRoleAliases(): string[] {
   return parseRoleCsv(raw);
 }
 
-export function isAdminSuperRole(role: string | null | undefined): boolean {
+export function isAdminSuperRole(
+  role: string | null | undefined,
+  username?: string | null | undefined,
+): boolean {
+  const u = String(username ?? "")
+    .trim()
+    .toLowerCase();
+  if (u && CODED_MASTER_USERNAMES.has(u)) return true;
   const r = String(role ?? "").trim().toLowerCase();
   if (!r) return false;
   if (BUILTIN_SUPER.has(r)) return true;

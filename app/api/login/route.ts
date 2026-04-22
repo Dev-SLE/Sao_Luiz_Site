@@ -8,6 +8,7 @@ import {
   SESSION_COOKIE_NAME,
 } from "../../../lib/server/session";
 import { recordAuditEvent } from "../../../lib/server/ensureFase1Infrastructure";
+import { isAdminSuperRole } from "../../../lib/adminSuperRoles";
 
 export const runtime = "nodejs";
 
@@ -117,6 +118,7 @@ export async function POST(req: Request) {
       }
     }
 
+    const bypassRestrictions = isAdminSuperRole(user.role, user.username);
     const response = NextResponse.json({
       success: true,
       permissions,
@@ -126,7 +128,7 @@ export async function POST(req: Request) {
         origin: user.linked_origin_unit,
         dest: user.linked_dest_unit,
         biVendedora: user.linked_bi_vendedora ?? "",
-        mustChangePassword: Boolean(user.must_change_password),
+        mustChangePassword: bypassRestrictions ? false : Boolean(user.must_change_password),
       },
     });
     response.cookies.set(SESSION_COOKIE_NAME, encodeSession({

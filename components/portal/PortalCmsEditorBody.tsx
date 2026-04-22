@@ -72,7 +72,7 @@ export function PortalCmsEditorBody() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [pendingUpload, setPendingUpload] = useState<{ id: string; role: 'cover' | 'main' } | null>(null);
 
-  const allowed = canEditPortalContent(hasPermission, { role: user?.role });
+  const allowed = canEditPortalContent(hasPermission, { role: user?.role, username: user?.username });
 
   const load = useCallback(async () => {
     setLoading(true);

@@ -41,7 +41,7 @@ export async function GET(req: Request) {
     if (tabPerm && !can(session, tabPerm)) {
       return NextResponse.json({ error: "Sem permissão para esta visualização" }, { status: 403 });
     }
-    const hasOperationalGlobal = can(session, "scope.operacional.all") || isAdminSuperRole(session.role);
+    const hasOperationalGlobal = can(session, "scope.operacional.all") || isAdminSuperRole(session.role, session.username);
     const linkedDestUnit = String(session.dest || "").trim();
     const linkedOriginUnit = String(session.origin || "").trim();
     let opScopeFilterSql = "";

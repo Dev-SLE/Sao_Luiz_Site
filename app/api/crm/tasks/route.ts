@@ -29,7 +29,7 @@ export async function GET(req: Request) {
     const session = guard.session!;
     const username = session.username || "";
 
-    const seeAll = all && (can(session, "MANAGE_CRM_OPS") || isAdminSuperRole(session.role));
+    const seeAll = all && (can(session, "MANAGE_CRM_OPS") || isAdminSuperRole(session.role, session.username));
 
     const params: any[] = [];
     let where = "1=1";
@@ -101,7 +101,7 @@ export async function POST(req: Request) {
       if (
         assignedUsername.toLowerCase() !== String(session.username || "").toLowerCase() &&
         !can(session, "MANAGE_CRM_OPS") &&
-        !isAdminSuperRole(session.role)
+        !isAdminSuperRole(session.role, session.username)
       ) {
         assignedUsername = String(session.username);
       }
@@ -135,7 +135,7 @@ export async function POST(req: Request) {
       const isOwner =
         String(row.assigned_username || "").toLowerCase() === uname ||
         String(row.created_by || "").toLowerCase() === uname;
-      if (!isOwner && !can(session, "MANAGE_CRM_OPS") && !isAdminSuperRole(session.role)) {
+      if (!isOwner && !can(session, "MANAGE_CRM_OPS") && !isAdminSuperRole(session.role, session.username)) {
         return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
       }
 
@@ -180,7 +180,7 @@ export async function POST(req: Request) {
       const isOwner =
         String(row.assigned_username || "").toLowerCase() === uname ||
         String(row.created_by || "").toLowerCase() === uname;
-      if (!isOwner && !can(session, "MANAGE_CRM_OPS") && !isAdminSuperRole(session.role)) {
+      if (!isOwner && !can(session, "MANAGE_CRM_OPS") && !isAdminSuperRole(session.role, session.username)) {
         return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
       }
       await pool.query(`DELETE FROM pendencias.crm_tasks WHERE id = $1::uuid`, [id]);

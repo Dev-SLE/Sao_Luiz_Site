@@ -23,8 +23,8 @@ export default function PortalLayoutClient({ children }: { children: React.React
 
   const routeRule = useMemo(() => matchPortalRouteRule(pathname), [pathname]);
   const allowed = useMemo(
-    () => isPortalPathAllowed(pathname, hasPermission, user?.role),
-    [pathname, hasPermission, user?.role],
+    () => isPortalPathAllowed(pathname, hasPermission, user?.role, user?.username),
+    [pathname, hasPermission, user?.role, user?.username],
   );
 
   if (loading) {

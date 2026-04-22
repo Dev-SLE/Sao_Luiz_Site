@@ -19,7 +19,7 @@ async function operationalCteAccessible(
   cte: string,
   serie: string
 ) {
-  const hasOperationalGlobal = can(session, "scope.operacional.all") || isAdminSuperRole(session.role);
+  const hasOperationalGlobal = can(session, "scope.operacional.all") || isAdminSuperRole(session.role, session.username);
   if (hasOperationalGlobal) return true;
   const d = String(session.dest || "").trim();
   const o = String(session.origin || "").trim();

@@ -1,5 +1,6 @@
 import { timingSafeEqual } from "crypto";
 import { NextResponse } from "next/server";
+import { isAdminSuperRole } from "../adminSuperRoles";
 import { can, getSessionContext, type SessionContext } from "./authorization";
 
 type PermissionList = string[];
@@ -18,7 +19,11 @@ export async function requireApiPermissions(
     "/api/auth/session",
     "/api/logout",
   ]);
-  if (session.mustChangePassword && !allowWithoutPasswordChange.has(pathname)) {
+  if (
+    session.mustChangePassword &&
+    !allowWithoutPasswordChange.has(pathname) &&
+    !isAdminSuperRole(session.role, session.username)
+  ) {
     return {
       session,
       denied: NextResponse.json(
