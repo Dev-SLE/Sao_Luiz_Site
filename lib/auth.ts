@@ -108,7 +108,8 @@ export class NeonDataClient {
     if (!response.ok) return null;
     const data = await response.json();
     if (!data?.authenticated || !data?.user) return null;
-    return { success: true, user: data.user };
+    const permissions = Array.isArray(data.permissions) ? data.permissions.map((x: unknown) => String(x)) : [];
+    return { success: true, user: data.user, permissions };
   }
 
 

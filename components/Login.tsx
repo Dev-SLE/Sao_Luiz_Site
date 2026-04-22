@@ -2,6 +2,9 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '../context/AuthContext';
+import { LoginPasswordGateModal } from './LoginPasswordGateModal';
+import { getDefaultPostLoginPath } from '@/lib/post-login-path';
+import { authClient } from '@/lib/auth';
 import {
   ArrowRight,
   Building2,
@@ -25,7 +28,8 @@ function safeInternalPath(from: string | null): string | null {
 const Login: React.FC = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { login, authMessage, clearAuthMessage } = useAuth();
+  const { login, authMessage, clearAuthMessage, user, loading: authLoading, refreshSession, logout } = useAuth();
+  const [showPasswordGate, setShowPasswordGate] = useState(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -55,6 +59,26 @@ const Login: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [username, password]);
 
+  useEffect(() => {
+    if (authLoading) return;
+    if (user?.mustChangePassword) setShowPasswordGate(true);
+    else setShowPasswordGate(false);
+  }, [authLoading, user?.mustChangePassword, user?.username]);
+
+  const handlePasswordGateComplete = async () => {
+    await refreshSession();
+    const s = await authClient.getSession();
+    const perms = s?.permissions ?? [];
+    const role = s?.user?.role ?? user?.role ?? '';
+    const uname = s?.user?.username ?? user?.username ?? '';
+    const next = safeInternalPath(searchParams.get('from')) || getDefaultPostLoginPath(perms, role, uname);
+    router.replace(next || '/inicio');
+  };
+
+  const handlePasswordGateCancel = async () => {
+    await logout();
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -62,7 +86,7 @@ const Login: React.FC = () => {
     try {
       const { defaultPath, mustChangePassword } = await login(username, password);
       if (mustChangePassword) {
-        router.replace('/app/operacional/mudar-senha');
+        setShowPasswordGate(true);
         return;
       }
       const next = safeInternalPath(searchParams.get('from')) || defaultPath;
@@ -344,6 +368,18 @@ const Login: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {showPasswordGate && user?.username ? (
+        <LoginPasswordGateModal
+          username={user.username}
+          onCancel={() => {
+            void handlePasswordGateCancel();
+          }}
+          onSuccess={() => {
+            void handlePasswordGateComplete();
+          }}
+        />
+      ) : null}
     </div>
   );
 };

@@ -1,11 +1,9 @@
 import React, { useState } from 'react';
-import { Lock, Save, CheckCircle, Loader2, AlertTriangle, X } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Lock, Save, Loader2, AlertTriangle, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { authClient } from '../lib/auth';
-
-interface Props {
-  onClose?: () => void;
-}
+import { getDefaultPostLoginPath } from '@/lib/post-login-path';
 
 function validatePasswordClient(password: string, username: string): string | null {
   const p = String(password || '');
@@ -19,19 +17,39 @@ function validatePasswordClient(password: string, username: string): string | nu
   return null;
 }
 
-const ChangePassword: React.FC<Props> = ({ onClose }) => {
+const ChangePassword: React.FC = () => {
+  const router = useRouter();
   const { user, refreshSession } = useAuth();
   const [currentPass, setCurrentPass] = useState('');
   const [newPass, setNewPass] = useState('');
   const [confirmPass, setConfirmPass] = useState('');
-  const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [closing, setClosing] = useState(false);
   const [error, setError] = useState('');
+
+  const navigateToDefaultPortal = async () => {
+    await refreshSession();
+    const s = await authClient.getSession();
+    const next = getDefaultPostLoginPath(s?.permissions ?? [], s?.user?.role ?? '', s?.user?.username ?? '');
+    router.replace(next || '/inicio');
+  };
+
+  const handleClose = async () => {
+    if (user?.mustChangePassword) return;
+    setError('');
+    setClosing(true);
+    try {
+      await navigateToDefaultPortal();
+    } catch {
+      setError('Não foi possível atualizar a sessão. Tente novamente.');
+    } finally {
+      setClosing(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    setSuccess(false);
 
     if (newPass !== confirmPass) {
       setError('A nova senha e a confirmação não coincidem.');
@@ -55,7 +73,6 @@ const ChangePassword: React.FC<Props> = ({ onClose }) => {
 
       if (resp?.success) {
         await refreshSession();
-        setSuccess(true);
         setCurrentPass('');
         setNewPass('');
         setConfirmPass('');
@@ -65,6 +82,8 @@ const ChangePassword: React.FC<Props> = ({ onClose }) => {
             username: user?.username || '',
           });
         } catch {}
+        await navigateToDefaultPortal();
+        return;
       } else {
         setError('Erro ao salvar senha no servidor. Verifique se a senha atual está correta.');
       }
@@ -91,24 +110,18 @@ const ChangePassword: React.FC<Props> = ({ onClose }) => {
         <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-900">
           <Lock className="text-sl-navy" size={28} strokeWidth={2} /> Alterar senha
         </h1>
-        {onClose && (
+        {!user?.mustChangePassword && (
           <button
             type="button"
-            onClick={onClose}
-            className="rounded-full p-2 text-slate-500 transition hover:bg-slate-100"
-            title="Fechar"
+            onClick={() => void handleClose()}
+            disabled={loading || closing}
+            className="rounded-full p-2 text-slate-500 transition hover:bg-slate-100 disabled:opacity-40"
+            title="Fechar e voltar ao portal"
           >
-            <X size={18} />
+            {closing ? <Loader2 size={18} className="animate-spin" /> : <X size={18} />}
           </button>
         )}
       </div>
-
-      {success && (
-        <div className="mb-6 flex animate-in items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-900 fade-in slide-in-from-top-2">
-          <CheckCircle size={20} />
-          Senha alterada com sucesso!
-        </div>
-      )}
 
       {error && (
         <div className="mb-6 flex animate-in items-center gap-2 rounded-xl border border-red-200 bg-red-50 p-4 text-red-800 fade-in slide-in-from-top-2">

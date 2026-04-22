@@ -52,12 +52,7 @@ export function WorkspaceModuleRouter({
   if (m === 'operacional') {
     return (
       <OperacionalLayout pathname={pathname}>
-        <OperacionalModule
-          pathname={pathname}
-          onNoteClick={onNoteClick}
-          navigateToPage={navigateToPage}
-          tracking={tracking}
-        />
+        <OperacionalModule pathname={pathname} onNoteClick={onNoteClick} tracking={tracking} />
       </OperacionalLayout>
     );
   }
@@ -105,12 +100,7 @@ export function WorkspaceModuleRouter({
 
   return (
     <OperacionalLayout pathname={pathname}>
-      <OperacionalModule
-        pathname={pathname}
-        onNoteClick={onNoteClick}
-        navigateToPage={navigateToPage}
-        tracking={tracking}
-      />
+      <OperacionalModule pathname={pathname} onNoteClick={onNoteClick} tracking={tracking} />
     </OperacionalLayout>
   );
 }

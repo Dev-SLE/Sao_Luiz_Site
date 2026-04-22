@@ -30,6 +30,7 @@ function PasswordChangeEnforcer() {
     if (!user?.mustChangePassword) return;
     if (pathname.includes('/mudar-senha')) return;
     if (pathname.startsWith('/recuperar-senha') || pathname.startsWith('/redefinir-senha')) return;
+    if (pathname.startsWith('/login')) return;
     router.replace('/app/operacional/mudar-senha');
   }, [loading, user?.mustChangePassword, user?.username, pathname, router]);
 

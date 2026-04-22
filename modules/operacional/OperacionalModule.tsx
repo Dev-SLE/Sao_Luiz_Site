@@ -2,7 +2,7 @@
 
 import React, { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Page, CteData } from '@/types';
+import { CteData } from '@/types';
 import { parseWorkspacePath } from '@/lib/workspace-routes';
 import { useData } from '@/context/DataContext';
 import Settings from '@/components/Settings';
@@ -22,7 +22,6 @@ import { ConcluidosPage } from './pages/Concluidos';
 export type OperacionalModuleProps = {
   pathname: string;
   onNoteClick: (cte: CteData) => void;
-  navigateToPage: (p: Page) => void;
   tracking: { cte: string | null; serie: string | null };
 };
 
@@ -52,7 +51,7 @@ function RedirectToGerencialRotasOperacionais() {
   );
 }
 
-export function OperacionalModule({ pathname, onNoteClick, navigateToPage, tracking }: OperacionalModuleProps) {
+export function OperacionalModule({ pathname, onNoteClick, tracking }: OperacionalModuleProps) {
   const { hasPermission } = useData();
   const pathNorm = (pathname || '').replace(/\/+$/, '') || '/';
   const { rest } = parseWorkspacePath(pathname);
@@ -100,7 +99,7 @@ export function OperacionalModule({ pathname, onNoteClick, navigateToPage, track
       body = <SofiaSettings />;
     }
   } else if (pathNorm.endsWith('/mudar-senha')) {
-    body = <ChangePassword onClose={() => navigateToPage(Page.DASHBOARD)} />;
+    body = <ChangePassword />;
   } else {
     switch (r0) {
       case '':
