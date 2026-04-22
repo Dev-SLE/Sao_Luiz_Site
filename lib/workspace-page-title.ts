@@ -1,7 +1,7 @@
 import { parseWorkspacePath, moduleLabel } from '@/lib/workspace-routes';
 import { CRM_TABS } from '@/modules/crm/routes';
 import { COMERCIAL_TABS } from '@/modules/comercial/routes';
-import { GERENCIAL_COMERCIAL_PANELS, isGerencialSectorSlug } from '@/modules/gerencial/routes';
+import { GERENCIAL_COMERCIAL_PANELS, GERENCIAL_OPERACAO_PANELS, isGerencialSectorSlug } from '@/modules/gerencial/routes';
 import { OPERACIONAL_TABS, OPERACIONAL_UTILITY_TABS } from '@/modules/operacional/routes';
 
 /** Título curto só da vista atual (barra superior embutida). */
@@ -51,7 +51,11 @@ export function getWorkspacePageTitle(pathname: string): string {
       sector = 'comercial';
     }
     if (sector === 'financeiro') return 'Financeiro (BI)';
-    if (sector === 'operacao') return 'Operação (BI)';
+    if (sector === 'operacao') {
+      const op = GERENCIAL_OPERACAO_PANELS.find((t) => t.slug === panel);
+      if (op) return op.label;
+      return 'Operação (BI)';
+    }
     if (panel === 'comissoes' && extra === 'holerite') return 'Holerite de comissões';
     const hit = GERENCIAL_COMERCIAL_PANELS.find((t) => t.slug === panel);
     if (hit) return hit.label;

@@ -16,7 +16,8 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { AlertCircle, ChevronDown, Download, Loader2 } from 'lucide-react';
+import { AlertCircle, Download, Loader2 } from 'lucide-react';
+import { CollapsibleMultiSelectWithFilter } from '@/modules/bi/components/CollapsibleMultiSelectWithFilter';
 import {
   BI_METAS_PERFORMANCE_CONFIG,
   METAS_KPI_SLOTS,
@@ -54,62 +55,6 @@ function formatKpiValue(format: 'currency' | 'percent' | 'integer', raw: unknown
   if (format === 'integer') return String(Math.round(toNum(raw)));
   if (format === 'percent') return formatBiRatioAsPercent(raw);
   return formatBrl(toNum(raw));
-}
-
-function AgenciaMultiSelect({
-  options,
-  selectedValues,
-  onToggle,
-  onClear,
-}: {
-  options: { label: string; value: string }[];
-  selectedValues: string[];
-  onToggle: (value: string) => void;
-  onClear: () => void;
-}) {
-  const summary = selectedValues.length ? `${selectedValues.length} selecionada(s)` : 'Todas';
-  return (
-    <details className="group relative min-w-[220px] flex-1 rounded-xl border border-slate-200 bg-white shadow-sm open:z-30 open:shadow-md">
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2.5 text-left [&::-webkit-details-marker]:hidden">
-        <span>
-          <span className="block text-[10px] font-bold uppercase tracking-wide text-slate-500">Agência</span>
-          <span className="text-sm font-semibold text-slate-900">{summary}</span>
-        </span>
-        <ChevronDown className="size-4 shrink-0 text-slate-500 transition group-open:rotate-180" aria-hidden />
-      </summary>
-      <div className="absolute left-0 right-0 top-full z-40 mt-1 max-h-56 overflow-y-auto rounded-xl border border-slate-200 bg-white py-2 shadow-xl">
-        {options.length === 0 ? (
-          <p className="px-3 py-2 text-sm text-slate-400">Sem agências no mês de referência</p>
-        ) : (
-          options.map((opt) => (
-            <label key={opt.value} className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm hover:bg-slate-50">
-              <input
-                type="checkbox"
-                checked={selectedValues.includes(opt.value)}
-                onChange={() => onToggle(opt.value)}
-                className="rounded border-slate-300 text-sl-navy focus:ring-sl-navy/30"
-              />
-              <span className="truncate" title={opt.label}>
-                {opt.label}
-              </span>
-            </label>
-          ))
-        )}
-        <div className="border-t border-slate-100 px-3 pt-2">
-          <button
-            type="button"
-            className="text-xs font-semibold text-sl-navy underline"
-            onClick={(e) => {
-              e.preventDefault();
-              onClear();
-            }}
-          >
-            Limpar seleção
-          </button>
-        </div>
-      </div>
-    </details>
-  );
 }
 
 export function BiMetasPerformanceDashboard() {
@@ -327,9 +272,19 @@ export function BiMetasPerformanceDashboard() {
                 className="rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 text-sm font-medium text-slate-900 outline-none ring-sl-navy/20 focus:border-sl-navy/40 focus:ring-2"
               />
             </label>
-            <AgenciaMultiSelect options={agOpts} selectedValues={selAgencias} onToggle={(v) => {
-              setSelAgencias((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]));
-            }} onClear={() => setSelAgencias([])} />
+            <CollapsibleMultiSelectWithFilter
+              label="Agência"
+              options={agOpts}
+              selected={selAgencias}
+              onToggle={(v) => {
+                setSelAgencias((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]));
+              }}
+              onClear={() => setSelAgencias([])}
+              allSummaryLabel="Todas"
+              selectedSuffix="selecionada(s)"
+              detailsClassName="group relative min-w-[min(100%,220px)] flex-1 rounded-xl border border-slate-200 bg-white shadow-sm open:z-30 open:shadow-md"
+              emptyMessage="Sem agências no mês de referência"
+            />
           </div>
         </section>
 

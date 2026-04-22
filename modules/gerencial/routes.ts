@@ -24,6 +24,17 @@ export type GerencialComercialPanelDef = {
 export const GERENCIAL_OPERACAO_PANELS: GerencialComercialPanelDef[] = [
   { slug: 'monitor-fluxo', label: 'Monitor de fluxo', permission: GERENCIAL_BI_TAB.fluxoMonitor },
   { slug: 'gestao-taxas', label: 'Gestão de taxas', permission: GERENCIAL_BI_TAB.taxasGerencial },
+  {
+    slug: 'desempenho-agencias',
+    label: 'Desempenho agências',
+    /** Quem entra no setor Operação (BI) vê o painel; o detalhe continua filtrado por permissões do hub. */
+    permission: GERENCIAL_BI_TAB.setorOperacao,
+  },
+  {
+    slug: 'rotas-operacionais',
+    label: 'Rotas operacionais',
+    permission: GERENCIAL_BI_TAB.setorOperacao,
+  },
 ];
 
 /** Abas internas do setor Comercial (BI já entregue). */

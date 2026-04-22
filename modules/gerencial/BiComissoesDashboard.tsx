@@ -4,7 +4,8 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { format, startOfMonth } from 'date-fns';
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import Link from 'next/link';
-import { AlertCircle, ChevronDown, FileText, Loader2, X } from 'lucide-react';
+import { AlertCircle, FileText, Loader2, X } from 'lucide-react';
+import { CollapsibleMultiSelectWithFilter } from '@/modules/bi/components/CollapsibleMultiSelectWithFilter';
 import { BI_COMISSOES_CONFIG, KPI_SLOTS, type KpiSlotDef } from '@/modules/bi/comissoes/config';
 import { gerencialComissoesHoleritePath } from '@/modules/gerencial/routes';
 import { biGetJson } from '@/modules/gerencial/biApiClientCache';
@@ -159,65 +160,33 @@ function drillColumnLabel(col: string): string {
   return hit?.label ?? col.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-function CollapsibleMultiSelect({
-  label,
-  options,
-  selected,
-  onToggle,
-  onClear,
-}: {
-  label: string;
-  options: string[];
-  selected: string[];
-  onToggle: (v: string) => void;
-  onClear: () => void;
-}) {
-  const summary = selected.length ? `${selected.length} selecionado(s)` : 'Todos';
-  return (
-    <details className="group relative min-w-[220px] flex-1 rounded-xl border border-slate-200 bg-slate-50/50 shadow-sm open:z-30 open:shadow-md">
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2.5 text-left [&::-webkit-details-marker]:hidden">
-        <span>
-          <span className="block text-[10px] font-bold uppercase tracking-wide text-slate-500">{label}</span>
-          <span className="text-sm font-semibold text-slate-900">{summary}</span>
-        </span>
-        <ChevronDown className="size-4 shrink-0 text-slate-500 transition group-open:rotate-180" aria-hidden />
-      </summary>
-      <div className="absolute left-0 right-0 top-full z-40 mt-1 max-h-56 overflow-y-auto rounded-xl border border-slate-200 bg-white py-2 shadow-xl">
-        {options.length === 0 ? (
-          <p className="px-3 py-2 text-sm text-slate-400">Sem opções</p>
-        ) : (
-          options.map((opt) => (
-            <label
-              key={opt}
-              className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm hover:bg-slate-50"
-            >
-              <input
-                type="checkbox"
-                checked={selected.includes(opt)}
-                onChange={() => onToggle(opt)}
-                className="rounded border-slate-300 text-sl-navy focus:ring-sl-navy/30"
-              />
-              <span className="truncate" title={opt}>
-                {opt}
-              </span>
-            </label>
-          ))
-        )}
-        <div className="border-t border-slate-100 px-3 pt-2">
-          <button
-            type="button"
-            className="text-xs font-semibold text-sl-navy underline"
-            onClick={(e) => {
-              e.preventDefault();
-              onClear();
-            }}
-          >
-            Limpar seleção
-          </button>
-        </div>
-      </div>
-    </details>
-  );
+/** Colunas monetárias da view (inclui prefixos `vl_` usados no BI). */
+function formatTableCell(col: string, v: unknown): string {
+  if (v === null || v === undefined || v === '') return '—';
+  const cl = col.toLowerCase();
+  if (
+    /tipo|nome|desc|classif|vendedor|agencia|filial|status|chave|serie|tabela|obs|motivo|origem|destino|email|uf|municipio|cidade|documento|nf[^a-z]|cte|protocolo/i.test(
+      cl,
+    ) &&
+    typeof v === 'string'
+  ) {
+    return v;
+  }
+  if (/qtd|qtde|count|n[_\s]?nota|numero_nf|nro_cte|sequencia|linha|parcela|rank|posicao|ordem/i.test(cl)) {
+    return formatInt(toNum(v));
+  }
+  if (/perc|pct|percent|razao|ratio|%/i.test(cl)) return formatPct(v, col);
+  if (
+    /(^|_)vl_|valor|vlr|fatur|fat_|comiss|comis|base_calc|vl_base|premio|incent|bonus|credito|debito|receita|pago|liquido|l[ií]quido|bruto|montante|tarifa|total_a_pagar|tot_liquido|vl_total|valor_total/i.test(
+      cl,
+    )
+  ) {
+    return formatBrl(toNum(v));
+  }
+  if (typeof v === 'number' && Number.isInteger(v) && Math.abs(v) <= 999999 && !/valor|vl|fatur|comiss/i.test(cl)) {
+    return formatInt(v);
+  }
+  return String(v);
 }
 
 function formatDrillCell(col: string, v: unknown): string {
@@ -457,8 +426,8 @@ export function BiComissoesDashboard() {
   }
 
   return (
-    <div className="min-h-full bg-gradient-to-b from-slate-100 via-white to-slate-50/90 pb-12 pt-2">
-      <div className="mx-auto flex max-w-[1440px] flex-col gap-6 px-4 md:px-6">
+    <div className="min-h-full min-w-0 bg-gradient-to-b from-slate-100 via-white to-slate-50/90 pb-12 pt-2">
+      <div className="mx-auto flex min-w-0 max-w-[1440px] flex-col gap-6 px-3 sm:px-4 md:px-6">
         <header className="rounded-2xl border border-sl-navy/10 bg-gradient-to-br from-white via-white to-slate-50/90 px-5 py-6 shadow-[0_12px_40px_rgba(30,58,95,0.08)] md:px-8 md:py-7">
           <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-sl-red">Gerencial</p>
           <h1 className="mt-1 text-2xl font-bold tracking-tight text-sl-navy md:text-3xl">Comissões</h1>
@@ -499,30 +468,33 @@ export function BiComissoesDashboard() {
               />
             </label>
             {facetKeys.vendedor ? (
-              <CollapsibleMultiSelect
+              <CollapsibleMultiSelectWithFilter
                 label="Vendedores"
                 options={vendedores}
                 selected={selVendedores}
                 onToggle={(v) => toggleInList(selVendedores, setSelVendedores, v)}
                 onClear={() => setSelVendedores([])}
+                detailsClassName="group relative min-w-[min(100%,220px)] flex-1 rounded-xl border border-slate-200 bg-slate-50/50 shadow-sm open:z-30 open:shadow-md"
               />
             ) : null}
             {facetKeys.tipo ? (
-              <CollapsibleMultiSelect
+              <CollapsibleMultiSelectWithFilter
                 label="Tipos de comissão"
                 options={tipos}
                 selected={selTipos}
                 onToggle={(v) => toggleInList(selTipos, setSelTipos, v)}
                 onClear={() => setSelTipos([])}
+                detailsClassName="group relative min-w-[min(100%,220px)] flex-1 rounded-xl border border-slate-200 bg-slate-50/50 shadow-sm open:z-30 open:shadow-md"
               />
             ) : null}
             {showTabela ? (
-              <CollapsibleMultiSelect
+              <CollapsibleMultiSelectWithFilter
                 label="Tabelas"
                 options={tabelas}
                 selected={selTabelas}
                 onToggle={(v) => toggleInList(selTabelas, setSelTabelas, v)}
                 onClear={() => setSelTabelas([])}
+                detailsClassName="group relative min-w-[min(100%,220px)] flex-1 rounded-xl border border-slate-200 bg-slate-50/50 shadow-sm open:z-30 open:shadow-md"
               />
             ) : null}
           </div>
@@ -577,7 +549,7 @@ export function BiComissoesDashboard() {
               <h2 className="text-lg font-bold text-sl-navy">Desempenho por vendedor</h2>
               <p className="text-xs text-slate-500">Valores empilhados por tipo de comissão. Clique em uma barra para ver o detalhamento.</p>
             </div>
-            <div className="h-[440px] w-full min-w-0">
+            <div className="h-[min(440px,70vh)] w-full min-h-[280px] min-w-0 sm:h-[440px]">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chartData} layout="vertical" margin={{ top: 8, right: 24, left: 4, bottom: 8 }}>
                   <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" />
@@ -676,8 +648,8 @@ export function BiComissoesDashboard() {
                 />
               </label>
             </div>
-            <div className="max-h-[520px] overflow-auto">
-              <table className="w-full min-w-[720px] text-left text-sm">
+            <div className="-mx-1 max-h-[min(520px,65vh)] overflow-x-auto overflow-y-auto px-1 sm:mx-0 sm:max-h-[520px] sm:px-0">
+              <table className="w-full min-w-[min(720px,100%)] text-left text-sm">
                 <thead>
                   <tr className="bg-slate-100/90 text-xs font-bold uppercase tracking-wide text-slate-600">
                     {tableColumns.map((c) => (
@@ -703,8 +675,8 @@ export function BiComissoesDashboard() {
                       }}
                     >
                       {tableColumns.map((c) => (
-                        <td key={c} className="whitespace-nowrap px-4 py-2.5 text-slate-800">
-                          {/valor|vlr|fatur|total|comiss|base/i.test(c) ? formatBrl(toNum(r[c])) : String(r[c] ?? '—')}
+                        <td key={c} className="whitespace-nowrap px-3 py-2.5 text-slate-800 sm:px-4">
+                          {formatTableCell(c, r[c])}
                         </td>
                       ))}
                     </tr>
@@ -739,7 +711,7 @@ export function BiComissoesDashboard() {
           }}
         >
           <aside
-            className="flex h-full w-full max-w-md animate-in slide-in-from-right flex-col border-l border-slate-200 bg-white shadow-2xl duration-200"
+            className="flex h-full w-full max-w-full animate-in slide-in-from-right flex-col border-l border-slate-200 bg-white shadow-2xl duration-200 sm:max-w-md"
             role="dialog"
             aria-modal
             aria-labelledby="drill-title"

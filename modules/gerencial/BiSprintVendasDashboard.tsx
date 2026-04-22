@@ -4,7 +4,8 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { endOfMonth, format, parse } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { AlertCircle, ChevronDown, Loader2 } from 'lucide-react';
+import { AlertCircle, Loader2 } from 'lucide-react';
+import { CollapsibleMultiSelectWithFilter } from '@/modules/bi/components/CollapsibleMultiSelectWithFilter';
 import { BI_SPRINT_VENDAS_CONFIG, SPRINT_KPI_SLOTS } from '@/modules/bi/sprintVendas/config';
 import { biGetJson, biGetJsonSafe } from '@/modules/gerencial/biApiClientCache';
 
@@ -42,64 +43,6 @@ function formatKpiValue(format: 'currency' | 'percent' | 'integer', raw: unknown
   if (format === 'integer') return formatInt(toNum(raw));
   if (format === 'percent') return formatBiRatioAsPercent(raw);
   return formatBrl(toNum(raw));
-}
-
-function CollapsibleMultiSelect({
-  label,
-  options,
-  selected,
-  onToggle,
-  onClear,
-}: {
-  label: string;
-  options: string[];
-  selected: string[];
-  onToggle: (v: string) => void;
-  onClear: () => void;
-}) {
-  const summary = selected.length ? `${selected.length} selecionado(s)` : 'Todas';
-  return (
-    <details className="group relative min-w-[200px] flex-1 rounded-xl border border-amber-200/60 bg-white/90 shadow-sm open:z-30 open:shadow-md">
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2.5 text-left [&::-webkit-details-marker]:hidden">
-        <span>
-          <span className="block text-[10px] font-bold uppercase tracking-wide text-amber-900/70">{label}</span>
-          <span className="text-sm font-semibold text-slate-900">{summary}</span>
-        </span>
-        <ChevronDown className="size-4 shrink-0 text-slate-500 transition group-open:rotate-180" aria-hidden />
-      </summary>
-      <div className="absolute left-0 right-0 top-full z-40 mt-1 max-h-52 overflow-y-auto rounded-xl border border-slate-200 bg-white py-2 shadow-xl">
-        {options.length === 0 ? (
-          <p className="px-3 py-2 text-sm text-slate-400">Sem opções para este mês</p>
-        ) : (
-          options.map((opt) => (
-            <label key={opt} className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm hover:bg-amber-50/80">
-              <input
-                type="checkbox"
-                checked={selected.includes(opt)}
-                onChange={() => onToggle(opt)}
-                className="rounded border-slate-300 text-amber-700 focus:ring-amber-500/30"
-              />
-              <span className="truncate" title={opt}>
-                {opt}
-              </span>
-            </label>
-          ))
-        )}
-        <div className="border-t border-slate-100 px-3 pt-2">
-          <button
-            type="button"
-            className="text-xs font-semibold text-amber-900 underline"
-            onClick={(e) => {
-              e.preventDefault();
-              onClear();
-            }}
-          >
-            Limpar seleção
-          </button>
-        </div>
-      </div>
-    </details>
-  );
 }
 
 type TabelaRow = {
@@ -286,12 +229,21 @@ export function BiSprintVendasDashboard() {
                 className="rounded-xl border border-amber-200/80 bg-white px-3 py-2 text-sm font-semibold text-slate-900 outline-none ring-amber-500/20 focus:border-amber-400 focus:ring-2"
               />
             </label>
-            <CollapsibleMultiSelect
+            <CollapsibleMultiSelectWithFilter
               label="Vendedora"
               options={vendOpts}
               selected={selVendedores}
               onToggle={toggleVend}
               onClear={() => setSelVendedores([])}
+              allSummaryLabel="Todas"
+              detailsClassName="group relative min-w-[min(100%,200px)] flex-1 rounded-xl border border-amber-200/60 bg-white/90 shadow-sm open:z-30 open:shadow-md"
+              labelMutedClassName="block text-[10px] font-bold uppercase tracking-wide text-amber-900/70"
+              searchInputClassName="w-full rounded-lg border border-amber-200/80 bg-amber-50/40 px-2.5 py-1.5 text-xs text-slate-900 outline-none placeholder:text-slate-500 focus:border-amber-500/50 focus:ring-1 focus:ring-amber-400/30"
+              hintClassName="px-3 pb-1 text-[10px] leading-snug text-amber-950/70"
+              optionRowClassName="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm hover:bg-amber-50/80"
+              checkboxClassName="rounded border-slate-300 text-amber-700 focus:ring-amber-500/30"
+              clearButtonClassName="text-xs font-semibold text-amber-900 underline"
+              emptyMessage="Sem opções para este mês"
             />
           </div>
         </section>

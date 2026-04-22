@@ -32,6 +32,14 @@ export const FASE3_ROUTE_MAP = {
     ],
   },
   crm: { basePath: '/app/crm', note: 'Funil, Chat, Dashboard já roteados em workspace-routes.ts' },
+  gerencial_operacao_desempenho: {
+    basePath: '/app/gerencial/operacao/desempenho-agencias',
+    note: 'Desempenho agências (BI malha) no hub Gerencial → Operação',
+  },
+  gerencial_operacao_rotas: {
+    basePath: '/app/gerencial/operacao/rotas-operacionais',
+    note: 'Rotas operacionais (BI território / rotas) no hub Gerencial → Operação',
+  },
   comercial: { basePath: '/app/comercial', note: 'Metas / Robô Supremo mapeados' },
   clientes: { basePath: '/app/clientes', subs: ['Cadastro', 'Grupos', 'Contratos', 'Tabelas', 'Regras', 'Simulação', 'Vigência', 'Reajustes', 'Aprovação'] },
   patrimonio: { basePath: '/app/patrimonio', subs: ['Cadastro', 'Etiquetas', 'Movimentações', 'Responsáveis', 'Localização', 'Transferências', 'Inventário', 'Manutenção', 'Baixa', 'Auditoria'] },

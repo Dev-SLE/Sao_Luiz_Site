@@ -1,0 +1,9 @@
+-- Rotas operacionais (fase_8 / BI Operação)
+--
+-- O dump em `shema_bi.md` já define `bi.vw_rotas_operacionais_*` a partir de `bi.vw_rotas_operacionais_base`.
+-- A aplicação Next.js (`/api/bi/rotas-operacionais/*`) consulta diretamente `tb_nf_saidas_consolidada`
+-- com o mesmo grão (`id_unico`) e colunas `coleta`, `destino`, `rota`, `peso`, `volumes`, `valor_total`,
+-- para evitar 500 quando o catálogo de views no servidor estiver desalinhado (ex.: `qtd_volumes` vs `volumes`).
+--
+-- Para alinhar só o BI SQL no Postgres, prefira `CREATE OR REPLACE VIEW bi.vw_rotas_operacionais_base AS ...`
+-- usando `count(*)` em agregações e `COALESCE(n.volumes,0)` conforme o DDL real de `tb_nf_saidas_consolidada`.

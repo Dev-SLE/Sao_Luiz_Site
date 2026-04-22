@@ -19,7 +19,8 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { Activity, AlertCircle, ChevronDown, HelpCircle, Loader2, Network, TrendingUp, X } from 'lucide-react';
+import { Activity, AlertCircle, HelpCircle, Loader2, Network, TrendingUp, X } from 'lucide-react';
+import { CollapsibleMultiSelectWithFilter } from '@/modules/bi/components/CollapsibleMultiSelectWithFilter';
 import { BI_FLUXO_CONFIG } from '@/modules/bi/fluxo/config';
 import { biGetJson, biGetJsonSafe } from '@/modules/gerencial/biApiClientCache';
 
@@ -217,47 +218,23 @@ function MultiFacet({
   helpLabel?: string;
   helpText?: string;
 }) {
-  const summary = selected.length ? `${selected.length} selecionado(s)` : 'Todas';
   return (
-    <details className="group relative z-50 min-w-[180px] flex-1 rounded-xl border border-slate-200/90 bg-white shadow-sm open:z-[60] open:shadow-md">
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2.5 text-left [&::-webkit-details-marker]:hidden">
-        <span>
-          <span className="flex items-center gap-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">
-            {label}
-            {helpLabel && helpText ? <HelpIcon label={helpLabel} text={helpText} /> : null}
-          </span>
-          <span className="text-sm font-semibold text-slate-900">{summary}</span>
-        </span>
-        <ChevronDown className="size-4 shrink-0 text-slate-500 transition group-open:rotate-180" aria-hidden />
-      </summary>
-      <div className="absolute left-0 right-0 top-full z-[70] mt-1 max-h-52 overflow-y-auto rounded-xl border border-slate-200 bg-white py-2 text-slate-900 shadow-xl">
-        {options.length === 0 ? (
-          <p className="px-3 py-2 text-sm text-slate-500">Sem opções no período</p>
-        ) : (
-          options.map((opt) => (
-            <label
-              key={opt}
-              className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm text-slate-900 hover:bg-slate-50"
-            >
-              <input
-                type="checkbox"
-                checked={selected.includes(opt)}
-                onChange={() => onToggle(opt)}
-                className="rounded border-slate-300 text-sl-navy focus:ring-sl-navy/30"
-              />
-              <span className="min-w-0 flex-1 truncate" title={opt}>
-                {opt}
-              </span>
-            </label>
-          ))
-        )}
-        <div className="border-t border-slate-100 px-3 pt-2 text-slate-900">
-          <button type="button" className="text-xs font-semibold text-sl-navy underline" onClick={onClear}>
-            Limpar
-          </button>
-        </div>
-      </div>
-    </details>
+    <CollapsibleMultiSelectWithFilter
+      label={label}
+      labelAddon={helpLabel && helpText ? <HelpIcon label={helpLabel} text={helpText} /> : undefined}
+      options={options}
+      selected={selected}
+      onToggle={onToggle}
+      onClear={onClear}
+      allSummaryLabel="Todas"
+      clearButtonLabel="Limpar"
+      emptyMessage="Sem opções no período"
+      labelMutedClassName="flex items-center gap-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-500"
+      detailsClassName="group relative z-50 min-w-[min(100%,180px)] flex-1 rounded-xl border border-slate-200/90 bg-white shadow-sm open:z-[60] open:shadow-md"
+      panelClassName="absolute left-0 right-0 top-full z-[70] mt-1 max-h-52 overflow-y-auto rounded-xl border border-slate-200 bg-white py-2 text-slate-900 shadow-xl"
+      optionRowClassName="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm text-slate-900 hover:bg-slate-50"
+      optionLabelClassName="min-w-0 flex-1 truncate"
+    />
   );
 }
 

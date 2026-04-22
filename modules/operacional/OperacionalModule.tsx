@@ -1,6 +1,7 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { Page, CteData } from '@/types';
 import { parseWorkspacePath } from '@/lib/workspace-routes';
 import { useData } from '@/context/DataContext';
@@ -24,6 +25,32 @@ export type OperacionalModuleProps = {
   navigateToPage: (p: Page) => void;
   tracking: { cte: string | null; serie: string | null };
 };
+
+function RedirectToGerencialDesempenhoAgencias() {
+  const router = useRouter();
+  useEffect(() => {
+    router.replace('/app/gerencial/operacao/desempenho-agencias');
+  }, [router]);
+  return (
+    <div className="flex min-h-[30vh] flex-col items-center justify-center gap-2 px-4 text-center text-sm text-slate-600">
+      <p>A central de desempenho de agências foi movida para o hub Gerencial.</p>
+      <p className="text-slate-500">A redirecionar para Operação (BI)…</p>
+    </div>
+  );
+}
+
+function RedirectToGerencialRotasOperacionais() {
+  const router = useRouter();
+  useEffect(() => {
+    router.replace('/app/gerencial/operacao/rotas-operacionais');
+  }, [router]);
+  return (
+    <div className="flex min-h-[30vh] flex-col items-center justify-center gap-2 px-4 text-center text-sm text-slate-600">
+      <p>O painel de rotas operacionais está no hub Gerencial → Operação.</p>
+      <p className="text-slate-500">A redirecionar…</p>
+    </div>
+  );
+}
 
 export function OperacionalModule({ pathname, onNoteClick, navigateToPage, tracking }: OperacionalModuleProps) {
   const { hasPermission } = useData();
@@ -98,6 +125,12 @@ export function OperacionalModule({ pathname, onNoteClick, navigateToPage, track
         break;
       case 'concluidos':
         body = <ConcluidosPage onNoteClick={onNoteClick} />;
+        break;
+      case 'desempenho-agencias':
+        body = <RedirectToGerencialDesempenhoAgencias />;
+        break;
+      case 'rotas-operacionais':
+        body = <RedirectToGerencialRotasOperacionais />;
         break;
       default:
         body = <VisaoGeralPage />;
