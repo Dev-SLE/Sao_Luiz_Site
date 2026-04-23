@@ -11,10 +11,17 @@ const BUILTIN_SUPER = new Set([
   "root",
 ]);
 
-/** Nome de utilizador reservado com bypass total (igual às super-roles). Case-insensitive. */
-const CODED_MASTER_USERNAMES = new Set(["sle_master"]);
+/** Nomes de utilizador reservados com bypass total (igual às super-roles). Case-insensitive. */
+const CODED_MASTER_USERNAMES = new Set(["sle_master", "master"]);
 
 function parseRoleCsv(raw: string | undefined | null): string[] {
+  return String(raw ?? "")
+    .split(/[,;|\n]/)
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function parseUsernameCsv(raw: string | undefined | null): string[] {
   return String(raw ?? "")
     .split(/[,;|\n]/)
     .map((s) => s.trim().toLowerCase())
@@ -32,6 +39,18 @@ export function getConfiguredAdminRoleAliases(): string[] {
   return parseRoleCsv(raw);
 }
 
+/**
+ * Usernames adicionais com bypass total.
+ * Defina `ADMIN_USERNAME_ALIASES` no servidor e, para o cliente, `NEXT_PUBLIC_ADMIN_USERNAME_ALIASES`
+ * (mesmos nomes, separados por vírgula).
+ */
+export function getConfiguredAdminUsernameAliases(): string[] {
+  if (typeof process === "undefined" || !process.env) return [];
+  const raw =
+    process.env.ADMIN_USERNAME_ALIASES || process.env.NEXT_PUBLIC_ADMIN_USERNAME_ALIASES || "";
+  return parseUsernameCsv(raw);
+}
+
 export function isAdminSuperRole(
   role: string | null | undefined,
   username?: string | null | undefined,
@@ -39,7 +58,9 @@ export function isAdminSuperRole(
   const u = String(username ?? "")
     .trim()
     .toLowerCase();
-  if (u && CODED_MASTER_USERNAMES.has(u)) return true;
+  if (u && (CODED_MASTER_USERNAMES.has(u) || getConfiguredAdminUsernameAliases().includes(u))) {
+    return true;
+  }
   const r = String(role ?? "").trim().toLowerCase();
   if (!r) return false;
   if (BUILTIN_SUPER.has(r)) return true;

@@ -32,6 +32,7 @@ import {
   type PermissionSectionId,
 } from '../lib/permissions';
 import { OPERACIONAL_MODULE_KEY, stripOperacionalPermissionsWithoutModule } from '@/lib/workspacePermissionNormalize';
+import { isAdminSuperRole } from '@/lib/adminSuperRoles';
 
 type ProfilePermissionRow = {
   key: string;
@@ -214,6 +215,15 @@ const Settings: React.FC = () => {
     return d.toLocaleString('pt-BR');
   };
 
+  const canManageUserRow = (target: UserData) => {
+    const targetUsername = String(target.username || '').trim();
+    if (!targetUsername) return false;
+    const isSelf = targetUsername.toLowerCase() === String(user?.username || '').trim().toLowerCase();
+    if (isSelf) return false;
+    if (isAdminSuperRole(target.role, targetUsername)) return false;
+    return true;
+  };
+
   // --- Profiles Tab State ---
   const [editingProfile, setEditingProfile] = useState<ProfileData | null>(null);
 
@@ -281,6 +291,14 @@ const Settings: React.FC = () => {
   };
 
   const startEditUser = (u: UserData) => {
+      if (!canManageUserRow(u)) {
+        setSettingsNotice({
+          title: 'Ação bloqueada',
+          message: 'Esse usuário administrativo/reservado não pode ser editado por esta tela.',
+          variant: 'warning',
+        });
+        return;
+      }
       setNewUser({
         username: u.username,
         password: '',
@@ -549,14 +567,16 @@ const Settings: React.FC = () => {
                                   <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{formatLastLogin(u.lastLoginAt)}</td>
                                   <td className="px-4 py-3 text-right">
                                       <div className="inline-flex items-center gap-1">
-                                        <button
-                                          onClick={() => startEditUser(u)}
-                                          className="text-slate-500 hover:text-sl-navy p-1"
-                                          title="Editar usuário"
-                                        >
-                                          <Pencil size={16} />
-                                        </button>
-                                        {u.username.toLowerCase() !== 'admin' && (
+                                        {canManageUserRow(u) && (
+                                          <button
+                                            onClick={() => startEditUser(u)}
+                                            className="text-slate-500 hover:text-sl-navy p-1"
+                                            title="Editar usuário"
+                                          >
+                                            <Pencil size={16} />
+                                          </button>
+                                        )}
+                                        {canManageUserRow(u) && (
                                             <button 
                                               onClick={() => setConfirmDeleteUser(u.username)}
                                               className="text-slate-500 hover:text-red-500 p-1"

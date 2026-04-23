@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '../context/AuthContext';
 import { LoginPasswordGateModal } from './LoginPasswordGateModal';
@@ -207,15 +206,6 @@ const Login: React.FC = () => {
                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                   </button>
                 </div>
-              </div>
-
-              <div className="text-right">
-                <Link
-                  href="/recuperar-senha"
-                  className="text-[11px] font-semibold text-sl-navy underline-offset-2 hover:text-sl-red hover:underline"
-                >
-                  Esqueci minha senha
-                </Link>
               </div>
 
               {(error || authMessage) && (
