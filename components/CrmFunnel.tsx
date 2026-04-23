@@ -6,7 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { AppConfirmModal } from './AppOverlays';
 
 type Priority = 'ALTA' | 'MEDIA' | 'BAIXA';
-type Source = 'WHATSAPP' | 'IA' | 'MANUAL';
+type Source = 'WHATSAPP' | 'IA' | 'MANUAL' | 'WHATSAPP_WEB' | 'AGENCIA_WHATSAPP_WEB' | 'META_IA';
 
 interface LeadCard {
   id: string;
@@ -94,6 +94,18 @@ const sourceConfig: Record<Source, { label: string; className: string }> = {
     label: 'Manual',
     className: 'bg-slate-100 text-slate-700 border-slate-300',
   },
+  WHATSAPP_WEB: {
+    label: 'WhatsApp Web',
+    className: 'bg-teal-50 text-teal-800 border-teal-300',
+  },
+  AGENCIA_WHATSAPP_WEB: {
+    label: 'Agência (Web)',
+    className: 'bg-indigo-50 text-indigo-800 border-indigo-300',
+  },
+  META_IA: {
+    label: 'Meta + IA',
+    className: 'bg-sky-50 text-sky-800 border-sky-400',
+  },
 };
 
 function getPriorityUi(priorityRaw: unknown): { label: string; className: string } {
@@ -104,6 +116,13 @@ function getPriorityUi(priorityRaw: unknown): { label: string; className: string
 function getSourceUi(sourceRaw: unknown): { label: string; className: string } {
   const key = String(sourceRaw || "").toUpperCase() as Source;
   return sourceConfig[key] || sourceConfig.MANUAL;
+}
+
+/** Origens vindas da API que devem mapear para o tipo do funil (inclui legado em minúsculas). */
+function normalizeLeadSource(raw: unknown): Source {
+  const u = String(raw || "MANUAL").toUpperCase();
+  if (u in sourceConfig) return u as Source;
+  return "MANUAL";
 }
 
 interface Props {
@@ -234,7 +253,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
         agencyName: l.agencyName ? String(l.agencyName) : undefined,
         email: l.email ? String(l.email) : undefined,
         freteValue: typeof l.freteValue === 'number' ? l.freteValue : undefined,
-        source: (String(l.source || 'MANUAL') as Source) || 'MANUAL',
+        source: normalizeLeadSource(l.source),
         priority: (String(l.priority || 'MEDIA') as Priority) || 'MEDIA',
         currentLocation: l.currentLocation ? String(l.currentLocation) : undefined,
         ownerUsername: l.ownerUsername ? String(l.ownerUsername) : undefined,
@@ -264,7 +283,7 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
           agencyName: l.agencyName ? String(l.agencyName) : undefined,
           email: l.email ? String(l.email) : undefined,
           freteValue: typeof l.freteValue === 'number' ? l.freteValue : undefined,
-          source: (String(l.source || 'MANUAL') as Source) || 'MANUAL',
+          source: normalizeLeadSource(l.source),
           priority: (String(l.priority || 'MEDIA') as Priority) || 'MEDIA',
           currentLocation: l.currentLocation ? String(l.currentLocation) : undefined,
           ownerUsername: l.ownerUsername ? String(l.ownerUsername) : undefined,
@@ -786,6 +805,9 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
             >
               <option value="ALL">Todas origens</option>
               <option value="WHATSAPP">WhatsApp</option>
+              <option value="META_IA">Meta + IA</option>
+              <option value="WHATSAPP_WEB">WhatsApp Web</option>
+              <option value="AGENCIA_WHATSAPP_WEB">Agência (Web)</option>
               <option value="IA">IA</option>
               <option value="MANUAL">Manual</option>
             </select>
@@ -1239,6 +1261,9 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                     }
                   >
                     <option value="WHATSAPP">WhatsApp</option>
+                    <option value="META_IA">Meta + IA</option>
+                    <option value="WHATSAPP_WEB">WhatsApp Web</option>
+                    <option value="AGENCIA_WHATSAPP_WEB">Agência (Web)</option>
                     <option value="IA">IA</option>
                     <option value="MANUAL">Manual</option>
                   </select>
@@ -1520,6 +1545,9 @@ const CrmFunnel: React.FC<Props> = ({ onGoToChat, onOpenTracking }) => {
                     onChange={(e) => setEditLeadForm((f) => ({ ...f, source: e.target.value as Source }))}
                   >
                     <option value="WHATSAPP">WhatsApp</option>
+                    <option value="META_IA">Meta + IA</option>
+                    <option value="WHATSAPP_WEB">WhatsApp Web</option>
+                    <option value="AGENCIA_WHATSAPP_WEB">Agência (Web)</option>
                     <option value="IA">IA</option>
                     <option value="MANUAL">Manual</option>
                   </select>

@@ -783,7 +783,7 @@ async function persistStatusUpdateFallback(args: {
         VALUES ($1,$2,$3,$4,'WHATSAPP_WEB','MEDIA',$5,NOW(),NOW())
         RETURNING id
       `,
-      [defaultIds.pipelineId, defaultIds.stageId, `WhatsApp ${last10}`, phoneDigits, position]
+      [defaultIds.pipelineId, defaultIds.stageId, `WhatsApp (${last10})`, phoneDigits, position]
     );
     leadId = String(created.rows?.[0]?.id || "");
   }
@@ -1366,7 +1366,7 @@ export async function POST(req: Request) {
 
         leadTitle = profileName
           ? `${profileName} (${last10})`
-          : `WhatsApp ${last10}`;
+          : `WhatsApp (${last10})`;
 
         const positionRow = await pool.query(
           `

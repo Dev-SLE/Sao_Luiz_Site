@@ -249,9 +249,11 @@ export async function GET(req: Request) {
         /^contato web(\s|$)/i.test(rawName) ||
         /^unknown(\s|$)/i.test(rawName) ||
         /^sem nome(\s|$)/i.test(rawName);
+      const digits = r.contact_phone ? String(r.contact_phone).replace(/\D/g, "") : "";
+      const last10Phone = digits.length >= 10 ? digits.slice(-10) : "";
       const suffix = r.contact_phone ? String(r.contact_phone).slice(-4) : "sem número";
       const fallbackName = isGenericName
-        ? `${inboxProvider === "EVOLUTION" ? "Contato Web" : "Contato"} ${suffix}`
+        ? `${inboxProvider === "EVOLUTION" ? "Contato Web" : "WhatsApp"}${last10Phone ? ` (${last10Phone})` : ` ${suffix}`}`
         : rawName;
       return {
         id: r.id as string,

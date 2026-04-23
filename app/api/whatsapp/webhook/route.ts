@@ -878,7 +878,9 @@ export async function POST(req: Request) {
             // 2) Cria lead automático para este número
             leadTitle = profileName
               ? `${profileName} (${last10 || from.slice(-4) || "Lead"})`
-              : `WhatsApp ${last10 || from.slice(-4) || "Lead"}`;
+              : `WhatsApp (${last10 || from.slice(-4) || "Lead"})`;
+
+            const leadSource = metaIntake.aiEnabled ? "META_IA" : "WHATSAPP";
 
             const positionRow = await pool.query(
               `
@@ -908,10 +910,10 @@ export async function POST(req: Request) {
                   created_at,
                   updated_at
                 )
-                VALUES ($1,$2,$3,$4,$5,NULL,NULL,'WHATSAPP','MEDIA',NULL,NULL,$6,NOW(),NOW())
+                VALUES ($1,$2,$3,$4,$5,NULL,NULL,$7,'MEDIA',NULL,NULL,$6,NOW(),NOW())
                 RETURNING id
               `,
-              [defaultIds.pipelineId, defaultIds.stageId, leadTitle, from, cteDetected || null, position]
+              [defaultIds.pipelineId, defaultIds.stageId, leadTitle, from, cteDetected || null, position, leadSource]
             );
             leadId = insertLead.rows?.[0]?.id as string;
 
