@@ -9,6 +9,8 @@ import {
   extractEvolutionMessageText,
 } from "../../../../../lib/server/evolutionClient";
 import { evolutionQrCaptureFromWebhook } from "../../../../../lib/server/evolutionLastQr";
+import { ingestEvolutionInboundMedia } from "../../../../../lib/server/crmMediaIngest";
+import { crmPhoneSuffixForTitle, crmStripTrailingTitlePhone } from "../../../../../lib/server/crmPhoneDisplay";
 
 export const runtime = "nodejs";
 
@@ -1127,6 +1129,7 @@ export async function POST(req: Request) {
       const text = extractEvolutionMessageText(msgObj) || extractEvolutionMessageText(item) || "[Mensagem sem texto]";
       const cteDetected = extractCteFromText(text);
       const last10 = lastN(phoneDigits, 10);
+      const titlePhoneSuffix = crmPhoneSuffixForTitle(phoneDigits);
       const profileNameRaw = extractProfileNameFromEvolutionItem(item);
       let profilePhotoUrl = extractProfilePhotoUrl(item);
       if (
@@ -1192,9 +1195,10 @@ export async function POST(req: Request) {
       if (existingLead?.id) {
         leadId = String(existingLead.id);
         leadTitle = String(existingLead.title || leadId);
-        const titleEndsWithLast10 = leadTitle.endsWith(`(${last10})`);
-        const titleNamePart = titleEndsWithLast10
-          ? leadTitle.slice(0, Math.max(0, leadTitle.length - (`(${last10})`.length))).trim()
+        const titleEndsWithPhoneSuffix =
+          leadTitle.endsWith(`(${last10})`) || leadTitle.endsWith(`(${titlePhoneSuffix})`);
+        const titleNamePart = titleEndsWithPhoneSuffix
+          ? crmStripTrailingTitlePhone(leadTitle)
           : leadTitle.trim();
         const normalizedTitleName = titleNamePart.toLowerCase();
         const normalizedProfileName = String(profileName || "").trim().toLowerCase();
@@ -1206,14 +1210,36 @@ export async function POST(req: Request) {
         const shouldRefreshLeadTitle =
           !!profileName &&
           !isFromMe &&
-          (titleLooksGeneric || (titleEndsWithLast10 && normalizedTitleName !== normalizedProfileName));
+          (titleLooksGeneric || (titleEndsWithPhoneSuffix && normalizedTitleName !== normalizedProfileName));
         if (shouldRefreshLeadTitle) {
-          const upgradedTitle = `${profileName} (${last10})`;
+          const upgradedTitle = `${profileName} (${titlePhoneSuffix})`;
           await pool.query(`UPDATE pendencias.crm_leads SET title = $1, updated_at = NOW() WHERE id = $2`, [
             upgradedTitle,
             leadId,
           ]);
           leadTitle = upgradedTitle;
+        } else {
+          const parenMatch = leadTitle.match(/\((\d+)\)\s*$/);
+          const parenDigits = parenMatch?.[1] || "";
+          if (
+            phoneDigits.startsWith("55") &&
+            phoneDigits.length >= 12 &&
+            titlePhoneSuffix.length === 11 &&
+            parenDigits &&
+            parenDigits !== titlePhoneSuffix
+          ) {
+            const namePart = crmStripTrailingTitlePhone(leadTitle);
+            if (namePart) {
+              const fixedTitle = `${namePart} (${titlePhoneSuffix})`;
+              if (fixedTitle !== leadTitle) {
+                await pool.query(`UPDATE pendencias.crm_leads SET title = $1, updated_at = NOW() WHERE id = $2`, [
+                  fixedTitle,
+                  leadId,
+                ]);
+                leadTitle = fixedTitle;
+              }
+            }
+          }
         }
         if (profilePhotoUrl && String(existingLead.contact_avatar_url || "").trim() !== profilePhotoUrl) {
           await pool.query(
@@ -1278,8 +1304,8 @@ export async function POST(req: Request) {
         };
 
         leadTitle = profileName
-          ? `${profileName} (${last10})`
-          : `WhatsApp (${last10})`;
+          ? `${profileName} (${titlePhoneSuffix})`
+          : `WhatsApp (${titlePhoneSuffix})`;
 
         const positionRow = await pool.query(
           `
@@ -1441,12 +1467,13 @@ export async function POST(req: Request) {
         }
       }
 
-      await pool.query(
+      const insEv = await pool.query(
         `
           INSERT INTO pendencias.crm_messages (
             conversation_id, sender_type, provider, provider_message_id, body, has_attachments, metadata, created_at
           )
           VALUES ($1, $2, 'EVOLUTION', $3, $4, $5, $6::jsonb, NOW())
+          RETURNING id
         `,
         [
           conversationId,
@@ -1466,6 +1493,19 @@ export async function POST(req: Request) {
           }),
         ]
       );
+      const newEvMessageId = String(insEv.rows?.[0]?.id || "");
+      if (newEvMessageId && hasMedia && inboxRow.evolution_server_url && inboxRow.evolution_api_key) {
+        void ingestEvolutionInboundMedia({
+          pool,
+          messageId: newEvMessageId,
+          conversationId,
+          evolutionItem: item,
+          serverUrl: String(inboxRow.evolution_server_url),
+          apiKey: String(inboxRow.evolution_api_key),
+          instanceName: instance,
+          providerMessageId: msgId || null,
+        }).catch((e) => console.error("[crm-media] evolution_async", e));
+      }
 
       await pool.query(`UPDATE pendencias.crm_conversations SET last_message_at = NOW() WHERE id = $1`, [conversationId]);
 

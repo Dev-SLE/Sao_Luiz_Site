@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { getPool } from "../../../../lib/server/db";
 import { ensureCrmSchemaTables } from "../../../../lib/server/ensureSchema";
+import { ingestMetaInboundMedia } from "../../../../lib/server/crmMediaIngest";
 import { countTrailingClientStreak } from "../../../../lib/server/sofiaStreak";
 import { applyInboundRouting } from "../../../../lib/server/crmRouting";
 import { ensureDefaultPipelineAndFirstStage } from "../../../../lib/server/crmDefaultPipeline";
@@ -9,6 +10,7 @@ import {
   buildSofiaOperationalPrompt,
   buildSofiaSystemInstructions,
 } from "../../../../lib/server/sofiaGovernance";
+import { crmPhoneSuffixForTitle, crmStripTrailingTitlePhone } from "../../../../lib/server/crmPhoneDisplay";
 
 export const runtime = "nodejs";
 
@@ -824,6 +826,8 @@ export async function POST(req: Request) {
           }
 
           const last10 = lastN(from, 10);
+          const fromDigits = normalizeDigits(from);
+          const titlePhoneSuffix = crmPhoneSuffixForTitle(fromDigits);
           const defaultIds = await ensureDefaultPipelineAndFirstStage(pool);
           if (!defaultIds) continue;
 
@@ -837,12 +841,34 @@ export async function POST(req: Request) {
             leadId = String(existingLead.id);
             leadTitle = String(existingLead.title || leadId);
             if (profileName && /^whatsapp\s+\d+/i.test(leadTitle)) {
-              const upgradedTitle = `${profileName} (${last10 || from})`;
+              const upgradedTitle = `${profileName} (${titlePhoneSuffix || from})`;
               await pool.query(
                 `UPDATE pendencias.crm_leads SET title = $1, updated_at = NOW() WHERE id = $2`,
                 [upgradedTitle, leadId]
               );
               leadTitle = upgradedTitle;
+            } else {
+              const parenMatch = leadTitle.match(/\((\d+)\)\s*$/);
+              const parenDigits = parenMatch?.[1] || "";
+              if (
+                fromDigits.startsWith("55") &&
+                fromDigits.length >= 12 &&
+                titlePhoneSuffix.length === 11 &&
+                parenDigits &&
+                parenDigits !== titlePhoneSuffix
+              ) {
+                const namePart = crmStripTrailingTitlePhone(leadTitle);
+                if (namePart) {
+                  const fixedTitle = `${namePart} (${titlePhoneSuffix})`;
+                  if (fixedTitle !== leadTitle) {
+                    await pool.query(`UPDATE pendencias.crm_leads SET title = $1, updated_at = NOW() WHERE id = $2`, [
+                      fixedTitle,
+                      leadId,
+                    ]);
+                    leadTitle = fixedTitle;
+                  }
+                }
+              }
             }
           } else {
             const allowlisted = metaIntake.allowlist.has(last10);
@@ -884,8 +910,8 @@ export async function POST(req: Request) {
             }
             // 2) Cria lead automático para este número
             leadTitle = profileName
-              ? `${profileName} (${last10 || from.slice(-4) || "Lead"})`
-              : `WhatsApp (${last10 || from.slice(-4) || "Lead"})`;
+              ? `${profileName} (${titlePhoneSuffix || from.slice(-4) || "Lead"})`
+              : `WhatsApp (${titlePhoneSuffix || from.slice(-4) || "Lead"})`;
 
             const leadSource = metaIntake.aiEnabled ? "META_IA" : "WHATSAPP";
 
@@ -953,7 +979,7 @@ export async function POST(req: Request) {
           // 4) Salva mensagem no banco
           const isAttachment = message.type !== "text";
           const attachments = buildAttachmentMeta(message);
-          await pool.query(
+          const insMsg = await pool.query(
             `
               INSERT INTO pendencias.crm_messages (
                 conversation_id,
@@ -966,6 +992,7 @@ export async function POST(req: Request) {
                 created_at
               )
               VALUES ($1, 'CLIENT', 'META', $2, $3, $4, $5::jsonb, NOW())
+              RETURNING id
             `,
             [
               conversationId,
@@ -983,6 +1010,18 @@ export async function POST(req: Request) {
               }),
             ]
           );
+          const newMessageId = String(insMsg.rows?.[0]?.id || "");
+          const accessToken = process.env.WHATSAPP_ACCESS_TOKEN || "";
+          if (newMessageId && isAttachment && accessToken) {
+            void ingestMetaInboundMedia({
+              pool,
+              messageId: newMessageId,
+              conversationId,
+              waMessage: message,
+              accessToken,
+              providerMessageId: providerMessageId || null,
+            }).catch((e) => console.error("[crm-media] meta_async", e));
+          }
 
           await pool.query(
             `

@@ -3,6 +3,7 @@ import { getPool } from "../../../../lib/server/db";
 import { ensureCrmSchemaTables } from "../../../../lib/server/ensureSchema";
 import { ensureDefaultPipelineAndFirstStage } from "../../../../lib/server/crmDefaultPipeline";
 import { requireApiPermissions } from "../../../../lib/server/apiAuth";
+import { crmPhoneSuffixForTitle } from "../../../../lib/server/crmPhoneDisplay";
 
 export const runtime = "nodejs";
 
@@ -109,6 +110,8 @@ export async function POST(req: Request) {
     }
 
     const phoneLast10 = String(row.phone_last10 || "");
+    const phoneDigitsFull = String(row.phone_digits || phoneLast10 || "");
+    const titlePhoneSuffix = crmPhoneSuffixForTitle(phoneDigitsFull) || phoneLast10;
     const exists = await pool.query(
       `
         SELECT id
@@ -134,8 +137,8 @@ export async function POST(req: Request) {
       );
       const position = Number(positionRow.rows?.[0]?.next_pos || 0);
       const leadTitle = row.profile_name
-        ? `${String(row.profile_name)} (${phoneLast10})`
-        : `WhatsApp ${phoneLast10}`;
+        ? `${String(row.profile_name)} (${titlePhoneSuffix})`
+        : `WhatsApp ${titlePhoneSuffix}`;
       const ins = await pool.query(
         `
           INSERT INTO pendencias.crm_leads (

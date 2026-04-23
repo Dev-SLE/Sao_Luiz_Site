@@ -4,6 +4,7 @@ import { ensureCrmSchemaTables } from "../../../../lib/server/ensureSchema";
 import { classifyLeadTopic, pickAgentFromTeam, pickFallbackAgent, resolveRoutingByRules, resolveSlaMinutes } from "../../../../lib/server/crmRouting";
 import { isAdminSuperRole } from "@/lib/adminSuperRoles";
 import { can, getSessionContext } from "../../../../lib/server/authorization";
+import { crmPhoneSuffixForTitle } from "../../../../lib/server/crmPhoneDisplay";
 
 export const runtime = "nodejs";
 
@@ -250,10 +251,10 @@ export async function GET(req: Request) {
         /^unknown(\s|$)/i.test(rawName) ||
         /^sem nome(\s|$)/i.test(rawName);
       const digits = r.contact_phone ? String(r.contact_phone).replace(/\D/g, "") : "";
-      const last10Phone = digits.length >= 10 ? digits.slice(-10) : "";
+      const displayPhone = digits ? crmPhoneSuffixForTitle(digits) : "";
       const suffix = r.contact_phone ? String(r.contact_phone).slice(-4) : "sem número";
       const fallbackName = isGenericName
-        ? `${inboxProvider === "EVOLUTION" ? "Contato Web" : "WhatsApp"}${last10Phone ? ` (${last10Phone})` : ` ${suffix}`}`
+        ? `${inboxProvider === "EVOLUTION" ? "Contato Web" : "WhatsApp"}${displayPhone ? ` (${displayPhone})` : ` ${suffix}`}`
         : rawName;
       return {
         id: r.id as string,
