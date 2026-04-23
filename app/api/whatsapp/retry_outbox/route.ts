@@ -151,7 +151,10 @@ export async function POST(req: Request) {
               instanceName: String(payload?.evolution?.instanceName || ""),
               numberDigits: String(payload?.toE164 || toE164 || ""),
               text: body,
-              quotedMessageId: payload?.replyToWhatsappMessageId ? String(payload.replyToWhatsappMessageId) : null,
+              quotedContext:
+                payload?.evolutionQuoted && typeof payload.evolutionQuoted === "object"
+                  ? (payload.evolutionQuoted as any)
+                  : null,
             })
           : await sendWhatsAppText({ toE164: String(toE164 || ""), body });
       if (send.ok) {

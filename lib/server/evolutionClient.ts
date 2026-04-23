@@ -182,7 +182,16 @@ export async function evolutionSendText(args: {
   instanceName: string;
   numberDigits: string;
   text: string;
-  quotedMessageId?: string | null;
+  /**
+   * Citação nativa no WhatsApp (Evolution v2 / Baileys): exige key.id, key.remoteJid e key.fromMe
+   * + message.conversation — só `id` não renderiza resposta no aparelho.
+   */
+  quotedContext?: {
+    waMessageId: string;
+    remoteJid: string;
+    fromMe: boolean;
+    conversation?: string | null;
+  } | null;
 }) {
   const base = normalizeEvolutionServerUrl(args.serverUrl).replace(/\/+$/, "");
   if (!base) {
@@ -192,6 +201,24 @@ export async function evolutionSendText(args: {
   const num = String(args.numberDigits || "").replace(/\D/g, "");
   if (!num) {
     return { ok: false, error: "número inválido", response: null as any };
+  }
+  const qc = args.quotedContext;
+  let quotedPayload: Record<string, unknown> = {};
+  if (qc?.waMessageId && qc.remoteJid) {
+    const snippet = (String(qc.conversation || "").trim() || " ").slice(0, 900);
+    quotedPayload = {
+      quoted: {
+        key: {
+          id: String(qc.waMessageId),
+          remoteJid: String(qc.remoteJid),
+          fromMe: !!qc.fromMe,
+        },
+        message: {
+          conversation: snippet,
+        },
+      },
+      quotedMessageId: String(qc.waMessageId),
+    };
   }
   try {
     const resp = await evolutionExternalFetch(url, {
@@ -203,13 +230,7 @@ export async function evolutionSendText(args: {
       body: JSON.stringify({
         number: num,
         text: args.text,
-        ...(args.quotedMessageId
-          ? {
-              // Compatibilidade entre variantes da Evolution/Baileys
-              quoted: { key: { id: String(args.quotedMessageId) } },
-              quotedMessageId: String(args.quotedMessageId),
-            }
-          : {}),
+        ...quotedPayload,
       }),
     });
     const json = await resp.json().catch(() => ({}));

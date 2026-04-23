@@ -729,11 +729,12 @@ function extractUpdateFromMe(item: any): boolean {
   return item?.fromMe === true || item?.key?.fromMe === true || item?.data?.fromMe === true;
 }
 
-function buildUpdateFallbackBody(status: string) {
-  return `📨 Atualização recebida do WhatsApp (fallback): status "${status}".`;
-}
-
-async function persistStatusUpdateFallback(args: {
+/**
+ * Antes: criava uma mensagem visível "📨 Atualização recebida do WhatsApp (fallback)…" no CRM,
+ * o que poluía o chat (ex.: após apagar mensagem ou ack sem linha casando no UPDATE).
+ * O status continua sendo aplicado só pelo UPDATE em processWebhookMessageStatusUpdates.
+ */
+async function persistStatusUpdateFallback(_args: {
   pool: any;
   instance: string;
   inboxId: string;
@@ -743,103 +744,7 @@ async function persistStatusUpdateFallback(args: {
   fromMe: boolean;
   defaultIds: { pipelineId: string; stageId: string } | null;
 }) {
-  const { pool, waMessageId, remoteJid, status, fromMe, instance, inboxId, defaultIds } = args;
-  if (!fromMe) return { created: false, reason: "skip_not_from_me" as const };
-  if (!waMessageId) return { created: false, reason: "skip_no_message_id" as const };
-  const phoneDigits = evolutionNumberDigits(remoteJid);
-  if (!phoneDigits) return { created: false, reason: "skip_no_phone_digits" as const };
-  const last10 = lastN(phoneDigits, 10);
-
-  const exists = await pool.query(
-    `
-      SELECT m.id
-      FROM pendencias.crm_messages m
-      WHERE m.metadata->>'message_id' = $1
-         OR m.metadata#>>'{outbound_whatsapp,message_id}' = $1
-      LIMIT 1
-    `,
-    [waMessageId]
-  );
-  if (exists.rows?.[0]?.id) return { created: false, reason: "skip_already_exists" as const };
-
-  let lead = await getOrMergeLeadByPhoneLast10(pool, last10);
-  let leadId = String(lead?.id || "");
-  if (!leadId) {
-    if (!defaultIds) return { created: false, reason: "skip_no_default_pipeline" as const };
-    const positionRow = await pool.query(
-      `
-        SELECT COALESCE(MAX(position), 0) + 1 AS next_pos
-        FROM pendencias.crm_leads
-        WHERE pipeline_id = $1 AND stage_id = $2
-      `,
-      [defaultIds.pipelineId, defaultIds.stageId]
-    );
-    const position = Number(positionRow.rows?.[0]?.next_pos || 0);
-    const created = await pool.query(
-      `
-        INSERT INTO pendencias.crm_leads (
-          pipeline_id, stage_id, title, contact_phone, source, priority, position, created_at, updated_at
-        )
-        VALUES ($1,$2,$3,$4,'WHATSAPP_WEB','MEDIA',$5,NOW(),NOW())
-        RETURNING id
-      `,
-      [defaultIds.pipelineId, defaultIds.stageId, `WhatsApp (${last10})`, phoneDigits, position]
-    );
-    leadId = String(created.rows?.[0]?.id || "");
-  }
-  if (!leadId) return { created: false, reason: "skip_no_lead" as const };
-
-  let conversationId = await getOrMergeWhatsappConversationByLead(pool, leadId, inboxId);
-  if (!conversationId) {
-    const inboxDefault = await resolveInboxDefaultAssignment({
-      inboxId,
-      conversationId: `${leadId}:${inboxId}:fallback`,
-    });
-    const insertConv = await pool.query(
-      `
-        INSERT INTO pendencias.crm_conversations (
-          lead_id, channel, is_active, created_at, last_message_at, whatsapp_inbox_id,
-          assigned_username, assigned_team_id, assignment_mode
-        )
-        VALUES ($1, 'WHATSAPP', true, NOW(), NULL, $2::uuid, $3, $4::uuid, 'AUTO')
-        RETURNING id
-      `,
-      [leadId, inboxId, inboxDefault.assignedUsername, inboxDefault.assignedTeamId]
-    );
-    conversationId = String(insertConv.rows?.[0]?.id || "");
-  }
-  if (!conversationId) return { created: false, reason: "skip_no_conversation" as const };
-
-  await pool.query(
-    `
-      INSERT INTO pendencias.crm_messages (
-        conversation_id, sender_type, body, has_attachments, metadata, created_at
-      )
-      VALUES ($1, 'AGENT', $2, false, $3::jsonb, NOW())
-    `,
-    [
-      conversationId,
-      buildUpdateFallbackBody(status),
-      JSON.stringify({
-        provider: "EVOLUTION",
-        evolution_instance: instance,
-        message_id: waMessageId,
-        from_me: true,
-        remote_jid: remoteJid,
-        update_fallback: true,
-        outbound_whatsapp: {
-          status,
-          delivered: isDeliveredLikeStatus(status),
-          updated_at: new Date().toISOString(),
-          message_id: waMessageId,
-        },
-      }),
-    ]
-  );
-  await pool.query(`UPDATE pendencias.crm_conversations SET last_message_at = NOW() WHERE id = $1`, [
-    conversationId,
-  ]);
-  return { created: true, reason: "created" as const, conversationId, leadId };
+  return { created: false, reason: "skip_silent_status_fallback" as const };
 }
 
 async function processWebhookMessageStatusUpdates(args: {
@@ -872,7 +777,8 @@ async function processWebhookMessageStatusUpdates(args: {
           COALESCE(COALESCE(metadata, '{}'::jsonb)->'outbound_whatsapp', '{}'::jsonb) || $1::jsonb,
           true
         )
-        WHERE metadata->>'message_id' = $2
+        WHERE provider_message_id = $2
+           OR metadata->>'message_id' = $2
            OR metadata#>>'{outbound_whatsapp,message_id}' = $2
       `,
       [JSON.stringify(patch), waMessageId]

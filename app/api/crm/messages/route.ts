@@ -45,6 +45,47 @@ function safeJsonParse(value: any) {
   return {};
 }
 
+/** JID do contato (ex.: 5511...@s.whatsapp.net) a partir de metadata ou do telefone do lead. */
+function ensureWhatsAppJid(raw: string | null | undefined, fallbackE164Digits: string | null): string {
+  const t = String(raw || "").trim();
+  if (t && t.includes("@")) return t;
+  const d = (t ? t.replace(/\D/g, "") : "") || String(fallbackE164Digits || "").replace(/\D/g, "");
+  if (!d) return "";
+  return `${d}@s.whatsapp.net`;
+}
+
+function resolveQuotedMessageContext(
+  refRow: any,
+  customerE164Digits: string | null
+): {
+  metaQuotedId: string | null;
+  evolutionQuoted: {
+    waMessageId: string;
+    remoteJid: string;
+    fromMe: boolean;
+    conversation: string;
+  } | null;
+} {
+  if (!refRow) return { metaQuotedId: null, evolutionQuoted: null };
+  const refMeta = safeJsonParse(refRow.metadata);
+  const ob = refMeta?.outbound_whatsapp;
+  const waId =
+    String(refRow.provider_message_id || "").trim() ||
+    String(ob?.message_id || "").trim() ||
+    String(refMeta?.message_id || "").trim() ||
+    String(refMeta?.id || "").trim() ||
+    null;
+  const st = String(refRow.sender_type || "").toUpperCase();
+  const fromMe = st === "AGENT" || st === "IA";
+  const remoteJid = ensureWhatsAppJid(refMeta?.remote_jid || ob?.remote_jid || null, customerE164Digits);
+  const conversation = String(refRow.body || "").trim().slice(0, 900) || " ";
+  const evolutionQuoted =
+    waId && remoteJid
+      ? { waMessageId: waId, remoteJid, fromMe, conversation }
+      : null;
+  return { metaQuotedId: waId, evolutionQuoted };
+}
+
 function normalizePhoneToE164(phoneRaw: string | null | undefined) {
   const digits = String(phoneRaw || "").replace(/\D/g, "");
   if (!digits) return null;
@@ -153,6 +194,7 @@ async function sendWhatsAppAttachment(args: {
   toE164: string;
   attachment: { type?: string; filename?: string; url?: string };
   caption?: string;
+  quotedMessageId?: string | null;
 }) {
   const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
   const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
@@ -168,6 +210,7 @@ async function sendWhatsAppAttachment(args: {
     recipient_type: "individual",
     to: args.toE164,
     type: isImage ? "image" : "document",
+    ...(args.quotedMessageId ? { context: { message_id: String(args.quotedMessageId) } } : {}),
   };
   if (isImage) {
     payload.image = {
@@ -225,6 +268,7 @@ export async function GET(req: Request) {
         FROM pendencias.crm_messages m
         JOIN pendencias.crm_conversations c ON c.id = m.conversation_id
         WHERE m.conversation_id = $1
+          AND (m.metadata->>'update_fallback' IS DISTINCT FROM 'true')
         ORDER BY m.created_at ASC
         LIMIT 500
       `,
@@ -272,6 +316,7 @@ export async function GET(req: Request) {
           LEFT JOIN pendencias.crm_whatsapp_inboxes wi ON wi.id = c.whatsapp_inbox_id
           WHERE c.lead_id = $1::uuid
             AND c.id <> $2::uuid
+            AND (m.metadata->>'update_fallback' IS DISTINCT FROM 'true')
           ORDER BY m.created_at DESC
           LIMIT 12
         `,
@@ -442,22 +487,6 @@ export async function POST(req: Request) {
         senderType: dbSender,
         senderUsername: body?.senderUsername != null ? String(body.senderUsername) : session.username,
       });
-      let replyToWhatsappMessageId: string | null = null;
-      if (replyTo?.messageId) {
-        const refRes = await pool.query(
-          `
-            SELECT metadata, sender_type, body
-            FROM pendencias.crm_messages
-            WHERE id = $1::uuid
-            LIMIT 1
-          `,
-          [String(replyTo.messageId)]
-        );
-        const refMeta = safeJsonParse(refRes.rows?.[0]?.metadata);
-        replyToWhatsappMessageId = String(
-          refMeta?.outbound_whatsapp?.message_id || refMeta?.message_id || ""
-        ).trim() || null;
-      }
       const leadInfo = await pool.query(
         `
           SELECT
@@ -483,6 +512,24 @@ export async function POST(req: Request) {
         row?.evolution_server_url &&
         row?.evolution_api_key;
 
+      let replyToWhatsappMessageId: string | null = null;
+      let evolutionQuotedContext: ReturnType<typeof resolveQuotedMessageContext>["evolutionQuoted"] = null;
+      if (replyTo?.messageId) {
+        const refRes = await pool.query(
+          `
+            SELECT metadata, sender_type, body, provider_message_id
+            FROM pendencias.crm_messages
+            WHERE id = $1::uuid
+            LIMIT 1
+          `,
+          [String(replyTo.messageId)]
+        );
+        const refRow = refRes.rows?.[0];
+        const resolved = resolveQuotedMessageContext(refRow, toE164);
+        replyToWhatsappMessageId = resolved.metaQuotedId;
+        evolutionQuotedContext = resolved.evolutionQuoted;
+      }
+
       if (!toE164) {
         outboundWhatsApp.delivered = false;
         outboundWhatsApp.error = "Lead sem telefone válido para envio WhatsApp";
@@ -501,7 +548,7 @@ export async function POST(req: Request) {
             instanceName: String(row.evolution_instance_name),
             numberDigits: toE164,
             text: signedText,
-            quotedMessageId: replyToWhatsappMessageId,
+            quotedContext: evolutionQuotedContext,
           });
           finalResp = waResp.response;
           finalOk = waResp.ok;
@@ -528,6 +575,7 @@ export async function POST(req: Request) {
             toE164,
             attachment: first,
             caption: signedText || undefined,
+            quotedMessageId: replyToWhatsappMessageId,
           });
           finalResp = waAttResp.response || finalResp;
           finalOk = finalOk && waAttResp.ok;
@@ -600,6 +648,7 @@ export async function POST(req: Request) {
               body: signedText || text,
               toE164,
               replyToWhatsappMessageId,
+              evolutionQuoted: evolutionQuotedContext,
               evolution: {
                 instanceName: String(row.evolution_instance_name),
                 serverUrl: String(row.evolution_server_url),
