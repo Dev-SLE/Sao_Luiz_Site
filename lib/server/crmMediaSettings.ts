@@ -40,8 +40,16 @@ function normalizeMimeList(v: unknown): string[] {
 function mergeAllowed(db: Record<string, string[]>): Record<string, string[]> {
   const out: Record<string, string[]> = { ...DEFAULT_ALLOWED };
   for (const [k, list] of Object.entries(db || {})) {
+    const key = String(k).toLowerCase();
     const merged = normalizeMimeList(list);
-    if (merged.length) out[String(k).toLowerCase()] = merged;
+    if (!merged.length) continue;
+    const defaults = DEFAULT_ALLOWED[key];
+    // União com defaults: listas na BD não podem remover tipos base (ex.: audio/webm do gravador).
+    if (defaults?.length) {
+      out[key] = [...new Set([...defaults, ...merged])];
+    } else {
+      out[key] = merged;
+    }
   }
   return out;
 }

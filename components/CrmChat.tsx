@@ -22,6 +22,7 @@ import {
   Volume2,
   ExternalLink,
   ChevronUp,
+  X,
 } from 'lucide-react';
 import clsx from 'clsx';
 import dynamic from 'next/dynamic';
@@ -2052,7 +2053,11 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
               type="file"
               multiple
               className="hidden"
-              onChange={(e) => setAttachmentFiles(e.target.files ? Array.from(e.target.files) : [])}
+              onChange={(e) => {
+                const picked = e.target.files ? Array.from(e.target.files) : [];
+                if (picked.length) setAttachmentFiles((prev) => [...prev, ...picked]);
+                e.target.value = '';
+              }}
             />
             {replyTarget && (
               <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-[10px] text-slate-700 flex items-center justify-between gap-2">
@@ -2065,6 +2070,63 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                   onClick={() => setReplyTarget(null)}
                 >
                   limpar
+                </button>
+              </div>
+            )}
+            {attachmentFiles.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white px-2 py-2 shadow-sm">
+                <span className="w-full text-[10px] font-semibold uppercase tracking-wide text-slate-500 sm:w-auto sm:mr-1">
+                  A enviar
+                </span>
+                {attachmentFiles.map((file, idx) => {
+                  const t = String(file.type || '').toLowerCase();
+                  const isAudio = t.startsWith('audio/') || /\.(webm|ogg|opus|mp3|m4a|wav)$/i.test(file.name);
+                  const isImg = t.startsWith('image/');
+                  const isVid = t.startsWith('video/');
+                  const label =
+                    /^gravacao-/i.test(file.name) || (isAudio && file.name.includes('gravacao'))
+                      ? 'Áudio gravado'
+                      : file.name.length > 36
+                        ? `${file.name.slice(0, 34)}…`
+                        : file.name;
+                  return (
+                    <div
+                      key={`${file.name}-${file.size}-${idx}`}
+                      className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50/90 pl-2 pr-1 py-1 text-[11px] text-slate-800"
+                    >
+                      {isAudio ? (
+                        <Mic size={14} className="shrink-0 text-sl-navy" aria-hidden />
+                      ) : isImg ? (
+                        <ImageIcon size={14} className="shrink-0 text-sl-navy" aria-hidden />
+                      ) : isVid ? (
+                        <Video size={14} className="shrink-0 text-sl-navy" aria-hidden />
+                      ) : (
+                        <FileText size={14} className="shrink-0 text-sl-navy" aria-hidden />
+                      )}
+                      <span className="min-w-0 max-w-[200px] truncate font-medium" title={file.name}>
+                        {label}
+                      </span>
+                      <button
+                        type="button"
+                        className="inline-flex shrink-0 rounded-md p-1 text-slate-500 hover:bg-rose-50 hover:text-rose-700"
+                        title="Remover anexo"
+                        aria-label={`Remover ${file.name}`}
+                        onClick={() => setAttachmentFiles((prev) => prev.filter((_, i) => i !== idx))}
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  );
+                })}
+                <button
+                  type="button"
+                  className="ml-auto text-[10px] font-semibold text-slate-500 underline-offset-2 hover:text-rose-700 hover:underline"
+                  onClick={() => {
+                    setAttachmentFiles([]);
+                    if (fileInputRef.current) fileInputRef.current.value = '';
+                  }}
+                >
+                  Limpar tudo
                 </button>
               </div>
             )}
@@ -2165,11 +2227,6 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
               <button type="button" className="ml-2 underline" onClick={() => stopVoiceRecording()}>
                 parar
               </button>
-            </div>
-          )}
-          {attachmentFiles.length > 0 && (
-            <div className="text-[10px] text-slate-500">
-              {attachmentFiles.length} arquivo(s) pronto(s) para envio
             </div>
           )}
         </div>

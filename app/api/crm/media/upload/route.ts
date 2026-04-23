@@ -31,7 +31,26 @@ export async function POST(req: Request) {
     const f = file as File;
     const pool = getPool();
     const settings = await getCrmMediaSettings(pool);
-    const mime = f.type || "application/octet-stream";
+    let mime = String(f.type || "").trim() || "application/octet-stream";
+    if (mime === "application/octet-stream" || !mime) {
+      const ext = (f.name || "").split(".").pop()?.toLowerCase() || "";
+      const byExt: Record<string, string> = {
+        webm: "audio/webm",
+        ogg: "audio/ogg",
+        opus: "audio/ogg",
+        mp3: "audio/mpeg",
+        m4a: "audio/mp4",
+        wav: "audio/wav",
+        jpg: "image/jpeg",
+        jpeg: "image/jpeg",
+        png: "image/png",
+        gif: "image/gif",
+        webp: "image/webp",
+        mp4: "video/mp4",
+        pdf: "application/pdf",
+      };
+      if (byExt[ext]) mime = byExt[ext];
+    }
     const mediaCat = inferMediaCategoryFromMimeOrHint(mime, mediaHint);
     const maxB = maxUploadBytesForMediaType(settings, mediaCat);
     const buf = Buffer.from(await f.arrayBuffer());
