@@ -398,12 +398,16 @@ export async function evolutionSendMedia(args: {
     const json = await resp.json().catch(() => ({}));
     if (!resp.ok) {
       const msg = (json as any)?.message || (json as any)?.error || `HTTP ${resp.status}`;
+      const hint =
+        resp.status === 413
+          ? " (payload grande: reduza o áudio ou aumente client_max_body_size no proxy da Evolution)"
+          : "";
       evolutionIntegrationLog("sendMedia_failed", {
         instanceName: args.instanceName,
         httpStatus: resp.status,
-        error: String(msg).slice(0, 240),
+        error: `${String(msg).slice(0, 220)}${hint}`,
       });
-      return { ok: false, error: String(msg), response: json };
+      return { ok: false, error: `${String(msg)}${hint}`, response: json };
     }
     return { ok: true, error: null as string | null, response: json };
   } catch (e: any) {

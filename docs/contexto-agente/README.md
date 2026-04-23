@@ -1,15 +1,20 @@
-# Contexto para o agente (Cursor / IA)
+# Contexto para o agente (CRM / WhatsApp)
 
-Coloque aqui **ficheiros temporários** que queira que a IA leia numa tarefa: exports CSV, logs sanitizados, notas de incidente, etc.
+Pasta para notas curtas ao trabalhar neste repositório. **Não colar aqui dumps completos de logs** (JSONL do Vercel, etc.): isso polui o Git e mistura dados sensíveis. Para análise de produção, exporte os logs para um ficheiro local fora do repositório ou use o dashboard da Vercel.
 
-## Importante
+## Resumo operacional (incidentes comuns)
 
-- **Nada nesta pasta é versionado** (exceto este `README` e o `.gitignore`), para não subir dados sensíveis nem lixo ao Git.
-- Não coloque `.env`, palavras-passe, tokens ou chaves privadas. Use sempre variáveis de ambiente no servidor e `.env` local (já está no `.gitignore` na raiz).
+| Sintoma | Causa provável | Ação |
+|--------|----------------|------|
+| Mídia Meta presa em “downloading” | Ingestão assíncrona cortada no serverless | Webhook Meta aguarda ingestão; `maxDuration` no route |
+| Evolution 401 no webhook | `EVOLUTION_WEBHOOK_TOKEN` ≠ token na URL do webhook | Alinhar env na Vercel com URL na Evolution |
+| Evolution `sendMedia` HTTP **413** | Corpo JSON (base64) maior que o limite do proxy/servidor Evolution | Transcodificar áudio para Ogg/Opus antes do envio; ou aumentar `client_max_body_size` no Nginx da Evolution |
+| Upload CRM 400 “MIME não permitido” | Lista na BD + tipo com `;codecs=…` | Comparação por MIME base + união com defaults em `crm_media_settings` |
 
-## Como usar
+## Ficheiros úteis
 
-1. Arraste ou grave ficheiros dentro de `docs/contexto-agente/`.
-2. No chat, referencie o caminho, por exemplo: `docs/contexto-agente/meu-export.csv`.
-
-Para limpar, apague os ficheiros manualmente quando já não precisar deles.
+- Webhook Meta: `app/api/whatsapp/webhook/route.ts`
+- Webhook Evolution: `app/api/whatsapp/evolution/webhook/route.ts`
+- Upload mídia CRM: `app/api/crm/media/upload/route.ts`
+- Envio mensagem + Evolution: `app/api/crm/messages/route.ts`
+- Limites MIME: `lib/server/crmMediaSettings.ts`

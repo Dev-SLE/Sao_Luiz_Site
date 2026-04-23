@@ -11,6 +11,7 @@ import { sessionCanAccessLead } from "../../../../lib/server/crmAccess";
 import { getFileById } from "../../../../modules/storage/fileService";
 import { getItemContentResponse } from "../../../../lib/server/sharepointGraph";
 import { getCrmMediaSettings, inlineVideoAllowedFromSettings } from "../../../../lib/server/crmMediaSettings";
+import { maybeTranscodeInboundAudio } from "../../../../lib/server/crmMediaTranscode";
 import { recordCrmOutboundMediaFromStoredFiles } from "../../../../lib/server/crmMediaIngest";
 import {
   inferMetaOutboundKind,
@@ -681,20 +682,42 @@ export async function POST(req: Request) {
       } else if (useEvolution) {
         let finalResp: any = null;
         let finalOk = true;
+        const evolutionMediaSettings = resolvedFiles.length ? await getCrmMediaSettings(pool) : null;
         if (resolvedFiles.length > 0) {
           for (let i = 0; i < resolvedFiles.length; i++) {
             const f = resolvedFiles[i];
-            const dataUri = `data:${f.mime};base64,${f.buffer.toString("base64")}`;
+            let sendBuf = f.buffer;
+            let sendMime = f.mime;
+            let sendName = f.name;
+            if (evolutionMediatypeFromMime(f.mime) === "audio" && evolutionMediaSettings) {
+              const large = f.buffer.length > 120_000;
+              const webmOrHeavy = /webm|mpeg|mp4/i.test(f.mime) || large;
+              const tr = await maybeTranscodeInboundAudio({
+                buffer: f.buffer,
+                mimeType: f.mime,
+                baseFileName: f.name || "audio.webm",
+                settings: {
+                  ...evolutionMediaSettings,
+                  forceTranscodeAudio: evolutionMediaSettings.forceTranscodeAudio || webmOrHeavy,
+                },
+              });
+              if (tr.ok) {
+                sendBuf = Buffer.from(tr.buffer);
+                sendMime = tr.mimeType;
+                sendName = tr.fileName;
+              }
+            }
+            const dataUri = `data:${sendMime};base64,${sendBuf.toString("base64")}`;
             const cap = i === 0 ? (signedText || text || undefined)?.slice(0, 1020) : undefined;
             const waResp = await evolutionSendMedia({
               serverUrl: String(row.evolution_server_url),
               apiKey: String(row.evolution_api_key),
               instanceName: String(row.evolution_instance_name),
               numberDigits: toE164,
-              mediatype: evolutionMediatypeFromMime(f.mime),
+              mediatype: evolutionMediatypeFromMime(sendMime),
               media: dataUri,
-              mimetype: f.mime,
-              fileName: f.name,
+              mimetype: sendMime,
+              fileName: sendName,
               caption: cap,
               quotedContext: i === 0 ? evolutionQuotedContext : null,
             });

@@ -793,11 +793,13 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
       rec.onstop = () => {
         stream.getTracks().forEach((t) => t.stop());
         recordStreamRef.current = null;
-        const blob = new Blob(recordChunksRef.current, { type: rec.mimeType || 'audio/webm' });
+        const rawType = rec.mimeType || 'audio/webm';
+        const fileType = rawType.split(';')[0].trim() || 'audio/webm';
+        const blob = new Blob(recordChunksRef.current, { type: fileType });
         recordChunksRef.current = [];
         if (blob.size > 800) {
-          const ext = blob.type.includes('webm') ? 'webm' : 'ogg';
-          const f = new File([blob], `gravacao-${Date.now()}.${ext}`, { type: blob.type || 'audio/webm' });
+          const ext = fileType.includes('webm') ? 'webm' : 'ogg';
+          const f = new File([blob], `gravacao-${Date.now()}.${ext}`, { type: fileType });
           setAttachmentFiles((prev) => [...prev, f]);
         }
         setRecording(false);

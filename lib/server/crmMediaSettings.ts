@@ -37,6 +37,15 @@ function normalizeMimeList(v: unknown): string[] {
   return v.map((x) => String(x || "").trim().toLowerCase()).filter(Boolean);
 }
 
+/** Parte principal do MIME, sem parâmetros (ex.: `audio/webm;codecs=opus` → `audio/webm`). */
+export function mimeBaseType(mime: string): string {
+  return String(mime || "")
+    .trim()
+    .toLowerCase()
+    .split(";")[0]
+    .trim();
+}
+
 function mergeAllowed(db: Record<string, string[]>): Record<string, string[]> {
   const out: Record<string, string[]> = { ...DEFAULT_ALLOWED };
   for (const [k, list] of Object.entries(db || {})) {
@@ -120,11 +129,11 @@ export function maxUploadBytesForMediaType(settings: CrmMediaSettings, mediaType
 
 export function isMimeAllowedForMediaType(settings: CrmMediaSettings, mediaType: string, mime: string): boolean {
   const t = String(mediaType || "unknown").toLowerCase();
-  const m = String(mime || "").trim().toLowerCase();
-  if (!m) return false;
+  const base = mimeBaseType(mime);
+  if (!base) return false;
   const list = settings.allowedMimeByMediaType[t];
   if (!list || list.length === 0) return true;
-  return list.includes(m);
+  return list.some((entry) => mimeBaseType(entry) === base);
 }
 
 export function inlineVideoAllowedFromSettings(
