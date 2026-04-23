@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getPool } from "../../../../lib/server/db";
 import { ensureCrmSchemaTables } from "../../../../lib/server/ensureSchema";
 import { classifyLeadTopic, pickAgentFromTeam, pickFallbackAgent, resolveRoutingByRules, resolveSlaMinutes } from "../../../../lib/server/crmRouting";
+import { isAdminSuperRole } from "@/lib/adminSuperRoles";
 import { can, getSessionContext } from "../../../../lib/server/authorization";
 
 export const runtime = "nodejs";
@@ -94,7 +95,13 @@ export async function GET(req: Request) {
       const row = ures.rows?.[0];
       const role = String(row?.role || requestRole || "").toLowerCase();
       const perms = parsePermissions(row?.permissions);
-      if (role === "admin" || perms.includes("CRM_SCOPE_ALL") || perms.includes("scope.crm.all")) scope = "ALL";
+      if (
+        isAdminSuperRole(role, requestUsername) ||
+        perms.includes("CRM_SCOPE_ALL") ||
+        perms.includes("scope.crm.all")
+      ) {
+        scope = "ALL";
+      }
       else if (perms.includes("CRM_SCOPE_TEAM") || perms.includes("scope.crm.team")) scope = "TEAM";
       else scope = "SELF";
     }

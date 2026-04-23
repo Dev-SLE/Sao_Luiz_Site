@@ -713,6 +713,19 @@ export async function DELETE(req: Request) {
       whatsappDelete.error = wa.error;
       whatsappDelete.response = wa.response;
     }
+    if (
+      deleteInWhatsapp &&
+      !whatsappDelete.attempted &&
+      String(row?.inbox_provider || "").toUpperCase() === "META"
+    ) {
+      whatsappDelete = {
+        attempted: true,
+        ok: false,
+        error:
+          "WhatsApp Cloud API (Meta) não oferece endpoint para apagar mensagem no aparelho do cliente; exclusão aplicada só no CRM.",
+        response: null,
+      };
+    }
     const patch = {
       deleted_at: new Date().toISOString(),
       deleted_by: "operator",

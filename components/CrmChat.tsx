@@ -1158,15 +1158,28 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
       }
     };
     tick();
-    const interval = window.setInterval(() => {
-      void tick();
-    }, document.hidden ? 22_000 : 7500);
-
-    return () => window.clearInterval(interval);
+    let messagesPollId: ReturnType<typeof window.setInterval> | null = null;
+    const armMessagesPoll = () => {
+      if (messagesPollId != null) window.clearInterval(messagesPollId);
+      const ms = document.hidden ? 22_000 : 7500;
+      messagesPollId = window.setInterval(() => {
+        void tick();
+      }, ms);
+    };
+    armMessagesPoll();
+    const onMessagesVisibility = () => {
+      armMessagesPoll();
+      if (!document.hidden) void tick();
+    };
+    document.addEventListener("visibilitychange", onMessagesVisibility);
+    return () => {
+      document.removeEventListener("visibilitychange", onMessagesVisibility);
+      if (messagesPollId != null) window.clearInterval(messagesPollId);
+    };
   }, [selectedConversationId]);
 
   useEffect(() => {
-    const interval = window.setInterval(async () => {
+    const pollConversations = async () => {
       if (document.hidden || conversationsFetchLock.current || conversationsPollInFlight.current) return;
       conversationsPollInFlight.current = true;
       try {
@@ -1191,8 +1204,26 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
       } finally {
         conversationsPollInFlight.current = false;
       }
-    }, 45_000);
-    return () => window.clearInterval(interval);
+    };
+
+    let conversationsPollId: ReturnType<typeof window.setInterval> | null = null;
+    const armConversationsPoll = () => {
+      if (conversationsPollId != null) window.clearInterval(conversationsPollId);
+      const ms = document.hidden ? 30_000 : 8_000;
+      conversationsPollId = window.setInterval(() => {
+        void pollConversations();
+      }, ms);
+    };
+    armConversationsPoll();
+    const onConversationsVisibility = () => {
+      armConversationsPoll();
+      if (!document.hidden) void pollConversations();
+    };
+    document.addEventListener("visibilitychange", onConversationsVisibility);
+    return () => {
+      document.removeEventListener("visibilitychange", onConversationsVisibility);
+      if (conversationsPollId != null) window.clearInterval(conversationsPollId);
+    };
   }, [leadId, selectedConversationId, user?.username, user?.role]);
 
   useEffect(() => {

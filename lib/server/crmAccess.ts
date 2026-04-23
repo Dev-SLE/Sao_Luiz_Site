@@ -1,3 +1,4 @@
+import { isAdminSuperRole } from "../adminSuperRoles";
 import { getPool } from "./db";
 import type { SessionContext } from "./authorization";
 
@@ -55,7 +56,13 @@ export async function resolveCrmListScope(session: SessionContext): Promise<{
   const row = ures.rows?.[0];
   const role = String(row?.role || requestRole || "").toLowerCase();
   const perms = parsePermissions(row?.permissions);
-  if (role === "admin" || perms.includes("CRM_SCOPE_ALL") || perms.includes("scope.crm.all")) scope = "ALL";
+  if (
+    isAdminSuperRole(role, requestUsername) ||
+    perms.includes("CRM_SCOPE_ALL") ||
+    perms.includes("scope.crm.all")
+  ) {
+    scope = "ALL";
+  }
   else if (perms.includes("CRM_SCOPE_TEAM") || perms.includes("scope.crm.team")) scope = "TEAM";
 
   const mineOnly = scope === "SELF";
