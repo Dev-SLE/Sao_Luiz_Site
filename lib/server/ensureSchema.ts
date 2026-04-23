@@ -255,6 +255,77 @@ export async function ensureCrmSchemaTables() {
     WHERE provider IS NOT NULL AND provider_message_id IS NOT NULL AND btrim(provider_message_id) <> ''
   `);
 
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS pendencias.crm_media_settings (
+      id int PRIMARY KEY CHECK (id = 1),
+      max_inline_video_bytes bigint NOT NULL DEFAULT 20971520,
+      max_upload_image_mb int NOT NULL DEFAULT 25,
+      max_upload_audio_mb int NOT NULL DEFAULT 25,
+      max_upload_video_mb int NOT NULL DEFAULT 100,
+      max_upload_document_mb int NOT NULL DEFAULT 50,
+      allowed_mime_by_media_type jsonb NOT NULL DEFAULT '{}'::jsonb,
+      max_recorded_audio_seconds int NOT NULL DEFAULT 120,
+      video_external_fallback_policy text NOT NULL DEFAULT 'INLINE_IF_UNDER_LIMIT',
+      target_audio_mime text NOT NULL DEFAULT 'audio/ogg',
+      target_audio_codec text NOT NULL DEFAULT 'opus',
+      force_transcode_audio boolean NOT NULL DEFAULT false,
+      allow_wav_fallback boolean NOT NULL DEFAULT false,
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+  await pool.query(`
+    INSERT INTO pendencias.crm_media_settings (id)
+    VALUES (1)
+    ON CONFLICT (id) DO NOTHING
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS pendencias.crm_message_media (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      message_id uuid NOT NULL REFERENCES pendencias.crm_messages(id) ON DELETE CASCADE,
+      ordinal int NOT NULL DEFAULT 0,
+      source_provider text NOT NULL,
+      source_provider_message_id text,
+      source_provider_media_id text,
+      source_provider_url text,
+      source_mime_type text,
+      source_file_name text,
+      source_size_bytes bigint,
+      source_duration_seconds double precision,
+      stored_file_id uuid,
+      processing_status text NOT NULL DEFAULT 'PENDING',
+      processing_error text,
+      stored_at timestamptz,
+      media_type text NOT NULL,
+      display_mime_type text,
+      display_file_name text,
+      display_size_bytes bigint,
+      display_duration_seconds double precision,
+      width int,
+      height int,
+      metadata_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+      created_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_crm_message_media_message
+    ON pendencias.crm_message_media(message_id, ordinal)
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_crm_message_media_stored_file
+    ON pendencias.crm_message_media(stored_file_id)
+    WHERE stored_file_id IS NOT NULL
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_crm_message_media_processing
+    ON pendencias.crm_message_media(processing_status, created_at)
+  `);
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_crm_message_media_dedupe_per_message
+    ON pendencias.crm_message_media(message_id, source_provider_media_id)
+    WHERE source_provider_media_id IS NOT NULL AND btrim(source_provider_media_id) <> ''
+  `);
+
   // Fila de envio outbound (fallback/retry para WhatsApp)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS pendencias.crm_outbox (
@@ -1453,6 +1524,13 @@ export async function ensureStorageCatalogTables() {
       { module: "portal", entity: "mural", provider: "sharepoint", path_template: "PortalMidia/mural/{year}/{month}", library_name: "PortalMidia" },
       { module: "portal", entity: "recognition", provider: "sharepoint", path_template: "PortalMidia/reconhecimento/{year}/{month}", library_name: "PortalMidia" },
       { module: "portal", entity: "faq", provider: "sharepoint", path_template: "PortalMidia/faq/{year}/{month}", library_name: "PortalMidia" },
+      {
+        module: "crm",
+        entity: "whatsapp_media",
+        provider: "sharepoint",
+        path_template: "CRM/WhatsApp/{provider_slug}/{year}/{month}/{conversation_id}/{media_type}",
+        library_name: null,
+      },
     ];
     for (const r of ruleSeeds) {
       await pool.query(
@@ -1508,6 +1586,29 @@ export async function ensureStorageCatalogTables() {
     await pool.query(`
       UPDATE pendencias.storage_rules SET path_template = 'PortalMidia/faq/{year}/{month}', library_name = 'PortalMidia'
       WHERE module = 'portal' AND entity = 'faq' AND provider = 'sharepoint'
+    `);
+    await pool.query(`
+      UPDATE pendencias.storage_rules
+      SET path_template = 'CRM/WhatsApp/{provider_slug}/{year}/{month}/{conversation_id}/{media_type}'
+      WHERE module = 'crm' AND entity = 'whatsapp_media' AND provider = 'sharepoint'
+    `);
+    await pool.query(`
+      DO $$
+      BEGIN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.tables
+          WHERE table_schema = 'pendencias' AND table_name = 'crm_message_media'
+        ) AND EXISTS (
+          SELECT 1 FROM information_schema.tables
+          WHERE table_schema = 'pendencias' AND table_name = 'files'
+        ) AND NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'crm_message_media_stored_file_id_fkey'
+        ) THEN
+          ALTER TABLE pendencias.crm_message_media
+          ADD CONSTRAINT crm_message_media_stored_file_id_fkey
+          FOREIGN KEY (stored_file_id) REFERENCES pendencias.files(id) ON DELETE SET NULL;
+        END IF;
+      END $$;
     `);
   })();
   try {
