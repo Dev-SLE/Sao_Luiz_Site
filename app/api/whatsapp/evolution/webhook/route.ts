@@ -1100,8 +1100,15 @@ export async function POST(req: Request) {
       const isFromMe = key.fromMe === true;
 
       const remoteJid = String(key.remoteJid || key.remoteJidAlt || "").trim();
-      if (!remoteJid || remoteJid.includes("@g.us")) {
-        logUpsertSkip("skip_jid", { instance, remoteJid: remoteJid ? remoteJid.slice(0, 48) : "" });
+      if (!remoteJid) {
+        logUpsertSkip("skip_jid", { instance, remoteJid: "" });
+        continue;
+      }
+      if (remoteJid.includes("@g.us")) {
+        console.info("[evolution-webhook] skip_group_chat", {
+          instance,
+          hint: "Grupos não entram no CRM (comportamento esperado).",
+        });
         continue;
       }
       if (remoteJid.includes("status@broadcast") || remoteJid.includes("@broadcast")) {

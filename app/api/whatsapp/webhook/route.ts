@@ -691,6 +691,7 @@ export async function POST(req: Request) {
       // Meta envia sha256 em HEX. Mantemos base64 como fallback defensivo.
       const signatureOk = !!metaSignature && (metaSignature === expectedHex || metaSignature === expectedBase64);
       if (!signatureOk) {
+        console.warn("[whatsapp-webhook] Meta assinatura X-Hub-Signature-256 não confere com WHATSAPP_APP_SECRET");
         return NextResponse.json({ error: "Assinatura inválida" }, { status: 401 });
       }
     }
@@ -852,11 +853,17 @@ export async function POST(req: Request) {
               cteDetected,
             });
             const mode = metaIntake.mode;
+            // Com meta_min_messages_before_create <= 1 (padrão), a primeira mensagem já gera lead
+            // mesmo sem palavra-chave de negócio — senão "oi"/"teste" nunca entra no CRM.
+            const firstMessageCreatesLead =
+              metaIntake.minMessagesBeforeCreate <= 1 &&
+              (String(text || "").trim().length > 0 || String(message?.type || "").trim().length > 0);
             const shouldCreate =
               !denylisted &&
               (mode === "OFF" ||
                 allowlisted ||
-                (mode === "BUSINESS_ONLY" && businessSignal));
+                (mode === "BUSINESS_ONLY" && (businessSignal || firstMessageCreatesLead)) ||
+                (mode === "AGENCY_ONLY" && (businessSignal || firstMessageCreatesLead)));
             if (!shouldCreate) {
               await pool.query(
                 `
