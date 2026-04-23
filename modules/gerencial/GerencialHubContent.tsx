@@ -1,6 +1,6 @@
 'use client';
 
-import React, { Suspense, useEffect, useMemo, useState } from 'react';
+import React, { Suspense, useEffect, useMemo } from 'react';
 import { BarChart3, LineChart, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -31,7 +31,7 @@ import { BiComercial360GapDashboard } from '@/modules/gerencial/comercial360/BiC
 import { BiComercial360RadarDashboard } from '@/modules/gerencial/comercial360/BiComercial360RadarDashboard';
 import { BiComercial360RiscoDashboard } from '@/modules/gerencial/comercial360/BiComercial360RiscoDashboard';
 import { ComissoesHoleriteView } from '@/modules/gerencial/ComissoesHoleriteView';
-import { hasPermissionWithAliases } from '@/lib/permissions';
+import { useData } from '@/context/DataContext';
 
 type ParsedGerencial = {
   sector: GerencialSectorSlug;
@@ -91,27 +91,8 @@ export function GerencialHubContent({ pathname }: { pathname: string }) {
   const router = useRouter();
   const effectivePath = livePath || pathname;
   const parsed = useMemo(() => parseGerencialPath(effectivePath), [effectivePath]);
-  const [permissions, setPermissions] = useState<string[] | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch('/api/auth/session', { credentials: 'include' });
-        const data = res.ok ? await res.json() : null;
-        if (!cancelled) setPermissions(Array.isArray(data?.permissions) ? data.permissions : []);
-      } catch {
-        if (!cancelled) setPermissions([]);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const has = useMemo(() => {
-    return (key: string) => hasPermissionWithAliases(permissions, key);
-  }, [permissions]);
+  const { hasPermission } = useData();
+  const has = hasPermission;
 
   const sectorTabs = useMemo(() => {
     return GERENCIAL_SECTORS.filter((s) => has(s.permission)).map((s) => ({
@@ -164,49 +145,44 @@ export function GerencialHubContent({ pathname }: { pathname: string }) {
 
   /** `/app/gerencial` para o primeiro setor permitido no catalogo. */
   useEffect(() => {
-    if (permissions === null) return;
     const parts = effectivePath.replace(/\/+$/, '').split('/').filter(Boolean);
     if (parts[0] !== 'app' || parts[1] !== 'gerencial') return;
     if (parts.length > 2) return;
     const firstSector = GERENCIAL_SECTORS.find((s) => has(s.permission))?.slug;
     if (firstSector) router.replace(gerencialHubPath(firstSector));
-  }, [effectivePath, has, permissions, router]);
+  }, [effectivePath, has, router]);
 
   /** `/app/gerencial/comercial` sem painel: primeiro painel Comercial permitido. */
   useEffect(() => {
-    if (permissions === null) return;
     const parts = effectivePath.replace(/\/+$/, '').split('/').filter(Boolean);
     if (parts[0] !== 'app' || parts[1] !== 'gerencial') return;
     if (parts.length !== 3) return;
     if (parts[2]?.toLowerCase() !== 'comercial') return;
     const first = allowedCommercialPanels[0]?.slug;
     if (first) router.replace(gerencialHubPath('comercial', first));
-  }, [allowedCommercialPanels, effectivePath, permissions, router]);
+  }, [allowedCommercialPanels, effectivePath, router]);
 
   /** `/app/gerencial/operacao` sem painel: primeiro painel Operacao permitido. */
   useEffect(() => {
-    if (permissions === null) return;
     const parts = effectivePath.replace(/\/+$/, '').split('/').filter(Boolean);
     if (parts[0] !== 'app' || parts[1] !== 'gerencial') return;
     if (parts.length !== 3) return;
     if (parts[2]?.toLowerCase() !== 'operacao') return;
     const first = allowedOperacaoPanels[0]?.slug;
     if (first) router.replace(gerencialHubPath('operacao', first));
-  }, [allowedOperacaoPanels, effectivePath, permissions, router]);
+  }, [allowedOperacaoPanels, effectivePath, router]);
 
   const canAnySector = sectorTabs.length > 0;
   const canCommercial = has(GERENCIAL_BI_TAB.setorComercial);
 
   const sectorDenied =
-    permissions !== null &&
-    ((parsed.sector === 'comercial' && !canCommercial) ||
+    (parsed.sector === 'comercial' && !canCommercial) ||
       (parsed.sector === 'financeiro' && !has(GERENCIAL_BI_TAB.setorFinanceiro)) ||
-      (parsed.sector === 'operacao' && !has(GERENCIAL_BI_TAB.setorOperacao)));
+      (parsed.sector === 'operacao' && !has(GERENCIAL_BI_TAB.setorOperacao));
 
   const panelKey = parsed.panel ? commercialTabKeyFromPanelSlug(parsed.panel) : null;
   const commercialPanelDenied =
     parsed.sector === 'comercial' &&
-    permissions !== null &&
     !!parsed.panel &&
     !parsed.holerite &&
     (!panelKey || !has(GERENCIAL_BI_TAB[panelKey]));
@@ -214,24 +190,13 @@ export function GerencialHubContent({ pathname }: { pathname: string }) {
   const operacaoPanelKey = parsed.panel ? operacaoTabKeyFromPanelSlug(parsed.panel) : null;
   const operacaoPanelDenied =
     parsed.sector === 'operacao' &&
-    permissions !== null &&
     !!parsed.panel &&
     (!operacaoPanelKey || !has(GERENCIAL_BI_TAB[operacaoPanelKey]));
 
   const holeriteDenied =
     parsed.holerite &&
-    permissions !== null &&
     !has('module.gerencial.comissoes_holerite') &&
     !(has(GERENCIAL_BI_TAB.setorComercial) && has(GERENCIAL_BI_TAB.comissoes));
-
-  if (permissions === null) {
-    return (
-      <div className="flex min-h-[40vh] flex-col items-center justify-center gap-3 text-slate-600">
-        <Loader2 className="animate-spin text-sl-navy" size={28} />
-        <span className="text-sm">Carregando permissões...</span>
-      </div>
-    );
-  }
 
   if (!canAnySector) {
     return (
