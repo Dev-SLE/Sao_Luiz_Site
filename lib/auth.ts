@@ -572,6 +572,13 @@ export class NeonDataClient {
     return resp.json();
   }
 
+  async getCrmMediaSettings(): Promise<any> {
+    const url = this.makeApiUrl('/crm/media-settings');
+    const resp = await fetch(url);
+    if (!resp.ok) throw await this.buildHttpError('Erro ao buscar limites de mídia CRM', resp);
+    return resp.json();
+  }
+
   async sendCrmMessage(payload: {
     conversationId?: string | null;
     leadId?: string | null;
@@ -579,7 +586,7 @@ export class NeonDataClient {
     senderType: string; // AGENTE/CLIENTE/IA
     body: string;
     senderUsername?: string | null;
-    attachments?: Array<{ type?: string; filename?: string; url?: string }>;
+    attachments?: Array<{ type?: string; filename?: string; url?: string; fileId?: string; mimeType?: string }>;
     replyTo?: { messageId?: string; sender?: string; text?: string } | null;
   }): Promise<any> {
     return this.postJson("/crm/messages", payload);

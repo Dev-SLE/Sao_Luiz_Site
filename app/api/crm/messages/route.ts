@@ -1,9 +1,22 @@
 import { NextResponse } from "next/server";
 import { getPool } from "../../../../lib/server/db";
 import { ensureCrmSchemaTables } from "../../../../lib/server/ensureSchema";
-import { evolutionDeleteMessageForEveryone, evolutionSendText } from "../../../../lib/server/evolutionClient";
+import {
+  evolutionDeleteMessageForEveryone,
+  evolutionSendMedia,
+  evolutionSendText,
+} from "../../../../lib/server/evolutionClient";
 import { can, getSessionContext } from "../../../../lib/server/authorization";
 import { sessionCanAccessLead } from "../../../../lib/server/crmAccess";
+import { getFileById } from "../../../../modules/storage/fileService";
+import { getItemContentResponse } from "../../../../lib/server/sharepointGraph";
+import { getCrmMediaSettings, inlineVideoAllowedFromSettings } from "../../../../lib/server/crmMediaSettings";
+import { recordCrmOutboundMediaFromStoredFiles } from "../../../../lib/server/crmMediaIngest";
+import {
+  inferMetaOutboundKind,
+  metaSendMessageWithUploadedMedia,
+  metaUploadMediaBuffer,
+} from "../../../../lib/server/crmMetaOutboundMedia";
 
 export const runtime = "nodejs";
 
@@ -190,6 +203,45 @@ function toDirectDownloadUrl(rawUrl: string) {
   return url;
 }
 
+async function readFileBufferFromCatalog(pool: any, fileId: string): Promise<{ buffer: Buffer; mime: string; name: string } | null> {
+  const file = await getFileById(pool, fileId);
+  if (!file?.sharepoint_item_id || !file.sharepoint_site_id || !file.sharepoint_drive_id) return null;
+  const res = await getItemContentResponse(file.sharepoint_site_id, file.sharepoint_drive_id, file.sharepoint_item_id);
+  if (!res.ok) return null;
+  const buffer = Buffer.from(await res.arrayBuffer());
+  const mime = String(file.mime_type || res.headers.get("content-type") || "application/octet-stream");
+  const name = String(file.original_name || file.file_name || "arquivo");
+  return { buffer, mime, name };
+}
+
+function evolutionMediatypeFromMime(mime: string): "image" | "video" | "audio" | "document" {
+  const m = String(mime || "").toLowerCase();
+  if (m.startsWith("image/")) return "image";
+  if (m.startsWith("video/")) return "video";
+  if (m.startsWith("audio/")) return "audio";
+  return "document";
+}
+
+function mapCrmMessageMediaRow(row: any, settings: Awaited<ReturnType<typeof getCrmMediaSettings>>) {
+  const fid = row.stored_file_id ? String(row.stored_file_id) : null;
+  return {
+    id: String(row.id),
+    mediaType: String(row.media_type || ""),
+    mimeType: row.display_mime_type ? String(row.display_mime_type) : null,
+    filename: row.display_file_name ? String(row.display_file_name) : null,
+    fileId: fid,
+    viewUrl: fid ? `/api/files/${fid}/view` : null,
+    downloadUrl: fid ? `/api/files/${fid}/download` : null,
+    processingStatus: String(row.processing_status || ""),
+    processingError: row.processing_error ? String(row.processing_error) : null,
+    sizeBytes: row.display_size_bytes != null ? Number(row.display_size_bytes) : null,
+    durationSeconds: row.display_duration_seconds != null ? Number(row.display_duration_seconds) : null,
+    width: row.width != null ? Number(row.width) : null,
+    height: row.height != null ? Number(row.height) : null,
+    inlineVideoAllowed: inlineVideoAllowedFromSettings(settings, String(row.media_type || ""), row.display_size_bytes),
+  };
+}
+
 async function sendWhatsAppAttachment(args: {
   toE164: string;
   attachment: { type?: string; filename?: string; url?: string };
@@ -334,6 +386,40 @@ export async function GET(req: Request) {
       }));
     }
 
+    const messageIds = (result.rows || []).map((r: any) => String(r.id));
+    const mediaSettings = await getCrmMediaSettings(pool);
+    const mediaByMessage = new Map<string, any[]>();
+    if (messageIds.length) {
+      const mediaRes = await pool.query(
+        `
+          SELECT
+            id,
+            message_id,
+            ordinal,
+            media_type,
+            display_mime_type,
+            display_file_name,
+            display_size_bytes,
+            display_duration_seconds,
+            width,
+            height,
+            stored_file_id,
+            processing_status,
+            processing_error,
+            metadata_json
+          FROM pendencias.crm_message_media
+          WHERE message_id = ANY($1::uuid[])
+          ORDER BY message_id, ordinal ASC
+        `,
+        [messageIds]
+      );
+      for (const row of mediaRes.rows || []) {
+        const mid = String(row.message_id);
+        if (!mediaByMessage.has(mid)) mediaByMessage.set(mid, []);
+        mediaByMessage.get(mid)!.push(row);
+      }
+    }
+
     const messages = (result.rows || []).map((r: any) => {
       const meta = safeJsonParse(r.metadata);
       const outbound = meta?.outbound_whatsapp;
@@ -363,7 +449,28 @@ export async function GET(req: Request) {
       status: statusForUi,
       edited: Boolean(meta?.wa_edited || meta?.edited_at),
       deleted: Boolean(meta?.deleted_at),
-      attachments: Array.isArray(meta?.attachments) ? meta.attachments : [],
+      attachments: (() => {
+        const rows = mediaByMessage.get(String(r.id)) || [];
+        const fromDb = rows.map((row: any) => mapCrmMessageMediaRow(row, mediaSettings));
+        if (fromDb.length) return fromDb;
+        const legacy = Array.isArray(meta?.attachments) ? meta.attachments : [];
+        return legacy.map((a: any, idx: number) => ({
+          id: `legacy-${r.id}-${idx}`,
+          mediaType: String(a?.type || "document"),
+          mimeType: a?.mimeType || (typeof a?.type === "string" && a.type.includes("/") ? a.type : null),
+          filename: a?.filename || null,
+          fileId: null,
+          viewUrl: typeof a?.url === "string" && a.url.startsWith("/api/files/") ? a.url : null,
+          downloadUrl: typeof a?.url === "string" && a.url.includes("/api/files/") ? a.url.replace("/view", "/download") : a?.url || null,
+          processingStatus: "STORED",
+          processingError: null,
+          sizeBytes: null,
+          durationSeconds: null,
+          width: null,
+          height: null,
+          inlineVideoAllowed: true,
+        }));
+      })(),
     };
     });
 
@@ -455,6 +562,44 @@ export async function POST(req: Request) {
     );
     const createdMessageId = messageInsert.rows?.[0]?.id as string;
 
+    type ResolvedFile = { fileId: string; buffer: Buffer; mime: string; name: string };
+    const resolvedFiles: ResolvedFile[] = [];
+    for (const raw of attachments) {
+      const a = raw as any;
+      const fid = a?.fileId != null ? String(a.fileId).trim() : "";
+      if (fid) {
+        const got = await readFileBufferFromCatalog(pool, fid);
+        if (!got) {
+          return NextResponse.json({ error: `Anexo não encontrado ou sem conteúdo: ${fid}` }, { status: 400 });
+        }
+        resolvedFiles.push({ fileId: fid, ...got });
+        continue;
+      }
+      const u = a?.url ? String(a.url) : "";
+      const m = u.match(/\/api\/files\/([0-9a-f-]{36})\/(?:view|download)/i);
+      if (m?.[1]) {
+        const got = await readFileBufferFromCatalog(pool, m[1]);
+        if (got) resolvedFiles.push({ fileId: m[1], ...got });
+      }
+    }
+
+    if (resolvedFiles.length) {
+      await recordCrmOutboundMediaFromStoredFiles(pool, {
+        messageId: createdMessageId,
+        conversationId: String(activeConversationId),
+        files: resolvedFiles.map((f) => {
+          const hint = (attachments as any[]).find((x) => String(x?.fileId || "") === f.fileId)?.type || null;
+          return {
+            fileId: f.fileId,
+            mimeType: f.mime,
+            fileName: f.name,
+            sizeBytes: f.buffer.length,
+            mediaType: hint,
+          };
+        }),
+      });
+    }
+
     await pool.query(
       `
         UPDATE pendencias.crm_conversations
@@ -536,12 +681,43 @@ export async function POST(req: Request) {
       } else if (useEvolution) {
         let finalResp: any = null;
         let finalOk = true;
-        if (attachments.length > 0) {
-          outboundWhatsApp.error =
-            "Anexos pelo painel nesta linha Web: em breve — por enquanto envie pelo WhatsApp no celular.";
-          finalOk = false;
-        }
-        if (signedText && finalOk) {
+        if (resolvedFiles.length > 0) {
+          for (let i = 0; i < resolvedFiles.length; i++) {
+            const f = resolvedFiles[i];
+            const dataUri = `data:${f.mime};base64,${f.buffer.toString("base64")}`;
+            const cap = i === 0 ? (signedText || text || undefined)?.slice(0, 1020) : undefined;
+            const waResp = await evolutionSendMedia({
+              serverUrl: String(row.evolution_server_url),
+              apiKey: String(row.evolution_api_key),
+              instanceName: String(row.evolution_instance_name),
+              numberDigits: toE164,
+              mediatype: evolutionMediatypeFromMime(f.mime),
+              media: dataUri,
+              mimetype: f.mime,
+              fileName: f.name,
+              caption: cap,
+              quotedContext: i === 0 ? evolutionQuotedContext : null,
+            });
+            finalResp = waResp.response || finalResp;
+            finalOk = finalOk && waResp.ok;
+            if (!waResp.ok) outboundWhatsApp.error = waResp.error;
+            if (!finalOk) break;
+          }
+          const tail = signedText && signedText.length > 1020 ? signedText.slice(1020).trim() : "";
+          if (finalOk && tail) {
+            const waResp = await evolutionSendText({
+              serverUrl: String(row.evolution_server_url),
+              apiKey: String(row.evolution_api_key),
+              instanceName: String(row.evolution_instance_name),
+              numberDigits: toE164,
+              text: tail,
+              quotedContext: null,
+            });
+            finalResp = waResp.response || finalResp;
+            finalOk = finalOk && waResp.ok;
+            if (!waResp.ok) outboundWhatsApp.error = waResp.error;
+          }
+        } else if (signedText) {
           const waResp = await evolutionSendText({
             serverUrl: String(row.evolution_server_url),
             apiKey: String(row.evolution_api_key),
@@ -559,7 +735,46 @@ export async function POST(req: Request) {
       } else {
         let finalResp: any = null;
         let finalOk = true;
-        if (signedText) {
+        if (resolvedFiles.length > 0) {
+          for (let i = 0; i < resolvedFiles.length; i++) {
+            const f = resolvedFiles[i];
+            const up = await metaUploadMediaBuffer({
+              buffer: f.buffer,
+              mimeType: f.mime,
+              fileName: f.name,
+            });
+            if ("error" in up) {
+              finalOk = false;
+              outboundWhatsApp.error = up.error;
+              break;
+            }
+            const kind = inferMetaOutboundKind(f.mime);
+            const cap = i === 0 ? (signedText || text || undefined)?.slice(0, 1020) : undefined;
+            const send = await metaSendMessageWithUploadedMedia({
+              toE164,
+              mediaId: up.id,
+              kind,
+              caption: kind === "audio" ? undefined : cap,
+              documentFilename: kind === "document" ? f.name : undefined,
+              quotedMessageId: i === 0 ? replyToWhatsappMessageId : null,
+            });
+            finalResp = send.response || finalResp;
+            finalOk = finalOk && send.ok;
+            if (!send.ok) outboundWhatsApp.error = send.error;
+            if (!finalOk) break;
+          }
+          const tail = signedText && signedText.length > 1020 ? signedText.slice(1020).trim() : "";
+          if (finalOk && tail) {
+            const waResp = await sendWhatsAppText({
+              toE164,
+              body: tail,
+              quotedMessageId: null,
+            });
+            finalResp = waResp.response || finalResp;
+            finalOk = finalOk && waResp.ok;
+            if (!waResp.ok) outboundWhatsApp.error = waResp.error;
+          }
+        } else if (signedText) {
           const waResp = await sendWhatsAppText({
             toE164,
             body: signedText,
@@ -569,8 +784,8 @@ export async function POST(req: Request) {
           finalOk = waResp.ok;
           if (!waResp.ok) outboundWhatsApp.error = waResp.error;
         }
-        if (attachments.length > 0) {
-          const first = attachments[0];
+        if (finalOk && !resolvedFiles.length && attachments.length > 0 && attachments[0]?.url) {
+          const first = attachments[0] as any;
           const waAttResp = await sendWhatsAppAttachment({
             toE164,
             attachment: first,

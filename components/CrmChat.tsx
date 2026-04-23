@@ -15,6 +15,11 @@ import {
   FileText,
   MapPin,
   Ban,
+  PanelRightClose,
+  PanelRight,
+  Volume2,
+  ExternalLink,
+  ChevronUp,
 } from 'lucide-react';
 import clsx from 'clsx';
 import dynamic from 'next/dynamic';
@@ -22,6 +27,7 @@ import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { authClient } from '../lib/auth';
 import { AppConfirmModal, AppMessageModal, type AppMessageVariant } from './AppOverlays';
+import { CrmMessageAttachments, type CrmChatAttachment } from './crm/CrmMessageAttachments';
 
 type Channel = 'WHATSAPP' | 'IA' | 'INTERNO';
 
@@ -75,7 +81,7 @@ interface Message {
   channel: Channel;
   status?: 'pending' | 'sent' | 'delivered' | 'read' | 'failed' | string;
   edited?: boolean;
-  attachments?: Array<{ type?: string; filename?: string | null }>;
+  attachments?: CrmChatAttachment[];
   optimistic?: boolean;
   replyTo?: { messageId?: string; sender?: string; text?: string } | null;
   deleted?: boolean;
@@ -111,6 +117,35 @@ const channelConfig: Record<Channel, { label: string; className: string }> = {
 function getChannelUi(channelRaw: unknown): { label: string; className: string } {
   const key = String(channelRaw || "").toUpperCase() as Channel;
   return channelConfig[key] || channelConfig.WHATSAPP;
+}
+
+function digitsOnlyPhone(s: string) {
+  return String(s || '').replace(/\D/g, '');
+}
+
+/**
+ * Dígitos internacionais sem "+" (ex.: 5511999990000) para wa.me / links oficiais.
+ * Se vier só DDD+número BR (10 ou 11 dígitos), prefixa 55.
+ */
+function internationalDigitsForCrmPhone(raw: string | null | undefined): string | null {
+  const d = digitsOnlyPhone(String(raw || ''));
+  if (!d) return null;
+  if (d.length < 8 || d.length > 15) return null;
+  if (d.startsWith('55') && d.length >= 12) return d;
+  if ((d.length === 10 || d.length === 11) && !d.startsWith('0')) return `55${d}`;
+  return d;
+}
+
+function crmTelHref(raw: string | null | undefined): string | null {
+  const int = internationalDigitsForCrmPhone(raw);
+  if (!int) return null;
+  return `tel:+${int}`;
+}
+
+function crmWaMeUrl(raw: string | null | undefined): string | null {
+  const int = internationalDigitsForCrmPhone(raw);
+  if (!int) return null;
+  return `https://wa.me/${int}`;
 }
 
 /** Proxy local evita bloqueio de hotlink (pps.whatsapp.net) no navegador. */
@@ -387,6 +422,10 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
   const [aiSummary, setAiSummary] = useState('');
   const [replyTarget, setReplyTarget] = useState<{ messageId: string; sender: string; text: string } | null>(null);
   const [infoTab, setInfoTab] = useState<'detalhes' | 'midia' | 'resumo'>('detalhes');
+  /** Mais espaço para o chat: oculta coluna “Dados do cliente” (md+). */
+  const [showClientAside, setShowClientAside] = useState(true);
+  /** Recolhe só o miolo da ficha (cabeçalho + abas permanecem). */
+  const [clientDetailsCollapsed, setClientDetailsCollapsed] = useState(false);
   const [statusAtendimento, setStatusAtendimento] = useState<
     'PENDENTE' | 'CONCLUIDO' | 'EM_RASTREIO' | 'PERDIDO'
   >('PENDENTE');
@@ -396,6 +435,16 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
   const [routingHint, setRoutingHint] = useState<{ topic?: string; targetUsername?: string | null } | null>(null);
   const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
   const [sendingAttachment, setSendingAttachment] = useState(false);
+  const [crmMediaSettings, setCrmMediaSettings] = useState<{
+    maxRecordedAudioSeconds?: number;
+    maxInlineVideoBytes?: number;
+  } | null>(null);
+  const [recording, setRecording] = useState(false);
+  const [recordingTick, setRecordingTick] = useState(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordChunksRef = useRef<BlobPart[]>([]);
+  const recordStreamRef = useRef<MediaStream | null>(null);
+  const recordTimerRef = useRef<number | null>(null);
   const [clienteDestino, setClienteDestino] = useState('');
   const [clientePreferencia, setClientePreferencia] = useState<'WHATSAPP' | 'LIGACAO' | 'EMAIL'>('WHATSAPP');
   const [leadProtocol, setLeadProtocol] = useState('');
@@ -553,6 +602,29 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
   }, [selectedConversationId, conversations]);
 
   useEffect(() => {
+    if (!selectedConversationId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const s = await authClient.getCrmMediaSettings();
+        if (!cancelled && s) setCrmMediaSettings(s);
+      } catch {
+        if (!cancelled) setCrmMediaSettings(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedConversationId]);
+
+  useEffect(() => {
+    return () => {
+      if (recordTimerRef.current) window.clearInterval(recordTimerRef.current);
+      recordStreamRef.current?.getTracks().forEach((t) => t.stop());
+    };
+  }, []);
+
+  useEffect(() => {
     const t = window.setTimeout(() => scrollMessagesToBottom(), 30);
     return () => window.clearTimeout(t);
   }, [selectedConversationId, messages.length]);
@@ -676,6 +748,80 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
     return `CTE ${found.CTE} • ${unidade} • ${status} • Limite ${dataLimite}`;
   };
 
+  const stopVoiceRecording = () => {
+    try {
+      if (recordTimerRef.current) {
+        window.clearInterval(recordTimerRef.current);
+        recordTimerRef.current = null;
+      }
+      mediaRecorderRef.current?.stop();
+    } catch {
+      // noop
+    }
+    mediaRecorderRef.current = null;
+    setRecording(false);
+    setRecordingTick(0);
+  };
+
+  const startVoiceRecording = async () => {
+    if (recording || !selectedConversationId) return;
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setAppNotice({
+        title: 'Microfone',
+        message: 'Seu navegador não permite gravação de áudio aqui.',
+        variant: 'error',
+      });
+      return;
+    }
+    const maxSec = Math.max(10, Number(crmMediaSettings?.maxRecordedAudioSeconds || 120));
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      recordStreamRef.current = stream;
+      recordChunksRef.current = [];
+      const mimePreferred =
+        typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported?.('audio/webm;codecs=opus')
+          ? 'audio/webm;codecs=opus'
+          : 'audio/webm';
+      const rec = new MediaRecorder(stream, { mimeType: mimePreferred });
+      mediaRecorderRef.current = rec;
+      rec.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) recordChunksRef.current.push(e.data);
+      };
+      rec.onstop = () => {
+        stream.getTracks().forEach((t) => t.stop());
+        recordStreamRef.current = null;
+        const blob = new Blob(recordChunksRef.current, { type: rec.mimeType || 'audio/webm' });
+        recordChunksRef.current = [];
+        if (blob.size > 800) {
+          const ext = blob.type.includes('webm') ? 'webm' : 'ogg';
+          const f = new File([blob], `gravacao-${Date.now()}.${ext}`, { type: blob.type || 'audio/webm' });
+          setAttachmentFiles((prev) => [...prev, f]);
+        }
+        setRecording(false);
+        setRecordingTick(0);
+      };
+      setRecording(true);
+      setRecordingTick(0);
+      recordTimerRef.current = window.setInterval(() => {
+        setRecordingTick((t) => {
+          const next = t + 1;
+          if (next >= maxSec) {
+            stopVoiceRecording();
+          }
+          return next;
+        });
+      }, 1000);
+      rec.start(500);
+    } catch (e) {
+      console.error(e);
+      setAppNotice({
+        title: 'Microfone',
+        message: 'Não foi possível acessar o microfone.',
+        variant: 'error',
+      });
+    }
+  };
+
   const handleSend = async () => {
     if (!input.trim() && attachmentFiles.length === 0) return;
     const text = input.trim();
@@ -698,19 +844,25 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
     try {
       setInput('');
       setSendingAttachment(true);
-      let attachmentsPayload: Array<{ type?: string; filename?: string; url?: string }> = [];
+      let attachmentsPayload: Array<{ type?: string; filename?: string; url?: string; fileId?: string; mimeType?: string }> =
+        [];
       if (attachmentFiles.length > 0) {
         for (const file of attachmentFiles) {
           const fd = new FormData();
           fd.append('file', file, file.name);
-          fd.append('username', user?.username || '');
-          const up = await fetch('/api/uploadImage', { method: 'POST', body: fd });
+          fd.append('conversationId', selectedConversationId || '');
+          const hint =
+            file.type.startsWith('audio/') ? 'audio' : file.type.startsWith('video/') ? 'video' : file.type.startsWith('image/') ? 'image' : 'document';
+          fd.append('mediaType', hint);
+          const up = await fetch('/api/crm/media/upload', { method: 'POST', body: fd });
           const upJson = await up.json().catch(() => ({}));
-          if (up.ok && upJson?.downloadUrl) {
+          if (up.ok && upJson?.fileId) {
             attachmentsPayload.push({
               type: file.type || 'application/octet-stream',
+              mimeType: String(upJson.mimeType || file.type || ''),
               filename: file.name,
-              url: String(upJson.downloadUrl),
+              fileId: String(upJson.fileId),
+              url: upJson.viewUrl ? String(upJson.viewUrl) : undefined,
             });
           }
         }
@@ -1341,10 +1493,37 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
     run();
   }, [selectedConversation?.id]);
 
+  const conversationMediaItems = useMemo(() => {
+    const items: Array<{
+      key: string;
+      attachment: CrmChatAttachment;
+      messageId: string;
+      from: Message['from'];
+      fromLabel?: string;
+      time: string;
+      textPreview: string;
+    }> = [];
+    let gen = 0;
+    for (const m of messages) {
+      for (const a of m.attachments || []) {
+        items.push({
+          key: String(a.id || `${m.id}-att-${gen++}`),
+          attachment: a,
+          messageId: m.id,
+          from: m.from,
+          fromLabel: m.fromLabel,
+          time: m.time || '',
+          textPreview: (m.text || '').replace(/\s+/g, ' ').trim().slice(0, 80),
+        });
+      }
+    }
+    return items.slice().reverse();
+  }, [messages]);
+
   return (
-    <div className="crm-chat-shell grid grid-cols-12 gap-4 h-full min-h-0">
+    <div className="crm-chat-shell grid grid-cols-12 gap-3 h-full min-h-0">
       {/* Lista de conversas */}
-      <aside className="col-span-12 md:col-span-3 bg-gradient-to-b from-white to-slate-50 border border-sl-navy/15 rounded-xl flex flex-col min-h-0 shadow-[0_10px_24px_rgba(15,23,42,0.10)]">
+      <aside className="col-span-12 md:col-span-3 bg-gradient-to-b from-white to-slate-50 border border-sl-navy/15 rounded-2xl flex flex-col min-h-0 shadow-[0_10px_24px_rgba(15,23,42,0.10)] ring-1 ring-slate-900/[0.03]">
         <div className="px-3 py-3 border-b border-slate-200 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="rounded-lg bg-slate-100 p-1.5 text-sl-red border border-slate-200">
@@ -1364,7 +1543,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
             <select
               value={conversationChannelFilter}
               onChange={(e) => setConversationChannelFilter(e.target.value as any)}
-              className="rounded border border-slate-300 bg-white px-1 py-0.5 text-[10px] text-slate-700"
+              className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[10px] text-slate-700 shadow-sm outline-none focus:border-sl-navy/40 focus:ring-2 focus:ring-sl-navy/15"
             >
               <option value="TODOS">Canais</option>
               <option value="WHATSAPP">WhatsApp</option>
@@ -1374,7 +1553,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
             <select
               value={conversationStatusFilter}
               onChange={(e) => setConversationStatusFilter(e.target.value as any)}
-              className="rounded border border-slate-300 bg-white px-1 py-0.5 text-[10px] text-slate-700"
+              className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[10px] text-slate-700 shadow-sm outline-none focus:border-sl-navy/40 focus:ring-2 focus:ring-sl-navy/15"
             >
               <option value="TODOS">Status</option>
               <option value="PENDENTE">Pendente</option>
@@ -1504,13 +1683,18 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
       </aside>
 
       {/* Chat */}
-      <section className="col-span-12 md:col-span-6 bg-gradient-to-b from-white to-slate-50 border border-sl-navy/15 rounded-xl flex flex-col min-h-0 shadow-[0_10px_24px_rgba(15,23,42,0.10)]">
-        <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
-          <div>
-              <h2 className="title-ui-section">
+      <section
+        className={clsx(
+          'col-span-12 bg-gradient-to-b from-white to-slate-50 border border-sl-navy/15 rounded-2xl flex flex-col min-h-0 shadow-[0_10px_24px_rgba(15,23,42,0.10)] ring-1 ring-slate-900/[0.03] relative',
+          showClientAside ? 'md:col-span-6' : 'md:col-span-9'
+        )}
+      >
+        <div className="px-3 sm:px-4 py-2.5 sm:py-3 border-b border-slate-200 flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+              <h2 className="title-ui-section truncate">
               {selectedConversation?.leadName || 'Selecione um atendimento'}
             </h2>
-            <div className="mt-0.5 flex items-center gap-2">
+            <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
               <span className="flex items-center gap-1 text-[11px] text-ui-muted">
                 <MessageCircle size={11} />
                 Atendimento em andamento
@@ -1538,7 +1722,15 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                 )}
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-1.5 shrink-0 max-md:w-full max-md:justify-start">
+            <button
+              type="button"
+              title={showClientAside ? 'Ocultar ficha do cliente' : 'Mostrar ficha do cliente'}
+              onClick={() => setShowClientAside((v) => !v)}
+              className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white p-2 text-slate-600 shadow-sm transition-colors hover:bg-slate-50 hover:border-sl-navy/35"
+            >
+              {showClientAside ? <PanelRightClose size={17} aria-hidden /> : <PanelRight size={17} aria-hidden />}
+            </button>
             {selectedConversation?.topic && (
               <span className="px-2 py-1 rounded-full border border-slate-300 text-[10px] text-slate-800 bg-slate-100">
                 Tema: {selectedConversation.topic}
@@ -1561,21 +1753,34 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                 IA sugere: {routingHint.targetUsername}
               </span>
             )}
-          <button
-            className="inline-flex items-center gap-1 rounded-full bg-slate-50 border border-slate-200 px-3 py-1 text-[11px] text-slate-700 hover:border-sl-navy/35"
-            onClick={() => {
-              if (selectedConversation?.leadPhone) {
-                window.open(`tel:${String(selectedConversation.leadPhone).replace(/\s/g, '')}`);
-              }
-            }}
-          >
-            <Phone size={14} />
-            Ligar
-          </button>
+          {selectedConversation?.leadPhone && crmTelHref(selectedConversation.leadPhone) ? (
+            <div className="inline-flex flex-wrap items-center gap-1">
+              <a
+                href={crmTelHref(selectedConversation.leadPhone)!}
+                className="inline-flex items-center gap-1 rounded-xl bg-slate-50 border border-slate-200 px-3 py-1.5 text-[11px] font-medium text-slate-700 shadow-sm hover:border-sl-navy/35 hover:bg-white"
+                title="Abre o discador do celular ou app Telefone (chamada pela operadora)"
+              >
+                <Phone size={14} aria-hidden />
+                Discador
+              </a>
+              {selectedConversation.channel === 'WHATSAPP' &&
+                crmWaMeUrl(selectedConversation.leadPhone) && (
+                  <a
+                    href={crmWaMeUrl(selectedConversation.leadPhone)!}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-[11px] font-semibold text-emerald-900 shadow-sm hover:bg-emerald-100"
+                    title="Abre o WhatsApp neste número; use o ícone de telefone ou vídeo no app para chamar (o navegador não inicia VoIP como o WhatsApp Web logado)"
+                  >
+                    WhatsApp
+                  </a>
+                )}
+            </div>
+          ) : null}
             {selectedConversation?.leadId && (
               <button
                 type="button"
-                className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[11px] text-amber-950 hover:border-amber-400"
+                className="inline-flex items-center gap-1 rounded-xl border border-amber-200 bg-amber-50 px-3 py-1.5 text-[11px] font-medium text-amber-950 shadow-sm hover:border-amber-400"
                 onClick={async () => {
                   const reason = window.prompt('Motivo do opt-out de campanhas (opcional):');
                   if (reason === null) return;
@@ -1680,13 +1885,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                       {m.text}
                     </div>
                   )}
-                  {Array.isArray(m.attachments) && m.attachments.length > 0 && (
-                    <div className={clsx('mt-1 text-[10px]', isMe ? 'text-white/70' : 'text-slate-500')}>
-                      {m.attachments.map((a, idx) => (
-                        <div key={idx}>Anexo: {a.filename || a.type || 'arquivo'}</div>
-                      ))}
-                    </div>
-                  )}
+                  <CrmMessageAttachments attachments={(m.attachments || []) as CrmChatAttachment[]} isMe={isMe} />
                   <div
                     className={clsx(
                       'mt-1 flex items-center justify-between text-[10px]',
@@ -1777,7 +1976,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
           })}
         </div>
 
-        <div className="px-4 py-3 border-t border-slate-200 flex flex-col gap-2">
+        <div className="px-3 sm:px-4 py-3 border-t border-slate-200 flex flex-col gap-2 bg-slate-50/40">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
             <select
               value={selectedConversation?.assignedUsername || ''}
@@ -1788,7 +1987,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                   assignmentMode: 'MANUAL',
                 });
               }}
-              className="rounded-lg bg-white border border-slate-300 px-2 py-2 text-[11px] text-slate-900 outline-none focus:border-sl-navy/40 focus:ring-2 focus:ring-sl-navy/20"
+              className="rounded-xl bg-white border border-slate-200 px-3 py-2 text-[11px] text-slate-900 shadow-sm outline-none focus:border-sl-navy/40 focus:ring-2 focus:ring-sl-navy/20"
             >
               <option value="">Sem responsável</option>
               {agents.map((a) => (
@@ -1807,7 +2006,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                     lockMinutes: 20,
                   })
                 }
-                className="flex-1 rounded-lg bg-slate-50 border border-slate-200 px-2 py-2 text-[11px] text-slate-800 hover:border-sl-navy/35"
+                className="flex-1 rounded-xl bg-white border border-slate-200 px-2 py-2 text-[11px] font-medium text-slate-800 shadow-sm hover:border-sl-navy/35"
               >
                 {selectedConversation?.lockedBy ? `Desbloquear (${selectedConversation.lockedBy})` : 'Assumir conversa'}
               </button>
@@ -1820,7 +2019,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                   })
                 }
                 disabled={!selectedConversation?.assignedUsername}
-                className="flex-1 rounded-lg border border-amber-200 bg-amber-50 px-2 py-2 text-[11px] font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                className="flex-1 rounded-xl border border-amber-200 bg-amber-50 px-2 py-2 text-[11px] font-semibold text-amber-900 shadow-sm hover:bg-amber-100 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Devolver à fila
               </button>
@@ -1842,39 +2041,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
               {sofiaActiveToday ? `${sofiaName} ativa hoje` : `${sofiaName} apenas suporte`}
             </span>
           </div>
-          <div className="flex items-end gap-2">
-            <button
-              type="button"
-              className="p-2 rounded-full bg-slate-50 border border-slate-200 text-slate-600 hover:text-sl-navy hover:border-sl-navy/35"
-              onClick={() => {
-                setEmojiOpen((v) => !v);
-              }}
-            >
-              <Smile size={18} />
-            </button>
-            <button
-              type="button"
-              className="px-2 py-1 rounded-lg bg-slate-50 border border-slate-200 text-[10px] text-slate-700 hover:border-sl-navy/35"
-              onClick={handleSofiaSuggest}
-              disabled={sofiaSuggesting}
-            >
-              {sofiaSuggesting ? 'Sofia...' : 'Sofia'}
-            </button>
-            <button
-              type="button"
-              className="px-2 py-1 rounded-lg bg-sl-navy border border-slate-300 text-[10px] text-white hover:bg-sl-red"
-              onClick={handleSofiaAutoReply}
-              disabled={sofiaAutoRunning}
-            >
-              {sofiaAutoRunning ? 'Auto...' : 'Sofia Auto'}
-            </button>
-            <button
-              type="button"
-              className="p-2 rounded-full bg-slate-50 border border-slate-200 text-slate-600 hover:text-sl-navy hover:border-sl-navy/35"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <Paperclip size={18} />
-            </button>
+          <div className="flex flex-col gap-2">
             <input
               ref={fileInputRef}
               type="file"
@@ -1882,15 +2049,21 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
               className="hidden"
               onChange={(e) => setAttachmentFiles(e.target.files ? Array.from(e.target.files) : [])}
             />
-            <div className="flex-1">
-              {replyTarget && (
-                <div className="mb-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1 text-[10px] text-slate-700 flex items-center justify-between gap-2">
-                  <span className="truncate">Respondendo {replyTarget.sender}: {replyTarget.text}</span>
-                  <button type="button" className="text-[10px] text-slate-500 hover:text-sl-red" onClick={() => setReplyTarget(null)}>
-                    limpar
-                  </button>
-                </div>
-              )}
+            {replyTarget && (
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-[10px] text-slate-700 flex items-center justify-between gap-2">
+                <span className="truncate min-w-0">
+                  Respondendo {replyTarget.sender}: {replyTarget.text}
+                </span>
+                <button
+                  type="button"
+                  className="shrink-0 text-[10px] text-slate-500 hover:text-sl-red"
+                  onClick={() => setReplyTarget(null)}
+                >
+                  limpar
+                </button>
+              </div>
+            )}
+            <div className="flex items-end gap-2">
               <textarea
                 ref={messageInputRef}
                 rows={1}
@@ -1902,19 +2075,67 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                     if (!sendingAttachment) handleSend();
                   }
                 }}
-                placeholder="Digite sua mensagem..."
-                className="w-full resize-none rounded-2xl border border-slate-300 bg-white px-4 py-2 text-xs text-slate-900 outline-none placeholder:text-slate-500 focus:border-sl-navy/40 focus:ring-2 focus:ring-sl-navy/20"
-                style={{ minHeight: 38, maxHeight: 168 }}
+                placeholder="Digite sua mensagem… (Shift+Enter quebra linha)"
+                className="min-h-[38px] max-h-[168px] flex-1 min-w-0 resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 shadow-sm outline-none placeholder:text-slate-500 focus:border-sl-navy/40 focus:ring-2 focus:ring-sl-navy/20 leading-relaxed"
               />
+              <button
+                type="button"
+                onClick={handleSend}
+                disabled={sendingAttachment}
+                className="rounded-xl bg-sl-navy p-2.5 text-white shadow-md transition-colors hover:bg-sl-red disabled:opacity-60 shrink-0 self-end"
+                title="Enviar"
+              >
+                <Send size={18} />
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={handleSend}
-              disabled={sendingAttachment}
-              className="rounded-full bg-sl-navy p-2.5 text-white shadow-md transition-colors hover:bg-sl-red disabled:opacity-60"
-            >
-              <Send size={18} />
-            </button>
+            <div className="flex flex-wrap items-center gap-1 rounded-xl border border-slate-200 bg-white px-1.5 py-1 shadow-sm">
+              <button
+                type="button"
+                className="inline-flex items-center justify-center rounded-lg p-2 text-slate-600 hover:bg-slate-100 hover:text-sl-navy"
+                title="Emojis"
+                onClick={() => setEmojiOpen((v) => !v)}
+              >
+                <Smile size={18} />
+              </button>
+              <button
+                type="button"
+                className="rounded-lg bg-slate-50 px-2.5 py-1.5 text-[10px] font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+                onClick={handleSofiaSuggest}
+                disabled={sofiaSuggesting}
+              >
+                {sofiaSuggesting ? 'Sofia…' : 'Sofia'}
+              </button>
+              <button
+                type="button"
+                className="rounded-lg bg-sl-navy px-2.5 py-1.5 text-[10px] font-semibold text-white hover:bg-sl-red disabled:opacity-50"
+                onClick={handleSofiaAutoReply}
+                disabled={sofiaAutoRunning}
+              >
+                {sofiaAutoRunning ? 'Auto…' : 'Sofia Auto'}
+              </button>
+              <button
+                type="button"
+                className={clsx(
+                  'inline-flex items-center justify-center rounded-lg p-2',
+                  recording ? 'bg-rose-50 text-rose-700 ring-1 ring-rose-200' : 'text-slate-600 hover:bg-slate-100'
+                )}
+                title={recording ? 'Parar gravação' : 'Gravar áudio'}
+                onClick={() => {
+                  if (recording) stopVoiceRecording();
+                  else void startVoiceRecording();
+                }}
+              >
+                <Mic size={18} />
+              </button>
+              <button
+                type="button"
+                className="inline-flex items-center justify-center rounded-lg p-2 text-slate-600 hover:bg-slate-100 hover:text-sl-navy"
+                title="Anexar arquivo"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Paperclip size={18} />
+              </button>
+            </div>
           </div>
           {emojiOpen && (
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-2 grid grid-cols-8 gap-1">
@@ -1933,23 +2154,62 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
               ))}
             </div>
           )}
+          {recording && (
+            <div className="text-[10px] text-rose-700 font-semibold">
+              Gravando… {recordingTick}s
+              <button type="button" className="ml-2 underline" onClick={() => stopVoiceRecording()}>
+                parar
+              </button>
+            </div>
+          )}
           {attachmentFiles.length > 0 && (
             <div className="text-[10px] text-slate-500">
               {attachmentFiles.length} arquivo(s) pronto(s) para envio
             </div>
           )}
         </div>
+        {!showClientAside && (
+          <button
+            type="button"
+            onClick={() => setShowClientAside(true)}
+            className="md:hidden sticky bottom-2 z-10 mx-auto flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-[11px] font-semibold text-slate-700 shadow-lg"
+          >
+            <PanelRight size={16} aria-hidden />
+            Mostrar ficha do cliente
+          </button>
+        )}
       </section>
 
       {/* Dados do cliente */}
-      <aside className="col-span-12 md:col-span-3 bg-gradient-to-b from-white to-slate-50 border border-sl-navy/15 rounded-xl p-4 flex flex-col space-y-3 min-h-0 overflow-y-auto shadow-[0_10px_24px_rgba(15,23,42,0.10)]">
-        <div className="flex items-center justify-between mb-1">
-          <div>
-            <h2 className="title-ui-section">Dados do Cliente</h2>
-            <p className="text-[11px] text-ui-muted">Resumo rápido do lead</p>
+      <aside
+        className={clsx(
+          'col-span-12 bg-gradient-to-b from-white to-slate-50 border border-sl-navy/15 rounded-2xl p-3 sm:p-4 flex flex-col gap-2.5 min-h-0 overflow-y-auto shadow-[0_10px_24px_rgba(15,23,42,0.10)] ring-1 ring-slate-900/[0.03]',
+          showClientAside ? 'md:col-span-3' : 'hidden'
+        )}
+      >
+        <div className="flex items-start justify-between gap-2 mb-0.5">
+          <div className="min-w-0">
+            <h2 className="title-ui-section">Dados do cliente</h2>
+            <p className="text-[11px] text-ui-muted">Resumo e ficha do lead</p>
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            {infoTab === 'detalhes' && (
+              <button
+                type="button"
+                title={clientDetailsCollapsed ? 'Expandir formulário' : 'Recolher formulário'}
+                onClick={() => setClientDetailsCollapsed((v) => !v)}
+                className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white p-2 text-slate-600 shadow-sm hover:bg-slate-50"
+              >
+                <ChevronUp
+                  size={16}
+                  className={clsx('transition-transform duration-200', clientDetailsCollapsed && 'rotate-180')}
+                  aria-hidden
+                />
+              </button>
+            )}
           </div>
         </div>
-        <div className="flex gap-2 text-[10px]">
+        <div className="flex flex-wrap gap-1.5 text-[10px]">
           {(['PENDENTE', 'CONCLUIDO', 'EM_RASTREIO', 'PERDIDO'] as const).map((st) => (
             <button
               key={st}
@@ -1959,10 +2219,10 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                 await applyConversationUpdate({ status: st });
               }}
               className={clsx(
-                'px-2 py-1 rounded-full border text-[9px] font-bold uppercase tracking-wide',
+                'px-2.5 py-1.5 rounded-xl border text-[9px] font-bold uppercase tracking-wide shadow-sm transition-colors',
                 statusAtendimento === st
                   ? 'bg-emerald-600 text-white border-emerald-500'
-                  : 'bg-slate-50 text-slate-600 border-slate-200 hover:border-sl-navy/35'
+                  : 'bg-white text-slate-600 border-slate-200 hover:border-sl-navy/35'
               )}
             >
               {st === 'PENDENTE' && 'Pendente'}
@@ -1972,39 +2232,55 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
             </button>
           ))}
         </div>
-        <div className="flex gap-2 text-[11px] border-b border-slate-200 pb-2">
+        <div
+          className="flex p-1 rounded-xl border border-slate-200 bg-slate-100/80 gap-0.5"
+          role="tablist"
+          aria-label="Painel do cliente"
+        >
           <button
             type="button"
+            role="tab"
+            aria-selected={infoTab === 'detalhes'}
             onClick={() => setInfoTab('detalhes')}
             className={clsx(
-              'px-2 py-1 rounded-md',
+              'flex-1 min-w-0 px-2 py-1.5 rounded-lg text-[11px] font-semibold transition-colors',
               infoTab === 'detalhes'
-                ? 'bg-sl-navy text-white'
-                : 'text-slate-600 hover:bg-slate-50'
+                ? 'bg-white text-sl-navy shadow-sm ring-1 ring-slate-200/80'
+                : 'text-slate-600 hover:text-slate-900'
             )}
           >
             Detalhes
           </button>
           <button
             type="button"
+            role="tab"
+            aria-selected={infoTab === 'midia'}
             onClick={() => setInfoTab('midia')}
             className={clsx(
-              'px-2 py-1 rounded-md',
+              'flex-1 min-w-0 px-2 py-1.5 rounded-lg text-[11px] font-semibold transition-colors inline-flex items-center justify-center gap-1',
               infoTab === 'midia'
-                ? 'bg-sl-navy text-white'
-                : 'text-slate-600 hover:bg-slate-50'
+                ? 'bg-white text-sl-navy shadow-sm ring-1 ring-slate-200/80'
+                : 'text-slate-600 hover:text-slate-900'
             )}
           >
+            <ImageIcon size={12} className="opacity-70 shrink-0" aria-hidden />
             Mídia
+            {conversationMediaItems.length > 0 && (
+              <span className="rounded-full bg-slate-200 px-1.5 py-0 text-[9px] font-bold text-slate-700">
+                {conversationMediaItems.length}
+              </span>
+            )}
           </button>
           <button
             type="button"
+            role="tab"
+            aria-selected={infoTab === 'resumo'}
             onClick={() => setInfoTab('resumo')}
             className={clsx(
-              'px-2 py-1 rounded-md',
+              'flex-1 min-w-0 px-2 py-1.5 rounded-lg text-[11px] font-semibold transition-colors',
               infoTab === 'resumo'
-                ? 'bg-sl-navy text-white'
-                : 'text-slate-600 hover:bg-slate-50'
+                ? 'bg-white text-sl-navy shadow-sm ring-1 ring-slate-200/80'
+                : 'text-slate-600 hover:text-slate-900'
             )}
           >
             Resumo
@@ -2039,6 +2315,8 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                 </span>
               </div>
             </div>
+            {!clientDetailsCollapsed ? (
+            <>
             <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2">
               <p className="text-[11px] text-slate-500 uppercase tracking-wide">
                 Informações de contato
@@ -2344,18 +2622,149 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                 </div>
               )}
             </div>
+            </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setClientDetailsCollapsed(false)}
+                className="w-full rounded-xl border border-dashed border-slate-300 bg-white px-3 py-3 text-left text-[11px] text-slate-600 shadow-sm hover:border-sl-navy/40 hover:bg-slate-50"
+              >
+                <span className="font-semibold text-slate-800">Ficha recolhida</span>
+                <span className="block mt-0.5 text-slate-500">
+                  Toque para abrir contato, rota, mapa operacional e histórico do lead.
+                </span>
+              </button>
+            )}
           </div>
         )}
 
         {infoTab === 'midia' && (
-          <div className="space-y-2">
-            <p className="text-[11px] text-slate-500 uppercase tracking-wide">
-              Mídia da conversa
+          <div className="space-y-2 min-h-0 flex flex-col">
+            <p className="text-[11px] text-slate-500">
+              Anexos desta conversa (mais recentes primeiro). Links abrem em nova aba.
             </p>
-            <p className="text-[11px] text-slate-600">
-              (Demo) Aqui você verá imagens, PDFs, áudios e outros anexos trocados nesta
-              conversa.
-            </p>
+            {conversationMediaItems.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 px-3 py-8 text-center text-[11px] text-slate-600">
+                Nenhuma mídia nesta conversa ainda.
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-2 max-h-[min(55vh,420px)] overflow-y-auto pr-0.5">
+                {conversationMediaItems.map((row) => {
+                  const a = row.attachment;
+                  const mt = String(a.mediaType || a.mimeType || '').toLowerCase();
+                  const href = a.viewUrl || a.downloadUrl || null;
+                  const dl = a.downloadUrl || a.viewUrl || null;
+                  const pending =
+                    a.processingStatus && !['STORED', 'FAILED'].includes(String(a.processingStatus));
+                  const failed = String(a.processingStatus || '') === 'FAILED';
+                  const sender =
+                    row.from === 'CLIENTE'
+                      ? 'Cliente'
+                      : row.from === 'IA'
+                        ? 'IA'
+                        : row.fromLabel || 'Atendente';
+                  const label = a.filename || (mt.includes('image') ? 'Imagem' : mt.includes('video') ? 'Vídeo' : mt.includes('audio') ? 'Áudio' : 'Arquivo');
+
+                  if (failed) {
+                    return (
+                      <div
+                        key={row.key}
+                        className="rounded-xl border border-rose-200 bg-rose-50 p-2 text-[10px] text-rose-900 col-span-2"
+                      >
+                        <span className="font-semibold">{label}</span>
+                        <span className="block text-rose-800/90 mt-0.5">
+                          Falha ao processar
+                          {a.processingError ? `: ${String(a.processingError).slice(0, 80)}` : ''}
+                        </span>
+                      </div>
+                    );
+                  }
+                  if (pending) {
+                    return (
+                      <div
+                        key={row.key}
+                        className="rounded-xl border border-amber-200 bg-amber-50/90 p-2 text-[10px] text-amber-950 col-span-2"
+                      >
+                        {label} — processando ({String(a.processingStatus || 'PENDING').toLowerCase()})…
+                      </div>
+                    );
+                  }
+                  if ((mt === 'image' || mt.includes('image')) && href) {
+                    return (
+                      <a
+                        key={row.key}
+                        href={href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="group relative block aspect-square overflow-hidden rounded-xl border border-slate-200 bg-slate-100 shadow-sm ring-1 ring-black/[0.04]"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={href} alt={label} className="h-full w-full object-cover transition group-hover:scale-[1.02]" />
+                        <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/65 to-transparent px-2 pb-1.5 pt-6 text-[9px] font-medium text-white line-clamp-2">
+                          {sender} · {row.time}
+                        </span>
+                      </a>
+                    );
+                  }
+                  return (
+                    <div
+                      key={row.key}
+                      className="rounded-xl border border-slate-200 bg-white p-2 shadow-sm flex flex-col gap-1 min-h-[88px]"
+                    >
+                      <div className="flex items-start gap-2">
+                        <div className="mt-0.5 rounded-lg bg-slate-100 p-1.5 text-slate-600">
+                          {mt.includes('video') ? (
+                            <Video size={16} aria-hidden />
+                          ) : mt.includes('audio') ? (
+                            <Volume2 size={16} aria-hidden />
+                          ) : mt.includes('pdf') || (a.filename || '').toLowerCase().endsWith('.pdf') ? (
+                            <FileText size={16} aria-hidden />
+                          ) : (
+                            <FileText size={16} aria-hidden />
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[10px] font-semibold text-slate-900 truncate" title={label}>
+                            {label}
+                          </p>
+                          <p className="text-[9px] text-slate-500 truncate">
+                            {sender} · {row.time}
+                          </p>
+                          {row.textPreview ? (
+                            <p className="text-[9px] text-slate-400 line-clamp-2 mt-0.5">{row.textPreview}</p>
+                          ) : null}
+                        </div>
+                      </div>
+                      <div className="mt-auto flex flex-wrap gap-1">
+                        {href ? (
+                          <a
+                            href={href}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-0.5 rounded-lg bg-sl-navy px-2 py-1 text-[9px] font-semibold text-white hover:bg-sl-red"
+                          >
+                            <ExternalLink size={10} aria-hidden />
+                            Abrir
+                          </a>
+                        ) : null}
+                        {dl ? (
+                          <a
+                            href={dl}
+                            download={a.filename || undefined}
+                            className="inline-flex items-center gap-0.5 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[9px] font-semibold text-slate-700 hover:bg-slate-100"
+                          >
+                            Baixar
+                          </a>
+                        ) : null}
+                        {!href && !dl && a.fileId ? (
+                          <span className="text-[9px] text-slate-500">ID: {a.fileId.slice(0, 8)}…</span>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
