@@ -16,7 +16,7 @@ export type {
   RotasOperacionaisFacets,
 } from "@/modules/bi/rotasOperacionais/types";
 
-/** Mesma expressão de faixa que `view_bi_tela2_rotas` / documentação `shema_bi.md`. */
+/** Mesma expressão de faixa que `view_bi_tela2_rotas` / documentação `docs/shema_bi.md`. */
 const FAIXA_PESO_CASE = `CASE
   WHEN COALESCE(n.peso, 0::numeric) <= 10::numeric THEN '1. Até 10 kg'::text
   WHEN COALESCE(n.peso, 0::numeric) <= 30::numeric THEN '2. 11 a 30 kg'::text

@@ -866,13 +866,25 @@ const CrmOpsAdmin: React.FC = () => {
                   const res = (await authClient.saveCrmWhatsappInbox(payload as any)) as {
                     id?: string;
                     evolutionInstanceName?: string;
+                    settingsSync?: { ok?: boolean; error?: string };
                     webhookSync?: { ok?: boolean; error?: string };
                   };
 
+                  const evoWarnings: string[] = [];
+                  if (res?.settingsSync && res.settingsSync.ok === false) {
+                    evoWarnings.push(
+                      `Opções da instância (read status / CRM mídia): ${res.settingsSync.error || "não aplicadas na API."}`
+                    );
+                  }
                   if (res?.webhookSync && res.webhookSync.ok === false) {
+                    evoWarnings.push(
+                      `Webhook: ${res.webhookSync.error || "não gravado na Evolution."} Se a URL no Manager continuar vazia, gere o QR novamente no pareamento e confira NEXT_PUBLIC_APP_URL na Vercel.`
+                    );
+                  }
+                  if (evoWarnings.length) {
                     setOpsNotice({
-                      title: "Webhook na Evolution",
-                      message: `${res.webhookSync.error || "Não foi possível gravar o webhook na API."} Se a URL no Manager continuar vazia, gere o QR novamente no pareamento e confira NEXT_PUBLIC_APP_URL na Vercel.`,
+                      title: "Evolution — verificar",
+                      message: evoWarnings.join("\n\n"),
                       variant: "warning",
                     });
                   }

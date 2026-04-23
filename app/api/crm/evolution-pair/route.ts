@@ -10,6 +10,7 @@ import {
   normalizeEvolutionServerUrl,
 } from "../../../../lib/server/evolutionUrl";
 import { syncEvolutionInstanceWebhook } from "../../../../lib/server/evolutionWebhookSync";
+import { syncEvolutionInstanceSettingsForCrm } from "../../../../lib/server/evolutionInstanceBootstrap";
 import { requireApiPermissions } from "../../../../lib/server/apiAuth";
 
 export const runtime = "nodejs";
@@ -67,11 +68,6 @@ export async function POST(req: Request) {
       );
     }
 
-    let syncResult: any = null;
-    if (syncWebhook) {
-      syncResult = await syncEvolutionInstanceWebhook({ serverUrl, apiKey, instance });
-    }
-
     const { httpStatus, evolution, fetchInstancesBody } = await runEvolutionConnect({
       baseUrl: serverUrl,
       apiKey,
@@ -81,6 +77,16 @@ export async function POST(req: Request) {
 
     const summary = summarizeEvolutionInstance(fetchInstancesBody);
 
+    const settingsSync = await syncEvolutionInstanceSettingsForCrm({
+      serverUrl,
+      apiKey,
+      instance,
+    });
+    let webhookSync: Awaited<ReturnType<typeof syncEvolutionInstanceWebhook>> | null = null;
+    if (syncWebhook) {
+      webhookSync = await syncEvolutionInstanceWebhook({ serverUrl, apiKey, instance });
+    }
+
     return NextResponse.json({
       ok: true,
       inboxName: row.name,
@@ -88,7 +94,8 @@ export async function POST(req: Request) {
       status: httpStatus,
       evolution,
       connectionHint: summary,
-      syncWebhook: syncResult,
+      settingsSync,
+      syncWebhook: webhookSync,
     });
   } catch (e: any) {
     console.error("crm/evolution-pair POST:", e);

@@ -1,0 +1,4 @@
+# Tudo o que colocar aqui fica só na sua máquina (evita commit acidental).
+*
+!.gitignore
+!README.md

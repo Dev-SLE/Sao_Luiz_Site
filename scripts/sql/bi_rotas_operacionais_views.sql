@@ -1,6 +1,6 @@
 -- Rotas operacionais (fase_8 / BI Operação)
 --
--- O dump em `shema_bi.md` já define `bi.vw_rotas_operacionais_*` a partir de `bi.vw_rotas_operacionais_base`.
+-- O dump em `docs/shema_bi.md` já define `bi.vw_rotas_operacionais_*` a partir de `bi.vw_rotas_operacionais_base`.
 -- A aplicação Next.js (`/api/bi/rotas-operacionais/*`) consulta diretamente `tb_nf_saidas_consolidada`
 -- com o mesmo grão (`id_unico`) e colunas `coleta`, `destino`, `rota`, `peso`, `volumes`, `valor_total`,
 -- para evitar 500 quando o catálogo de views no servidor estiver desalinhado (ex.: `qtd_volumes` vs `volumes`).

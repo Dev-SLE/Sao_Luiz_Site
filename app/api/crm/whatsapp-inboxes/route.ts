@@ -4,6 +4,7 @@ import { ensureCrmSchemaTables } from "../../../../lib/server/ensureSchema";
 import { getEvolutionServerDefaults, slugifyInstancePart } from "../../../../lib/server/evolutionDefaults";
 import { evolutionExternalFetch, normalizeEvolutionServerUrl } from "../../../../lib/server/evolutionUrl";
 import { syncEvolutionInstanceWebhook } from "../../../../lib/server/evolutionWebhookSync";
+import { syncEvolutionInstanceSettingsForCrm } from "../../../../lib/server/evolutionInstanceBootstrap";
 import { requireApiPermissions } from "../../../../lib/server/apiAuth";
 
 export const runtime = "nodejs";
@@ -287,12 +288,17 @@ export async function POST(req: Request) {
         `,
         [id, name, evolutionInstanceName, evolutionServerUrl, evolutionApiKey, teamId, ownerUsername || null]
       );
+      const settingsSync = await syncEvolutionInstanceSettingsForCrm({
+        serverUrl: evolutionServerUrl,
+        apiKey: evolutionApiKey,
+        instance: evolutionInstanceName,
+      });
       const webhookSync = await syncEvolutionInstanceWebhook({
         serverUrl: evolutionServerUrl,
         apiKey: evolutionApiKey,
         instance: evolutionInstanceName,
       });
-      return NextResponse.json({ success: true, id, evolutionInstanceName, webhookSync });
+      return NextResponse.json({ success: true, id, evolutionInstanceName, settingsSync, webhookSync });
     }
 
     if (!evolutionInstanceName) {
@@ -332,7 +338,14 @@ export async function POST(req: Request) {
           { status: 400 }
         );
       }
+      await new Promise((r) => setTimeout(r, 700));
     }
+
+    const settingsSync = await syncEvolutionInstanceSettingsForCrm({
+      serverUrl: evolutionServerUrl,
+      apiKey: evolutionApiKey,
+      instance: evolutionInstanceName,
+    });
 
     const ins = await pool.query(
       `
@@ -365,6 +378,7 @@ export async function POST(req: Request) {
       id: ins.rows?.[0]?.id,
       evolutionInstanceName,
       simpleConnect,
+      settingsSync,
       webhookSync,
     });
   } catch (e: any) {

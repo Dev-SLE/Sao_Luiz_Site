@@ -3,7 +3,7 @@
 ## Em uma frase
 
 **`EVOLUTION_API_URL`** é o endereço **HTTPS público** onde a **Evolution API** está rodando (ex.: `https://evolution.seudominio.com`).  
-**Não** é a URL do seu site na Vercel (`sao-luiz-site.vercel.app`). São **dois serviços**:
+**Não** é a URL do seu site na Vercel (ex.: `meu-projeto.vercel.app`). São **dois serviços**:
 
 | Onde | O quê |
 |------|--------|
@@ -25,10 +25,10 @@ O Next na Vercel **chama** a Evolution usando `EVOLUTION_API_URL` + `EVOLUTION_A
 6. No painel do provedor de domínio, crie um **registro A** (ou CNAME) `evo.seudominio.com` → IP da VPS.
 7. Teste no navegador: `https://evo.seudominio.com/manager` (deve abrir o Manager).
 8. Na **Vercel** (e no `.env` local), defina:
-   - `EVOLUTION_API_URL=https://evo.saoluizexpress.com.br` (sem barra no fim; produção atual)
+   - `EVOLUTION_API_URL=https://evo.seudominio.com.br` (sem barra no fim; use a URL HTTPS pública da sua Evolution)
    - `EVOLUTION_API_KEY` = **o mesmo** valor de `AUTHENTICATION_API_KEY` do `deploy/.env` da Evolution
 9. Na Evolution (Manager), webhook:
-   - `https://sao-luiz-site.vercel.app/api/whatsapp/evolution/webhook?token=SEU_EVOLUTION_WEBHOOK_TOKEN`
+   - `https://SEU_SITE.vercel.app/api/whatsapp/evolution/webhook?token=SEU_EVOLUTION_WEBHOOK_TOKEN`
 
 ---
 
@@ -60,7 +60,7 @@ Quando a Evolution estiver no ar com URL fixa, aí sim preencha `EVOLUTION_API_U
 
 ## Arranque limpo no CRM (Neon) após testes
 
-Um único script (copiar/colar no SQL Editor do Neon, um `BEGIN`/`COMMIT`): [`scripts/sql/crm-clean-test-slate.sql`](../scripts/sql/crm-clean-test-slate.sql) — apaga dados de teste CRM, **atualiza** `evolution_server_url` das inboxes `EVOLUTION` para `https://evo.saoluizexpress.com.br`, repõe defaults do intake; opcionalmente descomente o `DELETE` de inboxes no fim do ficheiro. Faça **backup / branch** antes de executar.
+Um único script (copiar/colar no SQL Editor do Neon, um `BEGIN`/`COMMIT`): [`scripts/sql/crm-clean-test-slate.sql`](../scripts/sql/crm-clean-test-slate.sql) — apaga dados de teste CRM, **atualiza** `evolution_server_url` das inboxes `EVOLUTION` para a URL que editar no script (placeholder), repõe defaults do intake; opcionalmente descomente o `DELETE` de inboxes no fim do ficheiro. Faça **backup / branch** antes de executar.
 
 Conferir se as inboxes EVOLUTION ficaram com a mesma base URL que a Vercel:
 

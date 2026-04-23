@@ -12,6 +12,11 @@ deploy/.env
 drive-credentials.json
 temp_uploads/
 *.local
+*.pem
+*.p12
+*.pfx
+secrets/
+**/credentials.local.json
 
 # Logs
 logs/

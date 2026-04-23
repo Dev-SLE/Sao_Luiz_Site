@@ -12,7 +12,7 @@ DELETE FROM pendencias.crm_campaigns;
 
 UPDATE pendencias.crm_whatsapp_inboxes
 SET
-  evolution_server_url = regexp_replace(btrim('https://evo.saoluizexpress.com.br'), '/+$', ''),
+  evolution_server_url = regexp_replace(btrim('https://evo.seudominio.com.br'), '/+$', ''),
   updated_at = NOW()
 WHERE provider = 'EVOLUTION';
 

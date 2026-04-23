@@ -110,7 +110,7 @@ export const EvolutionInboxPairModal: React.FC<Props> = ({ open, onClose, inbox 
           return;
         }
         setEvolution(j.evolution);
-        setSyncResult(j.syncWebhook);
+        setSyncResult({ webhook: j.syncWebhook ?? null, settings: j.settingsSync ?? null });
         if (j.connectionHint?.state) {
           setConn({ state: j.connectionHint.state });
         }
@@ -385,11 +385,15 @@ export const EvolutionInboxPairModal: React.FC<Props> = ({ open, onClose, inbox 
           </button>
         </div>
         <p className="mt-2 text-[10px] text-slate-500">
-          Ao gerar o QR, o CRM já configura a URL do webhook e os eventos na instância da Evolution automaticamente.
+          Ao gerar o QR, o CRM já aplica opções recomendadas na instância (incl. leitura de status para mídia), configura a
+          URL do webhook e os eventos na Evolution automaticamente.
         </p>
 
-        {syncResult && !syncResult.ok && syncResult.error && (
-          <p className="mt-2 text-[10px] text-amber-800">Webhook: {syncResult.error}</p>
+        {syncResult?.settings && syncResult.settings.ok === false && syncResult.settings.error && (
+          <p className="mt-2 text-[10px] text-amber-800">Opções da instância: {syncResult.settings.error}</p>
+        )}
+        {syncResult?.webhook && syncResult.webhook.ok === false && syncResult.webhook.error && (
+          <p className="mt-2 text-[10px] text-amber-800">Webhook: {syncResult.webhook.error}</p>
         )}
 
         <div className="mt-4 flex flex-col items-center justify-center rounded-xl border border-slate-200 bg-slate-50 p-4 min-h-[200px]">
