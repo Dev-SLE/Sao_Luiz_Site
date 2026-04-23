@@ -10,6 +10,10 @@ export type PathTemplateContext = {
   subtype?: string;
   category_slug?: string;
   content_slug?: string;
+  /** CRM WhatsApp mídia: conversa + tipo + provedor (slug seguro). */
+  conversation_id?: string;
+  media_type?: string;
+  provider_slug?: string;
 };
 
 export type StorageRuleRow = {

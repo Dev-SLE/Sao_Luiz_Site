@@ -19,6 +19,9 @@ export function renderPathTemplate(template: string, ctx: PathTemplateContext): 
     subtype: safePathSegment(ctx.subtype || "geral"),
     category_slug: safePathSegment(ctx.category_slug || "geral"),
     content_slug: safePathSegment(ctx.content_slug || "item"),
+    conversation_id: safePathSegment(ctx.conversation_id || ""),
+    media_type: safePathSegment((ctx.media_type || "file").toLowerCase()),
+    provider_slug: safePathSegment((ctx.provider_slug || "crm").toLowerCase()),
   };
   let out = template;
   for (const [k, v] of Object.entries(map)) {
