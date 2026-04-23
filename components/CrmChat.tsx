@@ -1158,7 +1158,8 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
       }
     };
     tick();
-    let messagesPollId: ReturnType<typeof window.setInterval> | null = null;
+    // No browser `setInterval` retorna `number`; com @types/node o tipo global vira `NodeJS.Timeout` — usar `number` evita falha no `next build`.
+    let messagesPollId: number | null = null;
     const armMessagesPoll = () => {
       if (messagesPollId != null) window.clearInterval(messagesPollId);
       const ms = document.hidden ? 22_000 : 7500;
@@ -1206,7 +1207,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
       }
     };
 
-    let conversationsPollId: ReturnType<typeof window.setInterval> | null = null;
+    let conversationsPollId: number | null = null;
     const armConversationsPoll = () => {
       if (conversationsPollId != null) window.clearInterval(conversationsPollId);
       const ms = document.hidden ? 30_000 : 8_000;
