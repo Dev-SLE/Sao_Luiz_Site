@@ -1,3 +1,5 @@
+'use client';
+
 import React, { useMemo, useState, useEffect, useRef, useLayoutEffect } from 'react';
 import {
   MessageCircle,
@@ -864,6 +866,9 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
               fileId: String(upJson.fileId),
               url: upJson.viewUrl ? String(upJson.viewUrl) : undefined,
             });
+          } else {
+            const errMsg = typeof upJson?.error === 'string' ? upJson.error : `HTTP ${up.status}`;
+            throw new Error(`Falha ao enviar anexo (${file.name}): ${errMsg}`);
           }
         }
       }

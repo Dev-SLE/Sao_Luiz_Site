@@ -1,11 +1,18 @@
 'use client';
 
 import React from 'react';
+import dynamic from 'next/dynamic';
 import clsx from 'clsx';
 import { Page } from '@/types';
 import { pathToPage } from '@/lib/workspace-routes';
 import { useData } from '@/context/DataContext';
-import CrmDashboard from '@/components/CrmDashboard';
+
+const CrmDashboard = dynamic(() => import('@/components/CrmDashboard'), {
+  ssr: false,
+  loading: () => (
+    <div className="surface-card mx-auto max-w-3xl p-6 text-center text-sm text-slate-600">A carregar dashboard…</div>
+  ),
+});
 import CrmOpsAdmin from '@/components/CrmOpsAdmin';
 import CrmMyTasks from '@/components/CrmMyTasks';
 import CrmReports from '@/components/CrmReports';

@@ -13,6 +13,8 @@ import {
 import { crmPhoneSuffixForTitle, crmStripTrailingTitlePhone } from "../../../../lib/server/crmPhoneDisplay";
 
 export const runtime = "nodejs";
+/** Download Meta + upload SharePoint precisa completar antes do fim da invocação (evita mídia presa em DOWNLOADING na Vercel). */
+export const maxDuration = 120;
 
 function normalizeDigits(input: string) {
   return String(input || "").replace(/\D/g, "");
@@ -90,6 +92,27 @@ function parseWhatsappProfileName(value: any, from: string) {
   const first = byWaId || contacts[0];
   const name = String(first?.profile?.name || "").trim();
   return name || null;
+}
+
+/** URL de foto quando a Meta envia no webhook (campos variam por versão do payload). */
+function parseWhatsappContactAvatarUrl(value: any, from: string): string | null {
+  const contacts = Array.isArray(value?.contacts) ? value.contacts : [];
+  const byWaId = contacts.find((c: any) => String(c?.wa_id || "") === String(from || ""));
+  const first = byWaId || contacts[0];
+  if (!first) return null;
+  const p = first?.profile;
+  const candidates = [
+    p?.picture_url,
+    p?.picture,
+    first?.profile_picture_url,
+    first?.profile_pic,
+    p?.image,
+  ];
+  for (const c of candidates) {
+    const u = String(c || "").trim();
+    if (/^https:\/\//i.test(u)) return u;
+  }
+  return null;
 }
 
 function parseLast10List(raw: string | undefined): Set<string> {
@@ -794,6 +817,7 @@ export async function POST(req: Request) {
           const text = parseWhatsAppText(message);
           const cteDetected = extractCteFromText(text);
           const profileName = parseWhatsappProfileName(value, from);
+          const contactAvatarUrl = parseWhatsappContactAvatarUrl(value, from);
           const contextMessageId = extractContextMessageId(message);
 
           let resolvedReplyTo: { messageId?: string; sender?: string; text?: string } | null = null;
@@ -870,6 +894,12 @@ export async function POST(req: Request) {
                 }
               }
             }
+            if (contactAvatarUrl) {
+              await pool.query(
+                `UPDATE pendencias.crm_leads SET contact_avatar_url = $1, updated_at = NOW() WHERE id = $2::uuid`,
+                [contactAvatarUrl, leadId]
+              );
+            }
           } else {
             const allowlisted = metaIntake.allowlist.has(last10);
             const denylisted = metaIntake.denylist.has(last10);
@@ -932,6 +962,7 @@ export async function POST(req: Request) {
                   stage_id,
                   title,
                   contact_phone,
+                  contact_avatar_url,
                   cte_number,
                   cte_serie,
                   frete_value,
@@ -943,10 +974,19 @@ export async function POST(req: Request) {
                   created_at,
                   updated_at
                 )
-                VALUES ($1,$2,$3,$4,$5,NULL,NULL,$7,'MEDIA',NULL,NULL,$6,NOW(),NOW())
+                VALUES ($1,$2,$3,$4,$5,$6,NULL,NULL,$7,'MEDIA',NULL,NULL,$8,NOW(),NOW())
                 RETURNING id
               `,
-              [defaultIds.pipelineId, defaultIds.stageId, leadTitle, from, cteDetected || null, position, leadSource]
+              [
+                defaultIds.pipelineId,
+                defaultIds.stageId,
+                leadTitle,
+                from,
+                contactAvatarUrl || null,
+                cteDetected || null,
+                leadSource,
+                position,
+              ]
             );
             leadId = insertLead.rows?.[0]?.id as string;
 
@@ -1013,14 +1053,20 @@ export async function POST(req: Request) {
           const newMessageId = String(insMsg.rows?.[0]?.id || "");
           const accessToken = process.env.WHATSAPP_ACCESS_TOKEN || "";
           if (newMessageId && isAttachment && accessToken) {
-            void ingestMetaInboundMedia({
-              pool,
-              messageId: newMessageId,
-              conversationId,
-              waMessage: message,
-              accessToken,
-              providerMessageId: providerMessageId || null,
-            }).catch((e) => console.error("[crm-media] meta_async", e));
+            try {
+              await ingestMetaInboundMedia({
+                pool,
+                messageId: newMessageId,
+                conversationId,
+                waMessage: message,
+                accessToken,
+                providerMessageId: providerMessageId || null,
+              });
+            } catch (e) {
+              console.error("[crm-media] meta_ingest", e);
+            }
+          } else if (newMessageId && isAttachment && !accessToken) {
+            console.warn("[crm-media] meta_skip_ingest_sem_WHATSAPP_ACCESS_TOKEN", { messageId: newMessageId });
           }
 
           await pool.query(

@@ -46,7 +46,21 @@ export async function maybeTranscodeInboundAudio(args: {
     baseMime === targetNorm ||
     (baseMime === "audio/ogg" && (mime.includes("opus") || String(args.baseFileName || "").toLowerCase().endsWith(".opus")));
 
-  const wantTranscode = args.settings.forceTranscodeAudio || !looksLikeTargetOggOpus;
+  /** Formatos já aceites no CRM / WhatsApp sem depender de ffmpeg (ex.: gravação no browser = webm). */
+  const mimeOkWithoutTranscode = new Set([
+    "audio/ogg",
+    "audio/opus",
+    "audio/mpeg",
+    "audio/mp3",
+    "audio/mp4",
+    "audio/webm",
+    "audio/aac",
+    "audio/amr",
+    "audio/wav",
+  ]);
+  const wantTranscode =
+    args.settings.forceTranscodeAudio ||
+    (!looksLikeTargetOggOpus && !mimeOkWithoutTranscode.has(baseMime));
 
   if (!wantTranscode) {
     return {

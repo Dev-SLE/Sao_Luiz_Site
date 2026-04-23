@@ -54,11 +54,22 @@ export async function POST(req: Request) {
         settings,
       });
       if (!tr.ok) {
-        return NextResponse.json({ error: tr.reason || "Falha ao processar áudio" }, { status: 400 });
+        if (isMimeAllowedForMediaType(settings, "audio", mime)) {
+          uploadBuffer = buf;
+          uploadMime = mime;
+          uploadName = f.name || "audio.bin";
+          console.warn("[crm/media/upload] audio transcode falhou; a usar ficheiro original", {
+            mime,
+            reason: tr.reason?.slice(0, 200),
+          });
+        } else {
+          return NextResponse.json({ error: tr.reason || "Falha ao processar áudio" }, { status: 400 });
+        }
+      } else {
+        uploadBuffer = Buffer.from(tr.buffer);
+        uploadMime = tr.mimeType;
+        uploadName = tr.fileName;
       }
-      uploadBuffer = Buffer.from(tr.buffer);
-      uploadMime = tr.mimeType;
-      uploadName = tr.fileName;
     }
 
     const now = new Date();

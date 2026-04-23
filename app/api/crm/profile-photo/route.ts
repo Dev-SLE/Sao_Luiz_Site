@@ -2,13 +2,15 @@ import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-/** Permite exibir fotos do WhatsApp no CRM (pps/media) sem bloqueio de hotlink no navegador. */
+/** Permite exibir fotos do WhatsApp / Meta no CRM sem bloqueio de hotlink no navegador. */
 function allowedTargetUrl(raw: string): URL | null {
   try {
     const parsed = new URL(raw.trim());
     if (parsed.protocol !== "https:") return null;
     const h = parsed.hostname.toLowerCase();
     if (h === "pps.whatsapp.net" || h.endsWith(".whatsapp.net")) return parsed;
+    if (h.endsWith(".fbcdn.net") || h.endsWith(".fbsbx.com")) return parsed;
+    if (h === "facebook.com" || h.endsWith(".facebook.com")) return parsed;
     return null;
   } catch {
     return null;
