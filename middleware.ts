@@ -36,6 +36,13 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  /** BI financeiro: rota canônica no Gerencial (compat com bookmarks `/app/financeiro/...`). */
+  if (pathname === '/app/financeiro' || pathname.startsWith('/app/financeiro/')) {
+    const url = request.nextUrl.clone();
+    url.pathname = '/app/gerencial/financeiro/bi-inicial';
+    return NextResponse.redirect(url);
+  }
+
   /** Gerencial BI: primeiro segmento após `/app/gerencial` deve ser setor; senão, injeta `comercial`. */
   if (pathname.startsWith('/app/gerencial/')) {
     const rest = pathname.slice('/app/gerencial/'.length).replace(/\/+$/, '');

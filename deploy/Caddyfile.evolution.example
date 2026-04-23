@@ -1,0 +1,10 @@
+# Exemplo: TLS na frente da Evolution (DigitalOcean Droplet).
+# Copie para /etc/caddy/Caddyfile ou use com `caddy run --config Caddyfile`
+# e aponte o DNS evo.seudominio.com para o IP da Droplet.
+#
+# A API Docker escuta em 127.0.0.1:8080 (ver deploy/docker-compose.evolution.yml).
+
+evo.saoluizexpress.com.br {
+	encode gzip
+	reverse_proxy 127.0.0.1:8080
+}

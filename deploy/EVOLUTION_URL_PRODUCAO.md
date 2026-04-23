@@ -24,8 +24,8 @@ O Next na Vercel **chama** a Evolution usando `EVOLUTION_API_URL` + `EVOLUTION_A
    - **Caddy** ou **Nginx** com **Let’s Encrypt** → domínio tipo `https://evo.seudominio.com` apontando para `localhost:8080`.
 6. No painel do provedor de domínio, crie um **registro A** (ou CNAME) `evo.seudominio.com` → IP da VPS.
 7. Teste no navegador: `https://evo.seudominio.com/manager` (deve abrir o Manager).
-8. Na **Vercel**, defina:
-   - `EVOLUTION_API_URL=https://evo.seudominio.com` (sem barra no fim)
+8. Na **Vercel** (e no `.env` local), defina:
+   - `EVOLUTION_API_URL=https://evo.saoluizexpress.com.br` (sem barra no fim; produção atual)
    - `EVOLUTION_API_KEY` = **o mesmo** valor de `AUTHENTICATION_API_KEY` do `deploy/.env` da Evolution
 9. Na Evolution (Manager), webhook:
    - `https://sao-luiz-site.vercel.app/api/whatsapp/evolution/webhook?token=SEU_EVOLUTION_WEBHOOK_TOKEN`
@@ -55,3 +55,23 @@ O Next na Vercel **chama** a Evolution usando `EVOLUTION_API_URL` + `EVOLUTION_A
 - Usar só variáveis na Vercel **sem** ter Evolution em algum lugar público: o CRM não tem com quem falar.
 
 Quando a Evolution estiver no ar com URL fixa, aí sim preencha `EVOLUTION_API_URL` com ela.
+
+---
+
+## Arranque limpo no CRM (Neon) após testes
+
+Um único script (copiar/colar no SQL Editor do Neon, um `BEGIN`/`COMMIT`): [`scripts/sql/crm-clean-test-slate.sql`](../scripts/sql/crm-clean-test-slate.sql) — apaga dados de teste CRM, **atualiza** `evolution_server_url` das inboxes `EVOLUTION` para `https://evo.saoluizexpress.com.br`, repõe defaults do intake; opcionalmente descomente o `DELETE` de inboxes no fim do ficheiro. Faça **backup / branch** antes de executar.
+
+Conferir se as inboxes EVOLUTION ficaram com a mesma base URL que a Vercel:
+
+- `npm run check:evolution-inboxes` (usa `DATABASE_URL` e `EVOLUTION_API_URL` ou `EVOLUTION_EXPECTED_BASE_URL`).
+
+## TLS com Caddy (exemplo)
+
+Ficheiro de referência: [`deploy/Caddyfile.evolution.example`](../deploy/Caddyfile.evolution.example) — proxy `https://evo…` → `127.0.0.1:8080`.
+
+## Diagnóstico no próprio CRM
+
+Com sessão e permissão **MANAGE_SETTINGS**:
+
+- `GET /api/diagnostics/evolution` — envs (mascaradas), lista de inboxes EVOLUTION vs URL da env, e um `fetch` rápido à raiz da API para reachability.

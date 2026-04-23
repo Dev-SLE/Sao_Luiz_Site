@@ -15,6 +15,7 @@
     "test:load:plan": "node scripts/load-crm-plan.mjs",
     "check": "npm run typecheck && npm run test:smoke",
     "check:storage": "node scripts/check-sharepoint-env.mjs",
+    "check:evolution-inboxes": "node scripts/check-evolution-inbox-urls.mjs",
     "test:sharepoint-graph": "node scripts/test-sharepoint-graph.mjs"
   },
   "dependencies": {

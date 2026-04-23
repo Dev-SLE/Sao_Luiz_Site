@@ -198,7 +198,8 @@ function canSeeGerencialHubNav(hasPermission: (perm: string) => boolean): boolea
     hasPermission('module.gerencial.view') ||
     hasPermission('tab.gerencial.setor.comercial.view') ||
     hasPermission('tab.gerencial.setor.financeiro.view') ||
-    hasPermission('tab.gerencial.setor.operacao.view')
+    hasPermission('tab.gerencial.setor.operacao.view') ||
+    hasPermission('module.financeiro.view')
   );
 }
 
@@ -341,14 +342,19 @@ export function buildWorkspaceNavSections(input: {
     );
 
   const financeiroMod: WorkspaceNavItem | false =
-    hub('module.financeiro.view') &&
-    withHubHref(Page.MODULE_FINANCEIRO, {
-      id: Page.MODULE_FINANCEIRO,
-      label: 'Financeiro',
-      icon: Landmark,
-      count: 0,
-      permission: 'module.financeiro.view',
-    });
+    (hub('module.financeiro.view') || hasPermission('tab.gerencial.setor.financeiro.view')) &&
+    (() => {
+      const href = pageToWorkspacePath(Page.MODULE_FINANCEIRO);
+      return {
+        id: Page.MODULE_FINANCEIRO,
+        label: 'Financeiro',
+        icon: Landmark,
+        count: 0,
+        permission: 'module.financeiro.view',
+        href,
+        matchPrefix: '/app/gerencial/financeiro',
+      } satisfies WorkspaceNavItem;
+    })();
 
   const fiscalMod: WorkspaceNavItem | false =
     hub('module.fiscal.view') &&

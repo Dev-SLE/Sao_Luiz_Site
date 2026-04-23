@@ -6,7 +6,7 @@ import { HUB_PAGE_TITLES } from '@/modules/hub/hub-page-titles';
 import { GerencialHubContent } from '@/modules/gerencial/GerencialHubContent';
 
 /**
- * Conteúdo do hub (manifestos, financeiro, etc.). O cabeçalho e navegação ficam em HubLayout.
+ * Conteúdo do hub (manifestos, gerencial, etc.). O cabeçalho e navegação ficam em HubLayout.
  */
 export function WorkspaceHubModule({ pathname, moduleKey }: { pathname: string; moduleKey: string }) {
   const page = pathToPage(pathname);

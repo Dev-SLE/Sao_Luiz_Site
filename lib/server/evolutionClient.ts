@@ -3,7 +3,11 @@
  * Doc: https://doc.evolution-api.com/v2/
  */
 
-import { evolutionExternalFetch, normalizeEvolutionServerUrl } from "./evolutionUrl";
+import {
+  evolutionExternalFetch,
+  evolutionIntegrationLog,
+  normalizeEvolutionServerUrl,
+} from "./evolutionUrl";
 
 export function evolutionNumberDigits(remoteJid: string | null | undefined): string | null {
   if (!remoteJid) return null;
@@ -102,6 +106,21 @@ function parseEvolutionProfilePictureResponse(json: any): string | null {
   return null;
 }
 
+/** Código estável para UI/logs (sem corpo bruto da Evolution). */
+export function evolutionClientErrorCode(args: { httpStatus: number; message?: string }): string {
+  const st = Number(args.httpStatus) || 0;
+  if (st === 401 || st === 403) return "EVOLUTION_AUTH";
+  if (st === 404) return "EVOLUTION_NOT_FOUND";
+  if (st >= 500) return "EVOLUTION_SERVER_ERROR";
+  if (st >= 400) return "EVOLUTION_CLIENT_ERROR";
+  const m = String(args.message || "").toLowerCase();
+  if (m.includes("timeout") || m.includes("aborted")) return "EVOLUTION_TIMEOUT";
+  if (m.includes("fetch failed") || m.includes("econnrefused") || m.includes("enotfound")) {
+    return "EVOLUTION_NETWORK";
+  }
+  return "EVOLUTION_UNKNOWN";
+}
+
 /** POST em rotas de perfil da Evolution — foto quando o webhook não traz URL. */
 export async function evolutionFetchProfilePictureUrl(args: {
   serverUrl: string;
@@ -196,11 +215,24 @@ export async function evolutionSendText(args: {
     const json = await resp.json().catch(() => ({}));
     if (!resp.ok) {
       const msg = (json as any)?.message || (json as any)?.error || `HTTP ${resp.status}`;
+      const code = evolutionClientErrorCode({ httpStatus: resp.status, message: String(msg) });
+      evolutionIntegrationLog("sendText_failed", {
+        instanceName: args.instanceName,
+        httpStatus: resp.status,
+        code,
+        error: String(msg).slice(0, 240),
+      });
       return { ok: false, error: String(msg), response: json };
     }
     return { ok: true, error: null as string | null, response: json };
   } catch (e: any) {
-    return { ok: false, error: e?.message || String(e), response: null as any };
+    const em = e?.message || String(e);
+    evolutionIntegrationLog("sendText_failed", {
+      instanceName: args.instanceName,
+      code: evolutionClientErrorCode({ httpStatus: 0, message: em }),
+      error: em.slice(0, 240),
+    });
+    return { ok: false, error: em, response: null as any };
   }
 }
 
@@ -250,8 +282,18 @@ export async function evolutionDeleteMessageForEveryone(args: {
       }
       if (resp.ok) return { ok: true, error: null as string | null, response: json };
     }
+    evolutionIntegrationLog("deleteMessage_failed", {
+      instanceName: args.instanceName,
+      code: "EVOLUTION_DELETE_REJECTED",
+    });
     return { ok: false, error: "Evolution não aceitou deleteMessageForEveryone", response: null as any };
   } catch (e: any) {
-    return { ok: false, error: e?.message || String(e), response: null as any };
+    const em = e?.message || String(e);
+    evolutionIntegrationLog("deleteMessage_failed", {
+      instanceName: args.instanceName,
+      code: evolutionClientErrorCode({ httpStatus: 0, message: em }),
+      error: em.slice(0, 240),
+    });
+    return { ok: false, error: em, response: null as any };
   }
 }

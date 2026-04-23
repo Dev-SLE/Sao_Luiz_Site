@@ -9,22 +9,22 @@ Definir uma decisao objetiva para infraestrutura de mensageria WhatsApp com base
 - p95 ingestao < 2s
 - p95 envio < 5s
 
-## Cenario A - manter VPS atual (Oracle)
+## Cenario A - VPS propria (estado atual: DigitalOcean)
+
+A Evolution API passou a correr em **Droplet DigitalOcean** com Docker (Postgres + Redis no compose), em substituicao de testes anteriores noutra VPS (ex.: Oracle Cloud). O desenho continua o mesmo: **controlo total** da VM e da rede.
+
 Pros:
-- menor custo direto mensal
-- controle total de configuracao e rede
-- sem migracao imediata
+- custo previsivel e controlo de configuracao
+- mesma stack documentada em `deploy/docker-compose.evolution.yml`
 
 Contras:
-- risco maior de operacao manual
-- exige disciplina de patching, backup e observabilidade
-- recuperacao de incidente depende do time interno
+- operacao manual (patching, backup, observabilidade) continua a cargo da equipa
 
-Hardening minimo obrigatorio:
+Hardening minimo recomendado:
+- **TLS** na frente da API (Caddy/Nginx + Let's Encrypt); ver `deploy/Caddyfile.evolution.example`
 - monitoramento ativo (healthcheck + alerta)
-- backup e restore testado semanalmente
-- failover simplificado (instancia secundaria pronta)
-- restart supervisionado e limites de recursos
+- backup e restore testado (Postgres Evolution + volume `evolution_instances`)
+- restart supervisionado e limites de recursos no Docker/host
 
 ## Cenario B - migrar para provider gerenciado
 Pros:
@@ -44,10 +44,10 @@ Contras:
 - Tempo de recuperacao: 10%
 
 ## Recomendacao
-Recomendacao faseada:
-1. curto prazo: manter VPS com hardening completo e SLO instrumentado.
-2. gatilho de migracao: se 2 semanas consecutivas abaixo de 99.9% ou incidente critico recorrente.
-3. medio prazo: preparar plano de migracao para provider gerenciado com rollback documentado.
+Com a base ja na **DigitalOcean**, a recomendacao pratica e:
+1. Completar hardening (HTTPS, backups testados, alertas).
+2. Manter evidencias de SLO (taxa de entrega, latencias) durante 7–14 dias.
+3. Reavaliar **Cenario B** (provider gerenciado) apenas se os gatilhos de SLO ou custo operacional o justificarem.
 
 ## Evidencias que devem ser coletadas (7 dias)
 - taxa de sucesso por mensagem

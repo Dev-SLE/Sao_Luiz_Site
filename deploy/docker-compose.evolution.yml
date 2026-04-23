@@ -30,8 +30,8 @@ services:
     env_file:
       - .env
     environment:
-      # URL pública da API (IP:porta ou https://domínio). Em VM na internet use o IP/DNS real;
-      # se deixar só localhost, os eventos vêm com server_url errado e o QR pode ficar em "connecting".
+      # URL pública da API (https://domínio sem path). Em produção (ex.: Caddy TLS) use o mesmo FQDN do certificado:
+      # EVOLUTION_PUBLIC_SERVER_URL=https://evo.saoluizexpress.com.br
       # Local: exporte EVOLUTION_PUBLIC_SERVER_URL=http://127.0.0.1:8080 e abra o Manager nesse mesmo host.
       SERVER_URL: ${EVOLUTION_PUBLIC_SERVER_URL:-http://localhost:8080}
       # Alinha com a versão atual do WhatsApp Web (evita QR vazio / falha de pareamento).

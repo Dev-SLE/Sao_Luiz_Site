@@ -20,6 +20,16 @@ export type GerencialComercialPanelDef = {
   permission: string;
 };
 
+/** Abas do setor Financeiro (BI). */
+export const GERENCIAL_FINANCEIRO_PANELS: GerencialComercialPanelDef[] = [
+  { slug: 'bi-inicial', label: 'Financeiro Inicial', permission: GERENCIAL_BI_TAB.setorFinanceiro },
+  {
+    slug: 'tesouraria-fluxo',
+    label: 'Tesouraria e Fluxo de Caixa',
+    permission: GERENCIAL_BI_TAB.setorFinanceiro,
+  },
+];
+
 /** Abas internas do setor Operação (BI logístico). */
 export const GERENCIAL_OPERACAO_PANELS: GerencialComercialPanelDef[] = [
   { slug: 'monitor-fluxo', label: 'Monitor de fluxo', permission: GERENCIAL_BI_TAB.fluxoMonitor },

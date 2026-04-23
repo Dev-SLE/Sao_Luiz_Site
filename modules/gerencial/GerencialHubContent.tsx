@@ -7,6 +7,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { ModuleSubnavTabs } from '@/components/workspace/ModuleSubnavTabs';
 import {
   GERENCIAL_COMERCIAL_PANELS,
+  GERENCIAL_FINANCEIRO_PANELS,
   GERENCIAL_OPERACAO_PANELS,
   GERENCIAL_SECTORS,
   gerencialHubPath,
@@ -32,6 +33,8 @@ import { BiComercial360RadarDashboard } from '@/modules/gerencial/comercial360/B
 import { BiComercial360RiscoDashboard } from '@/modules/gerencial/comercial360/BiComercial360RiscoDashboard';
 import { ComissoesHoleriteView } from '@/modules/gerencial/ComissoesHoleriteView';
 import { useData } from '@/context/DataContext';
+import { FinanceiroBiInicialDashboard } from '@/modules/financeiro/FinanceiroBiInicialDashboard';
+import { FinanceiroBiTesourariaDashboard } from '@/modules/financeiro/FinanceiroBiTesourariaDashboard';
 
 type ParsedGerencial = {
   sector: GerencialSectorSlug;
@@ -86,6 +89,11 @@ function operacaoTabKeyFromPanelSlug(slug: string): keyof typeof GERENCIAL_BI_TA
   return null;
 }
 
+function financeiroTabKeyFromPanelSlug(slug: string): keyof typeof GERENCIAL_BI_TAB | null {
+  if (slug === 'bi-inicial' || slug === 'tesouraria-fluxo') return 'setorFinanceiro';
+  return null;
+}
+
 export function GerencialHubContent({ pathname }: { pathname: string }) {
   const livePath = usePathname();
   const router = useRouter();
@@ -95,7 +103,10 @@ export function GerencialHubContent({ pathname }: { pathname: string }) {
   const has = hasPermission;
 
   const sectorTabs = useMemo(() => {
-    return GERENCIAL_SECTORS.filter((s) => has(s.permission)).map((s) => ({
+    return GERENCIAL_SECTORS.filter((s) => {
+      if (s.slug === 'financeiro') return has(s.permission) || has('module.financeiro.view');
+      return has(s.permission);
+    }).map((s) => ({
       href: gerencialHubPath(s.slug),
       label: s.label,
       active: parsed.sector === s.slug,
@@ -121,6 +132,19 @@ export function GerencialHubContent({ pathname }: { pathname: string }) {
   const allowedOperacaoPanels = useMemo(() => {
     return GERENCIAL_OPERACAO_PANELS.filter((p) => has(p.permission));
   }, [has]);
+
+  const allowedFinanceiroPanels = useMemo(() => {
+    return GERENCIAL_FINANCEIRO_PANELS.filter((p) => has(p.permission) || has('module.financeiro.view'));
+  }, [has]);
+
+  const financeiroSubTabs = useMemo(() => {
+    if (parsed.sector !== 'financeiro') return [];
+    return allowedFinanceiroPanels.map((p) => ({
+      href: gerencialHubPath('financeiro', p.slug),
+      label: p.label,
+      active: parsed.panel === p.slug && parsed.sector === 'financeiro',
+    }));
+  }, [allowedFinanceiroPanels, parsed.panel, parsed.sector]);
 
   const operacaoSubTabs = useMemo(() => {
     if (parsed.sector !== 'operacao') return [];
@@ -148,7 +172,10 @@ export function GerencialHubContent({ pathname }: { pathname: string }) {
     const parts = effectivePath.replace(/\/+$/, '').split('/').filter(Boolean);
     if (parts[0] !== 'app' || parts[1] !== 'gerencial') return;
     if (parts.length > 2) return;
-    const firstSector = GERENCIAL_SECTORS.find((s) => has(s.permission))?.slug;
+    const firstSector = GERENCIAL_SECTORS.find((s) => {
+      if (s.slug === 'financeiro') return has(s.permission) || has('module.financeiro.view');
+      return has(s.permission);
+    })?.slug;
     if (firstSector) router.replace(gerencialHubPath(firstSector));
   }, [effectivePath, has, router]);
 
@@ -172,13 +199,25 @@ export function GerencialHubContent({ pathname }: { pathname: string }) {
     if (first) router.replace(gerencialHubPath('operacao', first));
   }, [allowedOperacaoPanels, effectivePath, router]);
 
+  /** `/app/gerencial/financeiro` sem painel: primeiro painel Financeiro permitido. */
+  useEffect(() => {
+    const parts = effectivePath.replace(/\/+$/, '').split('/').filter(Boolean);
+    if (parts[0] !== 'app' || parts[1] !== 'gerencial') return;
+    if (parts.length !== 3) return;
+    if (parts[2]?.toLowerCase() !== 'financeiro') return;
+    const first = allowedFinanceiroPanels[0]?.slug;
+    if (first) router.replace(gerencialHubPath('financeiro', first));
+  }, [allowedFinanceiroPanels, effectivePath, router]);
+
   const canAnySector = sectorTabs.length > 0;
   const canCommercial = has(GERENCIAL_BI_TAB.setorComercial);
 
   const sectorDenied =
     (parsed.sector === 'comercial' && !canCommercial) ||
-      (parsed.sector === 'financeiro' && !has(GERENCIAL_BI_TAB.setorFinanceiro)) ||
-      (parsed.sector === 'operacao' && !has(GERENCIAL_BI_TAB.setorOperacao));
+    (parsed.sector === 'financeiro' &&
+      !has(GERENCIAL_BI_TAB.setorFinanceiro) &&
+      !has('module.financeiro.view')) ||
+    (parsed.sector === 'operacao' && !has(GERENCIAL_BI_TAB.setorOperacao));
 
   const panelKey = parsed.panel ? commercialTabKeyFromPanelSlug(parsed.panel) : null;
   const commercialPanelDenied =
@@ -192,6 +231,17 @@ export function GerencialHubContent({ pathname }: { pathname: string }) {
     parsed.sector === 'operacao' &&
     !!parsed.panel &&
     (!operacaoPanelKey || !has(GERENCIAL_BI_TAB[operacaoPanelKey]));
+
+  const financeiroPanelKey = parsed.panel ? financeiroTabKeyFromPanelSlug(parsed.panel) : null;
+  const financeiroPanelDenied =
+    parsed.sector === 'financeiro' &&
+    !!parsed.panel &&
+    (() => {
+      if (!financeiroPanelKey) return true;
+      const okTab = has(GERENCIAL_BI_TAB[financeiroPanelKey]);
+      if (financeiroPanelKey === 'setorFinanceiro') return !okTab && !has('module.financeiro.view');
+      return !okTab;
+    })();
 
   const holeriteDenied =
     parsed.holerite &&
@@ -223,19 +273,32 @@ export function GerencialHubContent({ pathname }: { pathname: string }) {
             <ModuleSubnavTabs tabs={operacaoSubTabs} size="sm" underlineClass="after:bg-emerald-600" />
           </div>
         ) : null}
+        {parsed.sector === 'financeiro' && financeiroSubTabs.length > 0 ? (
+          <div className="mt-1 border-t border-slate-100 pt-1">
+            <ModuleSubnavTabs tabs={financeiroSubTabs} size="sm" underlineClass="after:bg-sky-600" />
+          </div>
+        ) : null}
       </div>
       <div className="min-h-0 flex-1 overflow-auto bg-slate-50/80 px-4 py-4 md:px-6">
-        {sectorDenied || commercialPanelDenied || operacaoPanelDenied || holeriteDenied ? (
+        {sectorDenied ||
+        commercialPanelDenied ||
+        operacaoPanelDenied ||
+        financeiroPanelDenied ||
+        holeriteDenied ? (
           <div className="surface-card mx-auto max-w-lg p-8 text-center">
             <p className="text-sm font-semibold text-slate-900">Acesso negado</p>
             <p className="mt-2 text-sm text-slate-600">
               Você não tem permissão para esta área. Solicite o ajuste no perfil de permissões.
             </p>
           </div>
+        ) : parsed.sector === 'financeiro' && parsed.panel === 'bi-inicial' ? (
+          <FinanceiroBiInicialDashboard />
+        ) : parsed.sector === 'financeiro' && parsed.panel === 'tesouraria-fluxo' ? (
+          <FinanceiroBiTesourariaDashboard />
         ) : parsed.sector === 'financeiro' ? (
           <PlaceholderSector
             title="Financeiro"
-            description="Indicadores financeiros do BI por setor serão disponibilizados aqui. A estrutura de permissões e escopo por unidade já está preparada."
+            description="Escolha o painel na barra acima."
           />
         ) : parsed.sector === 'operacao' && parsed.panel === 'monitor-fluxo' ? (
           <BiFluxoMonitorDashboard />

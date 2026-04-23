@@ -99,6 +99,7 @@ export function pathToPage(pathname: string): Page {
     const r1 = rest[1]?.toLowerCase() ?? '';
     const r2 = rest[2]?.toLowerCase() ?? '';
     if (isGerencialSectorSlug(r0)) {
+      if (r0 === 'financeiro' && (r1 === 'bi-inicial' || r1 === 'tesouraria-fluxo')) return Page.MODULE_FINANCEIRO;
       if (r1 === 'comissoes' && r2 === 'holerite') return Page.GERENCIAL_COMISSOES_HOLERITE;
       if (r1 === 'comissoes') return Page.GERENCIAL_COMISSOES_BI;
       return Page.MODULE_GERENCIAL;
@@ -164,7 +165,7 @@ export function pageToWorkspacePath(page: Page): string {
     case Page.MODULE_PATRIMONIO:
       return '/app/patrimonio';
     case Page.MODULE_FINANCEIRO:
-      return '/app/financeiro';
+      return '/app/gerencial/financeiro/bi-inicial';
     case Page.MODULE_FISCAL:
       return '/app/fiscal';
     case Page.MODULE_RH:

@@ -1,7 +1,12 @@
 import { parseWorkspacePath, moduleLabel } from '@/lib/workspace-routes';
 import { CRM_TABS } from '@/modules/crm/routes';
 import { COMERCIAL_TABS } from '@/modules/comercial/routes';
-import { GERENCIAL_COMERCIAL_PANELS, GERENCIAL_OPERACAO_PANELS, isGerencialSectorSlug } from '@/modules/gerencial/routes';
+import {
+  GERENCIAL_COMERCIAL_PANELS,
+  GERENCIAL_FINANCEIRO_PANELS,
+  GERENCIAL_OPERACAO_PANELS,
+  isGerencialSectorSlug,
+} from '@/modules/gerencial/routes';
 import { OPERACIONAL_TABS, OPERACIONAL_UTILITY_TABS } from '@/modules/operacional/routes';
 
 /** Título curto só da vista atual (barra superior embutida). */
@@ -39,6 +44,10 @@ export function getWorkspacePageTitle(pathname: string): string {
     return 'Comercial';
   }
 
+  if (m === 'financeiro') {
+    return 'Financeiro';
+  }
+
   if (m === 'gerencial') {
     const r1 = rest[1]?.toLowerCase() ?? '';
     const r2 = rest[2]?.toLowerCase() ?? '';
@@ -50,7 +59,11 @@ export function getWorkspacePageTitle(pathname: string): string {
       extra = r1;
       sector = 'comercial';
     }
-    if (sector === 'financeiro') return 'Financeiro (BI)';
+    if (sector === 'financeiro') {
+      const fin = GERENCIAL_FINANCEIRO_PANELS.find((t) => t.slug === panel);
+      if (fin) return fin.label;
+      return 'Financeiro (BI)';
+    }
     if (sector === 'operacao') {
       const op = GERENCIAL_OPERACAO_PANELS.find((t) => t.slug === panel);
       if (op) return op.label;

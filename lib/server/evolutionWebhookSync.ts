@@ -1,4 +1,4 @@
-import { evolutionExternalFetch, normalizeEvolutionServerUrl } from "./evolutionUrl";
+import { evolutionExternalFetch, evolutionIntegrationLog, normalizeEvolutionServerUrl } from "./evolutionUrl";
 import { getSitePublicBaseUrl } from "../sitePublicUrl";
 
 export type EvolutionWebhookSyncResult = {
@@ -155,7 +155,7 @@ export async function syncEvolutionInstanceWebhook(args: {
     }
   }
 
-  console.error("[evolution-webhook-sync] todas as tentativas falharam", {
+  evolutionIntegrationLog("webhook_sync_exhausted", {
     instance,
     lastStatus,
     snippet: lastBody.slice(0, 400),
