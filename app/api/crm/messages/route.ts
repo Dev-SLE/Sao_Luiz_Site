@@ -67,6 +67,14 @@ function normalizeAttendantLabel(raw: string | null | undefined) {
     .join(" ");
 }
 
+/** Remove caracteres que o WhatsApp interpreta como formatação, para o nome no *negrito* não quebrar. */
+function stripWhatsappFormattingFromLabel(raw: string) {
+  return String(raw || "")
+    .replace(/[*_~`]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function buildWhatsappSignedBody(args: {
   text: string;
   senderType: string;
@@ -75,15 +83,18 @@ function buildWhatsappSignedBody(args: {
   const text = String(args.text || "").trim();
   if (!text) return text;
   const sender = String(args.senderType || "").toUpperCase();
-  // Padrão solicitado: identificar claramente quem atendeu no WhatsApp.
+  // Padrão solicitado: identificar quem atendeu no WhatsApp (*negrito* + quebra de linha — sintaxe oficial do app).
   if (sender !== "AGENT" && sender !== "IA") return text;
-  const label =
+  const labelRaw =
     sender === "IA"
       ? `${normalizeAttendantLabel(args.senderUsername || "Sofia")} (IA)`
       : normalizeAttendantLabel(args.senderUsername);
-  const alreadyPrefixed = new RegExp(`^${label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*:\\s*`, "i").test(text);
-  if (alreadyPrefixed) return text;
-  return `${label}: ${text}`;
+  const label = stripWhatsappFormattingFromLabel(labelRaw) || "Atendente";
+  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  // Já no formato novo *Nome*:\n ou legado "Nome: " na mesma linha
+  if (new RegExp(`^\\*${escaped}\\*:\\s*\\n?`, "i").test(text)) return text;
+  if (new RegExp(`^${escaped}\\s*:\\s*`, "i").test(text)) return text;
+  return `*${label}*:\n${text}`;
 }
 
 async function sendWhatsAppText(args: { toE164: string; body: string; quotedMessageId?: string | null }) {
