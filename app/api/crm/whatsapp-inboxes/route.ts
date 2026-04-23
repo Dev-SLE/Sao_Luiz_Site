@@ -338,7 +338,7 @@ export async function POST(req: Request) {
           { status: 400 }
         );
       }
-      await new Promise((r) => setTimeout(r, 700));
+      await new Promise((r) => setTimeout(r, 1400));
     }
 
     const settingsSync = await syncEvolutionInstanceSettingsForCrm({

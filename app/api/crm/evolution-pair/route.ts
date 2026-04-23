@@ -45,7 +45,6 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}));
     const inboxId = body?.inboxId ? String(body.inboxId) : "";
     const phoneDigits = body?.phoneDigits != null ? String(body.phoneDigits).replace(/\D/g, "") : "";
-    const syncWebhook = body?.syncWebhook === true;
 
     if (!inboxId) {
       return NextResponse.json({ error: "inboxId obrigatório" }, { status: 400 });
@@ -82,10 +81,8 @@ export async function POST(req: Request) {
       apiKey,
       instance,
     });
-    let webhookSync: Awaited<ReturnType<typeof syncEvolutionInstanceWebhook>> | null = null;
-    if (syncWebhook) {
-      webhookSync = await syncEvolutionInstanceWebhook({ serverUrl, apiKey, instance });
-    }
+    /** Sempre: URL com token + eventos (MESSAGES_*, CONNECTION, QR) — evita instância sem webhook ativo. */
+    const webhookSync = await syncEvolutionInstanceWebhook({ serverUrl, apiKey, instance });
 
     return NextResponse.json({
       ok: true,

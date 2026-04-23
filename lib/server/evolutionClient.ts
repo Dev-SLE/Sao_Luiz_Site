@@ -339,6 +339,26 @@ export async function evolutionGetBase64FromMediaMessage(args: {
   return { buffer: null, mimeType: null, error: lastErr };
 }
 
+/**
+ * `key.id` da mensagem enviada — respostas da Evolution v2 podem vir em `data`, `response`, etc.
+ */
+export function extractEvolutionOutboundWaMessageId(json: unknown): string | null {
+  if (!json || typeof json !== "object") return null;
+  const j = json as Record<string, any>;
+  const candidates = [
+    j?.key?.id,
+    j?.data?.key?.id,
+    j?.response?.key?.id,
+    j?.message?.key?.id,
+    j?.result?.key?.id,
+  ];
+  for (const c of candidates) {
+    const id = String(c || "").trim();
+    if (id) return id;
+  }
+  return null;
+}
+
 export async function evolutionSendMedia(args: {
   serverUrl: string;
   apiKey: string;
@@ -411,7 +431,14 @@ export async function evolutionSendMedia(args: {
     }
     return { ok: true, error: null as string | null, response: json };
   } catch (e: any) {
-    return { ok: false, error: e?.message || String(e), response: null as any };
+    const em = e?.message || String(e);
+    evolutionIntegrationLog("sendMedia_failed", {
+      instanceName: args.instanceName,
+      httpStatus: 0,
+      code: evolutionClientErrorCode({ httpStatus: 0, message: em }),
+      error: em.slice(0, 240),
+    });
+    return { ok: false, error: em, response: null as any };
   }
 }
 

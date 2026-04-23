@@ -84,13 +84,12 @@ function buildAttempts(base: string, instance: string, webhookUrl: string, event
 }
 
 /**
- * Grava webhook na Evolution (POST /webhook/set/...) com retries — usado no modo rápido e no pareamento.
+ * Uma passagem completa de POST/PUT /webhook/set/… (vários formatos de body + conjuntos de eventos).
  */
-export async function syncEvolutionInstanceWebhook(args: {
+async function syncEvolutionInstanceWebhookAttempts(args: {
   serverUrl: string;
   apiKey: string;
   instance: string;
-  /** Ex.: dev com `publicBase` na query — senão usa getSitePublicBaseUrl(). */
   publicBaseOverride?: string;
 }): Promise<EvolutionWebhookSyncResult> {
   const instance = String(args.instance || "").trim();
@@ -106,6 +105,11 @@ export async function syncEvolutionInstanceWebhook(args: {
   if ("error" in wb) return { ok: false, error: wb.error };
   const { webhookUrl } = wb;
 
+  const token = String(process.env.EVOLUTION_WEBHOOK_TOKEN ?? "").trim();
+  if (!token && String(process.env.NODE_ENV || "").toLowerCase() === "production") {
+    console.warn("[evolution-webhook-sync] EVOLUTION_WEBHOOK_TOKEN vazio — webhook sem ?token= (401 no CRM).");
+  }
+
   const headers = {
     apikey: apiKey,
     "Content-Type": "application/json",
@@ -116,10 +120,10 @@ export async function syncEvolutionInstanceWebhook(args: {
   let lastBody = "";
   let lastEvolution: unknown = null;
 
-  /** 2 rodadas cobrem instância recém-criada; mais chamadas aumentam risco de timeout na Vercel. */
-  const rounds = 2;
+  /** Instância recém-criada às vezes ignora o 1.º set; 3 rodadas com pausa reduzem falhas intermitentes. */
+  const rounds = 3;
   for (let round = 0; round < rounds; round++) {
-    if (round > 0) await sleep(1200);
+    if (round > 0) await sleep(1500);
 
     for (const events of WEBHOOK_EVENT_SETS) {
       const attempts = buildAttempts(base, instance, webhookUrl, events);
@@ -169,4 +173,34 @@ export async function syncEvolutionInstanceWebhook(args: {
     evolution: lastEvolution,
     lastBodySnippet: lastBody,
   };
+}
+
+/**
+ * Grava webhook na Evolution (URL com token + eventos CRM + Base64), com retry e reforço automático.
+ * Usado na criação de caixas, pareamento e sync manual.
+ */
+export async function syncEvolutionInstanceWebhook(args: {
+  serverUrl: string;
+  apiKey: string;
+  instance: string;
+  /** Ex.: dev com `publicBase` na query — senão usa getSitePublicBaseUrl(). */
+  publicBaseOverride?: string;
+}): Promise<EvolutionWebhookSyncResult> {
+  let result = await syncEvolutionInstanceWebhookAttempts(args);
+  if (!result.ok) {
+    await sleep(2000);
+    result = await syncEvolutionInstanceWebhookAttempts(args);
+  }
+  if (result.ok) {
+    await sleep(900);
+    const reinforce = await syncEvolutionInstanceWebhookAttempts(args);
+    if (!reinforce.ok) {
+      evolutionIntegrationLog("webhook_reinforce_failed", {
+        instance: String(args.instance || "").trim(),
+        httpStatus: reinforce.httpStatus,
+        error: String(reinforce.error || "").slice(0, 240),
+      });
+    }
+  }
+  return result;
 }

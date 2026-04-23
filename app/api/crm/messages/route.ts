@@ -5,6 +5,7 @@ import {
   evolutionDeleteMessageForEveryone,
   evolutionSendMedia,
   evolutionSendText,
+  extractEvolutionOutboundWaMessageId,
 } from "../../../../lib/server/evolutionClient";
 import { can, getSessionContext } from "../../../../lib/server/authorization";
 import { sessionCanAccessLead } from "../../../../lib/server/crmAccess";
@@ -425,18 +426,28 @@ export async function GET(req: Request) {
       const meta = safeJsonParse(r.metadata);
       const outbound = meta?.outbound_whatsapp;
       const senderUpper = String(r.sender_type || "").toUpperCase();
+      const raw = String(outbound?.status || "").trim().toLowerCase();
       const delivered =
         outbound?.delivered === true ||
         outbound?.delivered === "true" ||
-        outbound?.status === "sent" ||
-        outbound?.status === "delivered";
+        raw === "sent" ||
+        raw === "delivered" ||
+        raw === "read" ||
+        raw === "played";
+      const isFailedLike = raw === "failed" || raw === "error";
+      /** Não priorizar `status: "failed"` legado se `delivered` já for true (merge/json antigo). */
       const statusForUi =
-        outbound?.status ||
-        (senderUpper === "CLIENT"
+        senderUpper === "CLIENT"
           ? "received"
           : delivered
-            ? "delivered"
-            : "pending");
+            ? raw === "read" || raw === "played"
+              ? "read"
+              : raw === "pending" || raw === "queued" || raw === "sending"
+                ? "pending"
+                : "delivered"
+            : isFailedLike
+              ? "failed"
+              : "pending";
       return {
       metadata: meta,
       id: r.id as string,
@@ -825,7 +836,7 @@ export async function POST(req: Request) {
 
       // Mescla outbound_whatsapp no metadata (preserva attachments etc.)
       const waMessageId = useEvolution
-        ? outboundWhatsApp.response?.key?.id || null
+        ? extractEvolutionOutboundWaMessageId(outboundWhatsApp.response)
         : outboundWhatsApp.response?.messages?.[0]?.id || null;
       await pool.query(
         `
