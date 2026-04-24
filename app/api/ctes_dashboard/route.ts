@@ -11,13 +11,13 @@ import {
 
 export const runtime = "nodejs";
 
-const VIEWS = ["pendencias", "criticos", "em_busca", "ocorrencias", "tad"] as const;
+const NORMALIZED_STATUS_SQL = OPERATIONAL_CTE_STATUS_NORM_SQL;
 
 /**
- * Dataset consolidado para o Dashboard operacional (Visão geral).
- * - Mesmo escopo que `ctes_view`: unidade do perfil + fila de atribuições quando aplicável.
- * - Sem concluídos (exclusão por status normalizado).
- * - 1 registo por (cte, serie) com prioridade de fila (críticos > ocorrências > …).
+ * Dataset consolidado da Visão geral operacional:
+ * - Mesmo escopo de unidade/atribuição da `ctes_view`
+ * - Sem concluídos
+ * - 1 linha por (cte, serie), com prioridade de fila
  */
 export async function GET(req: Request) {
   try {
@@ -36,7 +36,6 @@ export async function GET(req: Request) {
     const limit = parseInt(searchParams.get("limit") || "10000", 10) || 10000;
     const offset = (page - 1) * limit;
 
-    const N = OPERATIONAL_CTE_STATUS_NORM_SQL.replace(/\s+/g, " ").trim();
     const hasOperationalGlobal = can(session, "scope.operacional.all") || isAdminSuperRole(session.role, session.username);
     const linkedDestUnit = String(session.dest || "").trim();
     const linkedOriginUnit = String(session.origin || "").trim();
@@ -49,19 +48,28 @@ export async function GET(req: Request) {
 
     const assignmentJoin = assignmentAvailable
       ? `
-        LEFT JOIN pendencias.cte_assignments a
-          ON a.cte = c.cte
-          AND (a.serie = c.serie OR ltrim(a.serie, '0') = ltrim(c.serie, '0'))
-          AND a.active = true
-          AND a.assignment_type = 'PENDENTE_AG_BAIXAR'
+        LEFT JOIN LATERAL (
+          SELECT
+            aa.assignment_type,
+            aa.agency_unit,
+            aa.assigned_username,
+            aa.updated_at
+          FROM pendencias.cte_assignments aa
+          WHERE aa.active = true
+            AND aa.assignment_type = 'PENDENTE_AG_BAIXAR'
+            AND aa.cte = c.cte
+            AND (aa.serie = c.serie OR ltrim(aa.serie, '0') = ltrim(c.serie, '0'))
+          ORDER BY aa.updated_at DESC, aa.id DESC
+          LIMIT 1
+        ) a ON true
       `
-      : "";
+      : ``;
 
-    const filterParams: unknown[] = [Array.from(VIEWS)];
+    const filterParams: unknown[] = [];
     let opScopeFilterSql = "";
     if (!hasOperationalGlobal && (linkedDestUnit || linkedOriginUnit)) {
       filterParams.push(linkedDestUnit || null, linkedOriginUnit || null);
-      opScopeFilterSql = operationalCteUnitScopeAndClause(2, 3);
+      opScopeFilterSql = operationalCteUnitScopeAndClause(1, 2);
     }
     let assignFilterSql = "";
     if (assignPoolNarrow) {
@@ -69,79 +77,74 @@ export async function GET(req: Request) {
       assignFilterSql = ` AND (COALESCE(TRIM(a.assigned_username), '') = '' OR LOWER(TRIM(a.assigned_username)) = LOWER(TRIM($${filterParams.length}::text))) `;
     }
 
-    const statusExclusions = `
-            AND ${N} NOT LIKE 'CONCLUIDO%'
-            AND ${N} NOT LIKE 'RESOLVIDO%'
-            AND ${N} NOT LIKE 'ENTREGUE%'
-            AND ${N} NOT LIKE 'CANCELADO%'
-    `;
-
-    const totalResult = await pool.query(
-      `
-        SELECT COUNT(*)::int AS total
-        FROM (
-          SELECT c.cte, c.serie
-          FROM pendencias.cte_view_index i
-          JOIN pendencias.ctes c ON c.cte = i.cte AND (i.serie = c.serie OR ltrim(i.serie, '0') = ltrim(c.serie, '0'))
-          ${assignmentJoin}
-          WHERE i.view = ANY($1::text[])
-            ${statusExclusions}
-            ${opScopeFilterSql}
-            ${assignFilterSql}
-          GROUP BY c.cte, c.serie
-        ) x
-      `,
-      filterParams,
-    );
-    const total = totalResult.rows?.[0]?.total || 0;
-
     const limitParam = filterParams.length + 1;
     const offsetParam = filterParams.length + 2;
     const dataParams = [...filterParams, limit, offset];
 
     const result = await pool.query(
       `
-        WITH ranked AS (
+        WITH base_ranked AS (
           SELECT
             c.*,
-            i.status_calculado,
-            i.note_count,
+            COALESCE(i.status_calculado, c.status) AS status_calculado,
+            COALESCE(i.note_count, 0) AS note_count,
             CASE
-              WHEN i.view = 'ocorrencias' OR i.view = 'tad' THEN 'OCORRÊNCIA'
-              WHEN i.view = 'em_busca' THEN 'EM BUSCA'
+              WHEN COALESCE(i.view, '') IN ('ocorrencias', 'tad') THEN 'OCORRÊNCIA'
+              WHEN COALESCE(i.view, '') = 'em_busca' THEN 'EM BUSCA'
               ELSE c.status
             END AS status_exibicao,
             ROW_NUMBER() OVER (
               PARTITION BY c.cte, c.serie
               ORDER BY
                 CASE
-                  WHEN i.view = 'criticos' THEN 1
-                  WHEN i.view = 'ocorrencias' THEN 2
-                  WHEN i.view = 'em_busca' THEN 3
-                  WHEN i.view = 'pendencias' THEN 4
+                  WHEN COALESCE(i.view, '') = 'criticos' OR ${NORMALIZED_STATUS_SQL} LIKE 'CRITICO%' THEN 1
+                  WHEN COALESCE(i.view, '') IN ('ocorrencias', 'tad') THEN 2
+                  WHEN COALESCE(i.view, '') = 'em_busca' THEN 3
+                  WHEN ${NORMALIZED_STATUS_SQL} IN ('FORA DO PRAZO', 'PRIORIDADE', 'VENCE AMANHA', 'NO PRAZO') THEN 4
                   ELSE 5
                 END,
                 c.data_emissao DESC
             ) AS rn
-          FROM pendencias.cte_view_index i
-          JOIN pendencias.ctes c ON c.cte = i.cte AND (i.serie = c.serie OR ltrim(i.serie, '0') = ltrim(c.serie, '0'))
+          FROM pendencias.ctes c
+          LEFT JOIN pendencias.cte_view_index i
+            ON i.cte = c.cte
+            AND (i.serie = c.serie OR ltrim(i.serie, '0') = ltrim(c.serie, '0'))
           ${assignmentJoin}
-          WHERE i.view = ANY($1::text[])
-            ${statusExclusions}
+          WHERE
+            (
+              (${NORMALIZED_STATUS_SQL} IN ('FORA DO PRAZO', 'PRIORIDADE', 'VENCE AMANHA', 'NO PRAZO'))
+              OR (${NORMALIZED_STATUS_SQL} LIKE 'CRITICO%')
+              OR (COALESCE(i.view, '') IN ('criticos', 'em_busca', 'ocorrencias', 'tad'))
+            )
+            AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'CONCLUIDO%'
+            AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'ENTREGUE%'
+            AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'RESOLVIDO%'
+            AND ${NORMALIZED_STATUS_SQL} NOT LIKE 'CANCELADO%'
             ${opScopeFilterSql}
             ${assignFilterSql}
+        ),
+        base AS (
+          SELECT * FROM base_ranked WHERE rn = 1
         )
         SELECT
-          *
-        FROM ranked
-        WHERE rn = 1
-        ORDER BY data_emissao DESC
-        LIMIT $${limitParam} OFFSET $${offsetParam}
+          (SELECT COUNT(*)::int FROM base) AS total,
+          COALESCE(
+            (
+              SELECT json_agg(row_to_json(paged))
+              FROM (
+                SELECT *
+                FROM base
+                ORDER BY data_emissao DESC
+                LIMIT $${limitParam} OFFSET $${offsetParam}
+              ) paged
+            ),
+            '[]'::json
+          ) AS data
       `,
       dataParams,
     );
-
-    const rows = (result.rows || []).map((row: any) => ({
+    const total = result.rows?.[0]?.total || 0;
+    const rows = (result.rows?.[0]?.data || []).map((row: any) => ({
       ...row,
       status: row.status_exibicao || row.status || "",
       data_emissao: formatDateOnlyBr(row.data_emissao),

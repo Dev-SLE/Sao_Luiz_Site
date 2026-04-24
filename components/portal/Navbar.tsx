@@ -11,7 +11,7 @@ import { filterPortalNavLinks, PORTAL_NAV_LINKS } from '@/lib/navigation-manifes
 import { canEditPortalContent } from '@/lib/portalEditorAccess';
 import { NotificationsCenter } from '@/components/notifications/NotificationsCenter';
 
-const WORKSPACE_HREF = '/app/operacional/visao-geral';
+const WORKSPACE_HREF = '/app/gerencial/operacao/visao-geral-operacional';
 
 function portalTabClass(active: boolean) {
   return clsx(

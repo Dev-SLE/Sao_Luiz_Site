@@ -254,7 +254,7 @@ export function buildWorkspaceNavSections(input: {
         icon: Home,
         count: hasPermission('VIEW_PENDENCIAS') ? counts.pendencias : 0,
         permission: 'VIEW_DASHBOARD',
-        href: '/app/operacional/visao-geral',
+        href: '/app/operacional/pendencias',
         matchPrefix: '/app/operacional',
       },
       opChildren,

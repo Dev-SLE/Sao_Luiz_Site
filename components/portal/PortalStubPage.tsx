@@ -17,7 +17,7 @@ export function PortalStubPage({ title, description }: Props) {
         <Link href="/inicio" className="rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium hover:bg-secondary">
           Voltar ao início
         </Link>
-        <Link href="/app/operacional/visao-geral" className="rounded-lg bg-sl-navy px-4 py-2 text-sm font-medium text-white hover:bg-sl-navy-light">
+        <Link href="/app/gerencial/operacao/visao-geral-operacional" className="rounded-lg bg-sl-navy px-4 py-2 text-sm font-medium text-white hover:bg-sl-navy-light">
           Área de trabalho
         </Link>
       </div>

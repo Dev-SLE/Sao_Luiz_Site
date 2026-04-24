@@ -19,7 +19,7 @@ export function getFirstOperacionalEntryPath(perms: string[]): string | null {
   if (can(perms, 'tab.operacional.dossie.view')) {
     return operacionalPath('ocorrencias');
   }
-  return operacionalPath('visao-geral');
+  return operacionalPath('pendencias');
 }
 
 function getFirstCrmEntryPath(perms: string[]): string | null {
@@ -97,7 +97,7 @@ export function getDefaultPostLoginPath(
   const perms = normalizeOperacionalPermissionsForSession(raw);
 
   if (perms.includes('*') || perms.includes('admin.*') || isAdminSuperRole(role, username)) {
-    return '/app/operacional/visao-geral';
+    return '/app/gerencial/operacao/visao-geral-operacional';
   }
 
   if (hasGerencialHub(perms)) {

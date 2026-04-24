@@ -11,7 +11,6 @@ import Reports from '@/components/Reports';
 import ChangePassword from '@/components/ChangePassword';
 import { WorkspaceNoAccess } from '@/components/workspace/WorkspaceNoAccess';
 import { canAccessOperacionalUtilityPath, isOperacionalUtilityPath } from './routes';
-import { VisaoGeralPage } from './pages/VisaoGeral';
 import { PendenciasPage } from './pages/Pendencias';
 import { CriticosPage } from './pages/Criticos';
 import { EmBuscaPage } from './pages/EmBusca';
@@ -46,6 +45,19 @@ function RedirectToGerencialRotasOperacionais() {
   return (
     <div className="flex min-h-[30vh] flex-col items-center justify-center gap-2 px-4 text-center text-sm text-slate-600">
       <p>O painel de rotas operacionais está no hub Gerencial → Operação.</p>
+      <p className="text-slate-500">A redirecionar…</p>
+    </div>
+  );
+}
+
+function RedirectToGerencialVisaoGeralOperacional() {
+  const router = useRouter();
+  useEffect(() => {
+    router.replace('/app/gerencial/operacao/visao-geral-operacional');
+  }, [router]);
+  return (
+    <div className="flex min-h-[30vh] flex-col items-center justify-center gap-2 px-4 text-center text-sm text-slate-600">
+      <p>A Visão geral operacional foi movida para o hub Gerencial → Operação.</p>
       <p className="text-slate-500">A redirecionar…</p>
     </div>
   );
@@ -96,7 +108,7 @@ export function OperacionalModule({ pathname, onNoteClick, tracking }: Operacion
       case '':
       case 'visao-geral':
       case 'dashboard':
-        body = <VisaoGeralPage />;
+        body = <RedirectToGerencialVisaoGeralOperacional />;
         break;
       case 'pendencias':
         body = <PendenciasPage onNoteClick={onNoteClick} />;
@@ -124,7 +136,7 @@ export function OperacionalModule({ pathname, onNoteClick, tracking }: Operacion
         body = <RedirectToGerencialRotasOperacionais />;
         break;
       default:
-        body = <VisaoGeralPage />;
+        body = <RedirectToGerencialVisaoGeralOperacional />;
     }
   }
 

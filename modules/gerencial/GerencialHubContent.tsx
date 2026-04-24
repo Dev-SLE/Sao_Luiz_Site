@@ -24,6 +24,7 @@ import { BiPlanejamentoAgenciasDashboard } from '@/modules/gerencial/BiPlanejame
 import { BiTabelasCombinadasDashboard } from '@/modules/gerencial/BiTabelasCombinadasDashboard';
 import { BiFluxoMonitorDashboard } from '@/modules/gerencial/BiFluxoMonitorDashboard';
 import { BiTaxasGerencialDashboard } from '@/modules/gerencial/BiTaxasGerencialDashboard';
+import { BiOperacaoVisaoGeralDashboard } from '@/modules/gerencial/BiOperacaoVisaoGeralDashboard';
 import { DesempenhoAgenciasPage } from '@/modules/operacional/pages/DesempenhoAgencias';
 import { RotasOperacionaisPage } from '@/modules/operacional/pages/RotasOperacionais';
 import { BiComercial360CockpitDashboard } from '@/modules/gerencial/comercial360/BiComercial360CockpitDashboard';
@@ -82,6 +83,7 @@ function commercialTabKeyFromPanelSlug(slug: string): keyof typeof GERENCIAL_BI_
 }
 
 function operacaoTabKeyFromPanelSlug(slug: string): keyof typeof GERENCIAL_BI_TAB | null {
+  if (slug === 'visao-geral-operacional') return 'setorOperacao';
   if (slug === 'monitor-fluxo') return 'fluxoMonitor';
   if (slug === 'gestao-taxas') return 'taxasGerencial';
   if (slug === 'desempenho-agencias') return 'setorOperacao';
@@ -300,6 +302,8 @@ export function GerencialHubContent({ pathname }: { pathname: string }) {
             title="Financeiro"
             description="Escolha o painel na barra acima."
           />
+        ) : parsed.sector === 'operacao' && parsed.panel === 'visao-geral-operacional' ? (
+          <BiOperacaoVisaoGeralDashboard />
         ) : parsed.sector === 'operacao' && parsed.panel === 'monitor-fluxo' ? (
           <BiFluxoMonitorDashboard />
         ) : parsed.sector === 'operacao' && parsed.panel === 'gestao-taxas' ? (

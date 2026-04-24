@@ -117,7 +117,7 @@ export function pathToPage(pathname: string): Page {
 export function pageToWorkspacePath(page: Page): string {
   switch (page) {
     case Page.DASHBOARD:
-      return '/app/operacional/visao-geral';
+      return '/app/gerencial/operacao/visao-geral-operacional';
     case Page.PENDENCIAS:
       return '/app/operacional/pendencias';
     case Page.CRITICOS:
@@ -187,7 +187,7 @@ export function pageToWorkspacePath(page: Page): string {
     case Page.PORTAL_GESTOR:
       return '/gestor';
     default:
-      return '/app/operacional/visao-geral';
+      return '/app/gerencial/operacao/visao-geral-operacional';
   }
 }
 

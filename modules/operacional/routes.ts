@@ -9,7 +9,6 @@ export type OperacionalTab = {
 
 /** Abas internas do módulo Operacional (URLs canónicas em `workspace-routes.ts`). */
 export const OPERACIONAL_TABS: OperacionalTab[] = [
-  { slug: 'visao-geral', label: 'Visão geral', permission: 'VIEW_DASHBOARD' },
   { slug: 'pendencias', label: 'Pendências', permission: 'VIEW_PENDENCIAS' },
   { slug: 'criticos', label: 'Críticos', permission: 'VIEW_CRITICOS' },
   { slug: 'em-busca', label: 'Em busca', permission: 'VIEW_EM_BUSCA' },

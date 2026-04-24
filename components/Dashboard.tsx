@@ -113,8 +113,28 @@ const Dashboard: React.FC = () => {
   const safeParseValue = (valStr: string | undefined | null) => {
     if (!valStr) return 0;
     try {
-      const clean = valStr.replace(/[^\d,-]/g, '').replace(',', '.');
-      return parseFloat(clean) || 0;
+      let s = String(valStr).trim();
+      if (!s) return 0;
+      s = s.replace(/[R$\s]/g, '').replace(/[^\d,.-]/g, '');
+      const hasComma = s.includes(',');
+      const hasDot = s.includes('.');
+      if (hasComma && hasDot) {
+        // Ex.: 1.234,56 (pt-BR) -> 1234.56 | 1234.56 (en-US) permanece
+        if (s.lastIndexOf(',') > s.lastIndexOf('.')) {
+          s = s.replace(/\./g, '').replace(',', '.');
+        } else {
+          s = s.replace(/,/g, '');
+        }
+      } else if (hasComma) {
+        // Só vírgula: decimal ou milhar
+        if (/,\d{1,2}$/.test(s)) s = s.replace(',', '.');
+        else s = s.replace(/,/g, '');
+      } else if (hasDot) {
+        // Só ponto: decimal ou milhar
+        if (!/\.\d{1,2}$/.test(s)) s = s.replace(/\./g, '');
+      }
+      const n = Number(s);
+      return Number.isFinite(n) ? n : 0;
     } catch {
       return 0;
     }

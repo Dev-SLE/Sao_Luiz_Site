@@ -32,6 +32,11 @@ export const GERENCIAL_FINANCEIRO_PANELS: GerencialComercialPanelDef[] = [
 
 /** Abas internas do setor Operação (BI logístico). */
 export const GERENCIAL_OPERACAO_PANELS: GerencialComercialPanelDef[] = [
+  {
+    slug: 'visao-geral-operacional',
+    label: 'Visão geral operacional',
+    permission: GERENCIAL_BI_TAB.setorOperacao,
+  },
   { slug: 'monitor-fluxo', label: 'Monitor de fluxo', permission: GERENCIAL_BI_TAB.fluxoMonitor },
   { slug: 'gestao-taxas', label: 'Gestão de taxas', permission: GERENCIAL_BI_TAB.taxasGerencial },
   {
