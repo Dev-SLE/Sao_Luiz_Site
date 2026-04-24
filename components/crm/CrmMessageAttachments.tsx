@@ -26,24 +26,39 @@ type Props = {
   messageText?: string | null;
 };
 
-function shouldHidePhantomTypeMismatchFailure(messageText: string | undefined | null, att: CrmChatAttachment) {
+/**
+ * Esconde só falhas "fantasma" (tipo WA errado no getBase64): outro anexo já OK na mesma mensagem,
+ * ou figurinha com linha image falhando enquanto o corpo já diz [Figurinha recebida].
+ * Não esconder para áudio/imagem/etc. isolados — senão some o único feedback e parece que "não chegou".
+ */
+function shouldHidePhantomTypeMismatchFailure(
+  messageText: string | undefined | null,
+  att: CrmChatAttachment,
+  all: CrmChatAttachment[]
+) {
   if (String(att.processingStatus || "") !== "FAILED") return false;
   const err = String(att.processingError || "").toLowerCase();
   if (!err.includes("not of the media type")) return false;
+
+  const hasOtherStored = all.some(
+    (x) =>
+      x !== att &&
+      String(x.processingStatus || "") === "STORED" &&
+      (Boolean(x.fileId) || Boolean(x.viewUrl))
+  );
+  if (hasOtherStored) return true;
+
   const t = String(messageText || "").trim();
-  if (/^\[figurinha recebida\]$/i.test(t)) return true;
-  if (/^\[imagem recebida\]$/i.test(t)) return true;
-  if (/^\[vídeo recebido\]$/i.test(t) || /^\[video recebido\]$/i.test(t)) return true;
-  if (/^\[áudio recebido\]$/i.test(t) || /^\[audio recebido\]$/i.test(t)) return true;
-  if (/^\[documento recebido\]$/i.test(t)) return true;
+  const mt = String(att.mediaType || "").toLowerCase();
+  if (/^\[figurinha recebida\]$/i.test(t) && mt.includes("image")) return true;
+
   return false;
 }
 
 export const CrmMessageAttachments: React.FC<Props> = ({ attachments, isMe, messageText }) => {
   const [lightbox, setLightbox] = useState<string | null>(null);
-  const visible = (Array.isArray(attachments) ? attachments : []).filter(
-    (a) => !shouldHidePhantomTypeMismatchFailure(messageText, a)
-  );
+  const list = Array.isArray(attachments) ? attachments : [];
+  const visible = list.filter((a) => !shouldHidePhantomTypeMismatchFailure(messageText, a, list));
   if (!visible.length) return null;
 
   const subtle = isMe ? 'text-white/75' : 'text-slate-500';

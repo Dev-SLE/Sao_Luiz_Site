@@ -273,22 +273,45 @@ function collectEvolutionMediaSlots(inner: any, fallbackMsgId: string): Evolutio
     h: numOrNull(b.height),
     key: String(b.fileEncSha256 || b.fileSha256 || `ptv_${fallbackMsgId}_${idx++}`),
   }));
-  push("audio", "audioMessage", m.audioMessage, (b) => ({
-    mime: b.mimetype ? String(b.mimetype) : null,
-    fileName: b.ptt ? "voice.opus" : "audio.bin",
-    seconds: numOrNull(b.seconds),
-    w: null,
-    h: null,
-    key: String(b.fileEncSha256 || b.fileSha256 || `aud_${fallbackMsgId}_${idx++}`),
-  }));
-  push("audio", "pttMessage", m.pttMessage, (b) => ({
-    mime: b.mimetype ? String(b.mimetype) : null,
-    fileName: "voice.ptt",
-    seconds: numOrNull(b.seconds),
-    w: null,
-    h: null,
-    key: String(b.fileEncSha256 || b.fileSha256 || `ptt_${fallbackMsgId}_${idx++}`),
-  }));
+  {
+    const pttBlock =
+      m.pttMessage && typeof m.pttMessage === "object" && Object.keys(m.pttMessage).length
+        ? m.pttMessage
+        : null;
+    const audioBlock =
+      m.audioMessage && typeof m.audioMessage === "object" && Object.keys(m.audioMessage).length
+        ? m.audioMessage
+        : null;
+    /** Evitar dois slots (áudio + PTT) para a mesma nota de voz — o segundo costuma dar 400 no getBase64. */
+    if (pttBlock && audioBlock) {
+      push("audio", "pttMessage", pttBlock, (b) => ({
+        mime: b.mimetype ? String(b.mimetype) : null,
+        fileName: "voice.ptt",
+        seconds: numOrNull(b.seconds),
+        w: null,
+        h: null,
+        key: String(b.fileEncSha256 || b.fileSha256 || `ptt_${fallbackMsgId}_${idx++}`),
+      }));
+    } else if (pttBlock) {
+      push("audio", "pttMessage", pttBlock, (b) => ({
+        mime: b.mimetype ? String(b.mimetype) : null,
+        fileName: "voice.ptt",
+        seconds: numOrNull(b.seconds),
+        w: null,
+        h: null,
+        key: String(b.fileEncSha256 || b.fileSha256 || `ptt_${fallbackMsgId}_${idx++}`),
+      }));
+    } else if (audioBlock) {
+      push("audio", "audioMessage", audioBlock, (b) => ({
+        mime: b.mimetype ? String(b.mimetype) : null,
+        fileName: b.ptt ? "voice.opus" : "audio.bin",
+        seconds: numOrNull(b.seconds),
+        w: null,
+        h: null,
+        key: String(b.fileEncSha256 || b.fileSha256 || `aud_${fallbackMsgId}_${idx++}`),
+      }));
+    }
+  }
   push("document", "documentMessage", m.documentMessage, (b) => ({
     mime: b.mimetype ? String(b.mimetype) : null,
     fileName: b.fileName ? String(b.fileName) : null,
@@ -326,6 +349,17 @@ function effectiveEvolutionProtoKeyForGetBase64(args: {
   const pk = String(args.slot.protoKey || "");
   if (root.includes("lottie") && pk === "imageMessage") return "lottieStickerMessage";
   if (root.includes("sticker") && pk === "imageMessage") return "stickerMessage";
+  // Nota de voz: messageType costuma ser ptt / pttMessage; envelope como audioMessage falha no getBase64.
+  if (
+    (root.includes("ptt") || root.includes("voice") || root.includes("pttvoice")) &&
+    pk === "audioMessage"
+  ) {
+    return "pttMessage";
+  }
+  // Áudio comum (ficheiro) por vezes vem só com chave pttMessage em payloads antigos.
+  if (root.includes("audiomessage") && !root.includes("ptt") && pk === "pttMessage") {
+    return "audioMessage";
+  }
   return pk;
 }
 
