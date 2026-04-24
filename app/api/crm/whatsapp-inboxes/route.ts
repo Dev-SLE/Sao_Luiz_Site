@@ -334,7 +334,16 @@ export async function POST(req: Request) {
         apiKey: evolutionApiKey,
         instance: evolutionInstanceName,
       });
-      return NextResponse.json({ success: true, id, evolutionInstanceName, settingsSync, webhookSync });
+      return NextResponse.json({
+        success: true,
+        id,
+        evolutionInstanceName,
+        settingsSync,
+        webhookSync,
+        webhookUrlMasked: webhookSync.webhookUrlMasked,
+        webhookTokenSource: webhookSync.webhookTokenSource,
+        eventsApplied: webhookSync.eventsApplied,
+      });
     }
 
     if (!evolutionInstanceName) {
@@ -416,6 +425,9 @@ export async function POST(req: Request) {
       simpleConnect,
       settingsSync,
       webhookSync,
+      webhookUrlMasked: webhookSync.webhookUrlMasked,
+      webhookTokenSource: webhookSync.webhookTokenSource,
+      eventsApplied: webhookSync.eventsApplied,
     });
   } catch (e: any) {
     console.error("whatsapp-inboxes POST:", e);

@@ -8,6 +8,7 @@ import {
   evolutionIntegrationLog,
   normalizeEvolutionServerUrl,
 } from "./evolutionUrl";
+import { crmEvolutionMediaDebugEnabled } from "./crmEvolutionDebug";
 
 export function evolutionNumberDigits(remoteJid: string | null | undefined): string | null {
   if (!remoteJid) return null;
@@ -427,6 +428,14 @@ export async function evolutionGetBase64FromMediaMessage(args: {
         if (attempt < 2) await new Promise((r) => setTimeout(r, 350 * attempt));
       }
     }
+  }
+
+  if (crmEvolutionMediaDebugEnabled()) {
+    console.warn("[crm-media] evolution_get_base64_exhausted", {
+      instanceName: args.instanceName,
+      strategiesTried: strategies.map((s) => s.name),
+      lastErr: String(lastErr || "").slice(0, 500),
+    });
   }
 
   return { buffer: null, mimeType: null, error: lastErr };

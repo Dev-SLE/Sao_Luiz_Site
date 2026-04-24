@@ -4,6 +4,7 @@ import {
   evolutionGetBase64FromMediaMessage,
   evolutionWebhookRootMessageType,
 } from "@/lib/server/evolutionClient";
+import { crmEvolutionMediaDebugEnabled } from "@/lib/server/crmEvolutionDebug";
 import {
   getCrmMediaSettings,
   isMimeAllowedForMediaType,
@@ -643,11 +644,22 @@ export async function ingestEvolutionInboundMedia(args: {
 }): Promise<void> {
   const settings = await getCrmMediaSettings(args.pool);
   const inner = args.evolutionItem?.message || args.evolutionItem?.msg || args.evolutionItem;
-  let slots = collectEvolutionMediaSlots(inner, String(args.providerMessageId || args.messageId));
-  if (!slots.length) {
-    slots = inferKeyOnlyEvolutionMediaSlots(args.evolutionItem, String(args.providerMessageId || args.messageId));
-  }
+  const fid = String(args.providerMessageId || args.messageId);
+  const realSlots = collectEvolutionMediaSlots(inner, fid);
+  let slots = realSlots.length ? realSlots : inferKeyOnlyEvolutionMediaSlots(args.evolutionItem, fid);
   if (!slots.length) return;
+  const keyOnlySlots = realSlots.length === 0 && slots.length > 0;
+
+  if (crmEvolutionMediaDebugEnabled()) {
+    console.info("[crm-media] evolution_detected", {
+      messageId: args.messageId,
+      providerMessageId: args.providerMessageId,
+      instanceName: args.instanceName,
+      slotCount: slots.length,
+      realSlotCount: realSlots.length,
+      keyOnlySlots,
+    });
+  }
 
   const key = args.evolutionItem?.key || {};
   const remoteJid = String(key.remoteJid || (args.evolutionItem as any)?.remoteJid || "").trim();
@@ -687,6 +699,16 @@ export async function ingestEvolutionInboundMedia(args: {
       metadataJson: { ingest: "evolution_slot", instance: args.instanceName },
     });
 
+    if (crmEvolutionMediaDebugEnabled()) {
+      console.info("[crm-media] evolution_db_inserted", {
+        messageId: args.messageId,
+        rowId,
+        ordinal: ordinal - 1,
+        protoKey: effProto,
+        mediaType: effMediaType,
+      });
+    }
+
     try {
       if (!remoteJid) {
         await finalizeMediaFailed(args.pool, rowId, "reachability:evolution_sem_remote_jid");
@@ -702,6 +724,17 @@ export async function ingestEvolutionInboundMedia(args: {
         message: { [effProto]: slot.mediaBlock },
       };
 
+      if (crmEvolutionMediaDebugEnabled()) {
+        console.info("[crm-media] evolution_download_start", {
+          messageId: args.messageId,
+          rowId,
+          effProto,
+          slotProto: slot.protoKey,
+          remoteJid: remoteJid.slice(0, 32),
+          instanceName: args.instanceName,
+        });
+      }
+
       const b64 = await evolutionGetBase64FromMediaMessage({
         serverUrl: args.serverUrl,
         apiKey: args.apiKey,
@@ -709,6 +742,21 @@ export async function ingestEvolutionInboundMedia(args: {
         message: messageForApi,
       });
       if (!b64?.buffer?.length) {
+        const errShort = String(b64?.error || "evolution_sem_base64").slice(0, 400);
+        console.warn("[crm-media] evolution_download_failed", {
+          messageId: args.messageId,
+          rowId,
+          err: errShort,
+          effProto,
+        });
+        if (crmEvolutionMediaDebugEnabled()) {
+          console.warn("[crm-media] evolution_download_failed_detail", {
+            messageId: args.messageId,
+            rowId,
+            keyOnlySlots,
+            remoteJid: remoteJid.slice(0, 40),
+          });
+        }
         await finalizeMediaFailed(args.pool, rowId, `reachability:${b64?.error || "evolution_sem_base64"}`);
         continue;
       }

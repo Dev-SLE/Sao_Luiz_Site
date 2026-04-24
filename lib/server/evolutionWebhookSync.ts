@@ -1,14 +1,21 @@
 import { evolutionExternalFetch, evolutionIntegrationLog, normalizeEvolutionServerUrl } from "./evolutionUrl";
 import { getSitePublicBaseUrl } from "../sitePublicUrl";
+import { maskEvolutionWebhookUrlForLog } from "./crmEvolutionDebug";
 
 export type EvolutionWebhookSyncResult = {
   ok: boolean;
   error?: string;
   httpStatus?: number;
   webhookUrl?: string;
+  /** URL com `?token=` mascarado — seguro para UI/logs. */
+  webhookUrlMasked?: string;
+  /** Origem do segredo na query (sempre env do deploy). */
+  webhookTokenSource?: string;
   endpoint?: string;
   evolution?: unknown;
   lastBodySnippet?: string;
+  /** Eventos enviados no `webhook/set` que obteve sucesso. */
+  eventsApplied?: string[];
 };
 
 function sleep(ms: number) {
@@ -150,12 +157,38 @@ async function syncEvolutionInstanceWebhookAttempts(args: {
             lastEvolution = { raw: text };
           }
           if (r.ok) {
+            const webhookUrlMasked = maskEvolutionWebhookUrlForLog(webhookUrl);
+            try {
+              const origin = new URL(webhookUrl).origin;
+              console.info("[evolution-webhook-sync] applied", {
+                instance,
+                endpoint: `${method} ${url}`,
+                httpStatus: r.status,
+                publicBase: origin,
+                webhookUrlMasked,
+                webhookBase64: true,
+                webhookByEvents: false,
+                events,
+                evolutionResponseSnippet: typeof lastBody === "string" ? lastBody.slice(0, 320) : "",
+              });
+            } catch {
+              console.info("[evolution-webhook-sync] applied", {
+                instance,
+                endpoint: `${method} ${url}`,
+                httpStatus: r.status,
+                webhookUrlMasked,
+                events,
+              });
+            }
             return {
               ok: true,
               httpStatus: r.status,
               webhookUrl,
+              webhookUrlMasked,
+              webhookTokenSource: "env:EVOLUTION_WEBHOOK_TOKEN",
               endpoint: `${method} ${url}`,
               evolution: lastEvolution,
+              eventsApplied: [...events],
             };
           }
         } catch (e: any) {

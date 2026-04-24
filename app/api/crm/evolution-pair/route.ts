@@ -93,6 +93,9 @@ export async function POST(req: Request) {
       connectionHint: summary,
       settingsSync,
       syncWebhook: webhookSync,
+      webhookUrlMasked: webhookSync.webhookUrlMasked,
+      webhookTokenSource: webhookSync.webhookTokenSource,
+      eventsApplied: webhookSync.eventsApplied,
     });
   } catch (e: any) {
     console.error("crm/evolution-pair POST:", e);

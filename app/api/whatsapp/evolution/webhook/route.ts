@@ -22,6 +22,7 @@ import {
   applyCrmMessageDeleteByWaMessageId,
   applyCrmMessageEditByWaMessageId,
 } from "../../../../../lib/server/crmMessageWaMirror";
+import { crmEvolutionMediaDebugEnabled, crmEvolutionUpsertDebugEnabled } from "../../../../../lib/server/crmEvolutionDebug";
 
 export const runtime = "nodejs";
 
@@ -496,17 +497,87 @@ function utf8BufEq(a: string, b: string): boolean {
   return timingSafeEqual(ba, bb);
 }
 
+/** Segredos aceites: `EVOLUTION_WEBHOOK_TOKEN` + opcionais em `EVOLUTION_WEBHOOK_ACCEPT_APIKEY` (vírgula). */
+function loadEvolutionWebhookAuthSecrets(): string[] {
+  const out: string[] = [];
+  const main = String(process.env.EVOLUTION_WEBHOOK_TOKEN ?? "").trim();
+  if (main) out.push(main);
+  const extra = String(process.env.EVOLUTION_WEBHOOK_ACCEPT_APIKEY ?? "").trim();
+  if (extra) {
+    for (const part of extra.split(",")) {
+      const p = part.trim();
+      if (p && !out.includes(p)) out.push(p);
+    }
+  }
+  return out;
+}
+
+function strLen(v: unknown): number {
+  return typeof v === "string" ? v.length : 0;
+}
+
+function mediaBlockProbe(block: unknown): Record<string, unknown> {
+  if (!block || typeof block !== "object") {
+    return { present: false };
+  }
+  const b = block as Record<string, unknown>;
+  const b64 = b.base64;
+  const mk = b.mediaKey;
+  const url = b.url;
+  return {
+    present: true,
+    hasBase64: typeof b64 === "string" && b64.length > 0,
+    base64Len: strLen(b64),
+    hasMediaKey: mk != null,
+    mediaKeyLen: typeof mk === "string" ? mk.length : typeof mk === "object" ? Object.keys(mk as object).length : 0,
+    hasUrl: typeof url === "string" && url.length > 0,
+    urlLen: strLen(url),
+    mimetype: b.mimetype ? String(b.mimetype).slice(0, 80) : null,
+    captionLen: strLen(b.caption),
+  };
+}
+
+function buildUpsertMediaProbePayload(args: {
+  instance: string;
+  msgId: string;
+  isFromMe: boolean;
+  messageType: string;
+  messageKeys: string[];
+  unwrappedMsg: unknown;
+  inboundMediaSlotCount: number;
+  hasMedia: boolean;
+  textPreview: string;
+}): Record<string, unknown> {
+  const uw = args.unwrappedMsg && typeof args.unwrappedMsg === "object" ? (args.unwrappedMsg as Record<string, unknown>) : {};
+  return {
+    instance: args.instance,
+    keyId: args.msgId ? args.msgId.slice(0, 40) : null,
+    isFromMe: args.isFromMe,
+    messageType: args.messageType || null,
+    messageKeys: args.messageKeys.slice(0, 30),
+    inboundMediaSlotCount: args.inboundMediaSlotCount,
+    hasMedia: args.hasMedia,
+    textPreview: args.textPreview,
+    imageMessage: mediaBlockProbe(uw.imageMessage),
+    videoMessage: mediaBlockProbe(uw.videoMessage),
+    audioMessage: mediaBlockProbe(uw.audioMessage),
+    documentMessage: mediaBlockProbe(uw.documentMessage),
+    pttMessage: mediaBlockProbe(uw.pttMessage),
+    ptvMessage: mediaBlockProbe(uw.ptvMessage),
+  };
+}
+
 /**
- * Valida POST do Evolution. Aceita o mesmo segredo em:
+ * Valida POST do Evolution. Aceita qualquer segredo em `loadEvolutionWebhookAuthSecrets()` vindo de:
  * - `?token=` na URL (trim)
  * - header `x-pendencias-evolution-token`
  * - `Authorization: Bearer …`
- * - campo JSON `apikey` (a Evolution envia em todo webhook; alinha com a URL quando o token da query vem errado em pedidos paralelos)
+ * - campo JSON `apikey` (chave global da Evolution costuma vir aqui; alinhar com `EVOLUTION_WEBHOOK_ACCEPT_APIKEY` se for diferente do token da URL)
  */
 function verifyEvolutionWebhook(req: Request, body: Record<string, unknown>): boolean {
-  const secret = String(process.env.EVOLUTION_WEBHOOK_TOKEN ?? "").trim();
+  const secrets = loadEvolutionWebhookAuthSecrets();
   const isProd = String(process.env.NODE_ENV || "").toLowerCase() === "production";
-  if (!secret) return !isProd;
+  if (!secrets.length) return !isProd;
 
   const candidates: string[] = [];
   try {
@@ -527,7 +598,10 @@ function verifyEvolutionWebhook(req: Request, body: Record<string, unknown>): bo
   if (typeof bodyApi === "string" && bodyApi.trim()) candidates.push(bodyApi.trim());
 
   for (const c of candidates) {
-    if (c && utf8BufEq(c, secret)) return true;
+    if (!c) continue;
+    for (const s of secrets) {
+      if (utf8BufEq(c, s)) return true;
+    }
   }
   return false;
 }
@@ -977,25 +1051,32 @@ export async function POST(req: Request) {
 
     if (!verifyEvolutionWebhook(req, body)) {
       let hasQueryToken = false;
-      let queryTokenMatches = false;
-      let bodyApikeyMatches = false;
-      const secret = String(process.env.EVOLUTION_WEBHOOK_TOKEN ?? "").trim();
+      let queryTokenMatchesAny = false;
+      let bodyApikeyMatchesAny = false;
+      const secrets = loadEvolutionWebhookAuthSecrets();
       try {
         const u = new URL(req.url);
         const q = u.searchParams.get("token");
         hasQueryToken = q != null && String(q).length > 0;
-        if (hasQueryToken && secret) queryTokenMatches = utf8BufEq(String(q).trim(), secret);
+        const qt = hasQueryToken ? String(q).trim() : "";
+        if (qt && secrets.length) {
+          queryTokenMatchesAny = secrets.some((s) => utf8BufEq(qt, s));
+        }
       } catch {
         /* ignore */
       }
       const ak = (body as any)?.apikey;
-      if (typeof ak === "string" && ak.trim() && secret) bodyApikeyMatches = utf8BufEq(ak.trim(), secret);
+      const akTrim = typeof ak === "string" ? ak.trim() : "";
+      if (akTrim && secrets.length) {
+        bodyApikeyMatchesAny = secrets.some((s) => utf8BufEq(akTrim, s));
+      }
       console.warn("[evolution-webhook] unauthorized", {
         path: reqUrl,
         hasQueryToken,
-        queryTokenMatches,
-        bodyHasApikey: typeof (body as any)?.apikey === "string" && String((body as any).apikey).length > 0,
-        bodyApikeyMatches,
+        queryTokenMatchesAny,
+        bodyHasApikey: Boolean(akTrim),
+        bodyApikeyMatchesAny,
+        secretsConfigured: secrets.length,
       });
       return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
     }
@@ -1610,6 +1691,23 @@ export async function POST(req: Request) {
       /** Inclui rótulo [Imagem recebida] etc. quando o proto vem vazio mas `messageType` já indica mídia (ingest usa key-only na Evolution). */
       const hasMedia =
         inboundMediaSlotCount > 0 || Boolean(legacyNonTextKeys) || textLooksLikeInboundMedia;
+      if (crmEvolutionUpsertDebugEnabled()) {
+        const mk = Object.keys((msgObj && typeof msgObj === "object" ? msgObj : {}) as object).slice(0, 30);
+        console.info(
+          "[evolution-webhook] upsert_media_probe",
+          buildUpsertMediaProbePayload({
+            instance,
+            msgId,
+            isFromMe,
+            messageType: evolutionWebhookRootMessageType(item),
+            messageKeys: mk,
+            unwrappedMsg,
+            inboundMediaSlotCount,
+            hasMedia,
+            textPreview: String(text || "").slice(0, 120),
+          })
+        );
+      }
       if (msgId) {
         const dup = await pool.query(
           `
@@ -1658,7 +1756,16 @@ export async function POST(req: Request) {
                 apiKey: String(inboxRow.evolution_api_key),
                 instanceName: instance,
                 providerMessageId: msgId || null,
-              }).catch((e) => console.error("[crm-media] evolution_async_dup", e));
+              }).catch((e) => {
+                if (crmEvolutionMediaDebugEnabled()) {
+                  console.error("[crm-media] evolution_async_dup", {
+                    err: String((e as any)?.message || e),
+                    stack: String((e as any)?.stack || "").slice(0, 900),
+                  });
+                } else {
+                  console.error("[crm-media] evolution_async_dup", e);
+                }
+              });
             }
             console.info("[evolution-webhook] duplicate_message_enriched", {
               instance,
@@ -1714,7 +1821,16 @@ export async function POST(req: Request) {
           apiKey: String(inboxRow.evolution_api_key),
           instanceName: instance,
           providerMessageId: msgId || null,
-        }).catch((e) => console.error("[crm-media] evolution_async", e));
+        }).catch((e) => {
+          if (crmEvolutionMediaDebugEnabled()) {
+            console.error("[crm-media] evolution_async", {
+              err: String((e as any)?.message || e),
+              stack: String((e as any)?.stack || "").slice(0, 900),
+            });
+          } else {
+            console.error("[crm-media] evolution_async", e);
+          }
+        });
       }
 
       await pool.query(`UPDATE pendencias.crm_conversations SET last_message_at = NOW() WHERE id = $1`, [conversationId]);
