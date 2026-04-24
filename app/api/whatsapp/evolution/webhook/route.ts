@@ -11,6 +11,10 @@ import {
 import { evolutionQrCaptureFromWebhook } from "../../../../../lib/server/evolutionLastQr";
 import { ingestEvolutionInboundMedia } from "../../../../../lib/server/crmMediaIngest";
 import { crmPhoneSuffixForTitle, crmStripTrailingTitlePhone } from "../../../../../lib/server/crmPhoneDisplay";
+import {
+  applyCrmMessageDeleteByWaMessageId,
+  applyCrmMessageEditByWaMessageId,
+} from "../../../../../lib/server/crmMessageWaMirror";
 
 export const runtime = "nodejs";
 
@@ -643,6 +647,13 @@ function looksLikeMessageEditEvent(eventNorm: string): boolean {
   return false;
 }
 
+function looksLikeMessagesDeleteEvent(eventNorm: string): boolean {
+  if (!eventNorm) return false;
+  if (eventNorm.includes("messages.delete")) return true;
+  if (eventNorm.includes("message.delete")) return true;
+  return false;
+}
+
 function looksLikeMessagesUpdateEvent(eventNorm: string): boolean {
   if (!eventNorm) return false;
   return eventNorm.includes("messages.update");
@@ -827,24 +838,45 @@ function extractEditedInnerMessage(item: any): any {
   );
 }
 
-async function applyWhatsAppMessageEdit(pool: any, waMessageId: string, newText: string) {
-  if (!waMessageId || !newText) return 0;
-  const patch = {
-    wa_edited: true,
-    edited_at: new Date().toISOString(),
+function collectMessageDeleteItems(data: any): { id: string }[] {
+  const out: { id: string }[] = [];
+  if (!data || typeof data !== "object") return out;
+  if (data.all === true && data.jid) {
+    console.warn("[evolution-webhook] messages.delete(all) ignorado (não limpamos o CRM inteiro)", {
+      jid: String(data.jid).slice(0, 48),
+    });
+    return out;
+  }
+  const pushKey = (k: any) => {
+    const id = String(k?.id || k?.key?.id || "").trim();
+    if (id) out.push({ id });
   };
-  const res = await pool.query(
-    `
-      UPDATE pendencias.crm_messages
-      SET body = $1,
-          metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb
-      WHERE metadata->>'message_id' = $3
-         OR metadata#>>'{outbound_whatsapp,message_id}' = $3
-      RETURNING id
-    `,
-    [newText, JSON.stringify(patch), waMessageId]
-  );
-  return res.rows?.length || 0;
+  if (Array.isArray(data.keys)) {
+    for (const k of data.keys) pushKey(k?.key || k);
+    return out;
+  }
+  if (Array.isArray(data)) {
+    for (const k of data) pushKey(k?.key || k);
+    return out;
+  }
+  if (data.key) {
+    pushKey(data.key);
+    return out;
+  }
+  const msgs = (data as any).messages;
+  if (Array.isArray(msgs)) {
+    for (const m of msgs) pushKey(m?.key || m);
+  }
+  return out;
+}
+
+async function processWebhookMessageDeletes(pool: any, body: Record<string, unknown>) {
+  const items = collectMessageDeleteItems(body?.data);
+  let applied = 0;
+  for (const { id } of items) {
+    applied += await applyCrmMessageDeleteByWaMessageId(pool, id);
+  }
+  return applied;
 }
 
 async function processWebhookMessageEdits(pool: any, body: Record<string, unknown>) {
@@ -857,7 +889,7 @@ async function processWebhookMessageEdits(pool: any, body: Record<string, unknow
     const inner = extractEditedInnerMessage(item);
     const newText = extractEvolutionMessageText(inner);
     if (!newText || !String(newText).trim()) continue;
-    applied += await applyWhatsAppMessageEdit(pool, waMessageId, newText);
+    applied += await applyCrmMessageEditByWaMessageId(pool, waMessageId, newText);
   }
   return applied;
 }
@@ -973,6 +1005,30 @@ export async function POST(req: Request) {
       }
       const applied = await processWebhookMessageEdits(pool, body);
       return NextResponse.json({ ok: true, message_edits_applied: applied });
+    }
+
+    if (looksLikeMessagesDeleteEvent(eventNorm)) {
+      await ensureCrmSchemaTables();
+      const pool = getPool();
+      if (!instance) {
+        return NextResponse.json({ ok: false, error: "instance ausente" }, { status: 400 });
+      }
+      const inboxDelRes = await pool.query(
+        `
+          SELECT id
+          FROM pendencias.crm_whatsapp_inboxes
+          WHERE is_active = true
+            AND provider = 'EVOLUTION'
+            AND lower(btrim(evolution_instance_name)) = lower(btrim($1))
+          LIMIT 1
+        `,
+        [instance]
+      );
+      if (!inboxDelRes.rows?.[0]?.id) {
+        return NextResponse.json({ ok: true, skipped: "unknown_instance_for_delete" });
+      }
+      const appliedDel = await processWebhookMessageDeletes(pool, body);
+      return NextResponse.json({ ok: true, message_deletes_applied: appliedDel });
     }
 
     /** Updates de status/ack (MESSAGES_UPDATE): tira mensagens de "Enviando" no CRM. */

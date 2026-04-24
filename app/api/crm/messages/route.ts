@@ -11,7 +11,11 @@ import { can, getSessionContext } from "../../../../lib/server/authorization";
 import { sessionCanAccessLead } from "../../../../lib/server/crmAccess";
 import { getFileById } from "../../../../modules/storage/fileService";
 import { getItemContentResponse } from "../../../../lib/server/sharepointGraph";
-import { getCrmMediaSettings, inlineVideoAllowedFromSettings } from "../../../../lib/server/crmMediaSettings";
+import {
+  getCrmMediaSettings,
+  inlineVideoAllowedFromSettings,
+  mimeBaseType,
+} from "../../../../lib/server/crmMediaSettings";
 import { maybeTranscodeInboundAudio } from "../../../../lib/server/crmMediaTranscode";
 import { recordCrmOutboundMediaFromStoredFiles } from "../../../../lib/server/crmMediaIngest";
 import {
@@ -21,6 +25,20 @@ import {
 } from "../../../../lib/server/crmMetaOutboundMedia";
 
 export const runtime = "nodejs";
+
+/** MIMEs de áudio aceites pelo upload Cloud API da Meta (não inclui webm/wav). */
+function isMetaCloudApiAudioMime(mime: string): boolean {
+  const b = mimeBaseType(mime);
+  return (
+    b === "audio/aac" ||
+    b === "audio/mp4" ||
+    b === "audio/mpeg" ||
+    b === "audio/mp3" ||
+    b === "audio/amr" ||
+    b === "audio/ogg" ||
+    b === "audio/opus"
+  );
+}
 
 function mapSenderToDb(senderType: string) {
   const s = String(senderType || "").toUpperCase();
@@ -770,27 +788,52 @@ export async function POST(req: Request) {
         let finalResp: any = null;
         let finalOk = true;
         if (resolvedFiles.length > 0) {
+          const metaMediaSettings = await getCrmMediaSettings(pool);
           for (let i = 0; i < resolvedFiles.length; i++) {
             const f = resolvedFiles[i];
+            let sendBuf = f.buffer;
+            let sendMime = f.mime;
+            let sendName = f.name;
+            let forceDocumentAudio = false;
+            if (inferMetaOutboundKind(f.mime) === "audio" && !isMetaCloudApiAudioMime(sendMime)) {
+              const tr = await maybeTranscodeInboundAudio({
+                buffer: sendBuf,
+                mimeType: sendMime,
+                baseFileName: sendName || "audio.webm",
+                settings: { ...metaMediaSettings, forceTranscodeAudio: true },
+              });
+              if (tr.ok) {
+                sendBuf = Buffer.from(tr.buffer);
+                sendMime = tr.mimeType;
+                sendName = tr.fileName;
+              } else {
+                forceDocumentAudio = true;
+                sendMime = "application/octet-stream";
+                const base = (sendName || "audio").replace(/\.[^.]+$/, "") || "audio";
+                const ext = f.name && f.name.includes(".") ? f.name.slice(f.name.lastIndexOf(".")) : ".webm";
+                sendName = `${base}${ext}`;
+              }
+            }
             const up = await metaUploadMediaBuffer({
-              buffer: f.buffer,
-              mimeType: f.mime,
-              fileName: f.name,
+              buffer: sendBuf,
+              mimeType: sendMime,
+              fileName: sendName,
             });
             if ("error" in up) {
               finalOk = false;
               outboundWhatsApp.error = up.error;
               break;
             }
-            const kind = inferMetaOutboundKind(f.mime);
+            const kind = forceDocumentAudio ? "document" : inferMetaOutboundKind(sendMime);
             const cap = i === 0 ? (signedText || text || undefined)?.slice(0, 1020) : undefined;
             const send = await metaSendMessageWithUploadedMedia({
               toE164,
               mediaId: up.id,
               kind,
               caption: kind === "audio" ? undefined : cap,
-              documentFilename: kind === "document" ? f.name : undefined,
+              documentFilename: kind === "document" ? sendName : undefined,
               quotedMessageId: i === 0 ? replyToWhatsappMessageId : null,
+              whatsappAudioVoice: kind === "audio",
             });
             finalResp = send.response || finalResp;
             finalOk = finalOk && send.ok;

@@ -1,5 +1,13 @@
 const META_GRAPH = "https://graph.facebook.com/v23.0";
 
+function metaOutboundLog(event: string, fields: Record<string, unknown>) {
+  try {
+    console.log(JSON.stringify({ ts: new Date().toISOString(), scope: "meta_outbound", event, ...fields }));
+  } catch {
+    console.log("[meta_outbound]", event, fields);
+  }
+}
+
 export type MetaOutboundMediaKind = "image" | "document" | "audio" | "video";
 
 export async function metaUploadMediaBuffer(args: {
@@ -29,13 +37,22 @@ export async function metaUploadMediaBuffer(args: {
     });
     const json = (await resp.json().catch(() => ({}))) as any;
     if (!resp.ok) {
-      return { error: String(json?.error?.message || `HTTP ${resp.status}`) };
+      const err = String(json?.error?.message || `HTTP ${resp.status}`);
+      metaOutboundLog("upload_media_failed", {
+        httpStatus: resp.status,
+        mimeType: String(args.mimeType || "").slice(0, 80),
+        fileName: String(args.fileName || "").slice(0, 120),
+        error: err.slice(0, 400),
+      });
+      return { error: err };
     }
     const id = String(json?.id || "").trim();
     if (!id) return { error: "Meta não retornou id de mídia" };
     return { id };
   } catch (e: any) {
-    return { error: e?.message || String(e) };
+    const em = e?.message || String(e);
+    metaOutboundLog("upload_media_failed", { httpStatus: 0, error: em.slice(0, 400) });
+    return { error: em };
   }
 }
 
@@ -46,6 +63,8 @@ export async function metaSendMessageWithUploadedMedia(args: {
   caption?: string | null;
   documentFilename?: string | null;
   quotedMessageId?: string | null;
+  /** Só `audio`: mensagem de voz (PTT) no WhatsApp. Predefinição true para gravações do CRM. */
+  whatsappAudioVoice?: boolean;
 }): Promise<{ ok: boolean; error: string | null; response: any }> {
   const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
   const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
@@ -84,11 +103,19 @@ export async function metaSendMessageWithUploadedMedia(args: {
     });
     const json = await resp.json().catch(() => ({}));
     if (!resp.ok) {
-      return { ok: false, error: String((json as any)?.error?.message || `HTTP ${resp.status}`), response: json };
+      const err = String((json as any)?.error?.message || `HTTP ${resp.status}`);
+      metaOutboundLog("send_message_failed", {
+        httpStatus: resp.status,
+        kind: args.kind,
+        error: err.slice(0, 400),
+      });
+      return { ok: false, error: err, response: json };
     }
     return { ok: true, error: null, response: json };
   } catch (e: any) {
-    return { ok: false, error: e?.message || String(e), response: null };
+    const em = e?.message || String(e);
+    metaOutboundLog("send_message_failed", { httpStatus: 0, kind: args.kind, error: em.slice(0, 400) });
+    return { ok: false, error: em, response: null };
   }
 }
 

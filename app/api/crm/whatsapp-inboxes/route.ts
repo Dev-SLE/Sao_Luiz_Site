@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getPool } from "../../../../lib/server/db";
 import { ensureCrmSchemaTables } from "../../../../lib/server/ensureSchema";
 import { getEvolutionServerDefaults, slugifyInstancePart } from "../../../../lib/server/evolutionDefaults";
+import { evolutionDeleteInstance } from "../../../../lib/server/evolutionClient";
 import { evolutionExternalFetch, normalizeEvolutionServerUrl } from "../../../../lib/server/evolutionUrl";
 import { syncEvolutionInstanceWebhook } from "../../../../lib/server/evolutionWebhookSync";
 import { syncEvolutionInstanceSettingsForCrm } from "../../../../lib/server/evolutionInstanceBootstrap";
@@ -195,11 +196,46 @@ export async function POST(req: Request) {
     if (action === "DELETE") {
       const id = body?.id ? String(body.id) : null;
       if (!id) return NextResponse.json({ error: "id obrigatório" }, { status: 400 });
+      const rowRes = await pool.query(
+        `
+          SELECT provider, evolution_instance_name, evolution_server_url, evolution_api_key
+          FROM pendencias.crm_whatsapp_inboxes
+          WHERE id = $1::uuid
+          LIMIT 1
+        `,
+        [id]
+      );
+      const row = rowRes.rows?.[0];
+      /** Predefinição: apagar instância na Evolution ao desativar (remove webhook/sessão). `purgeEvolutionInstance: false` só desliga no CRM. */
+      const purgeEvolution = body?.purgeEvolutionInstance !== false;
+      let evolutionPurge: { attempted: boolean; ok: boolean; error?: string | null; httpStatus?: number } = {
+        attempted: false,
+        ok: true,
+        error: null,
+      };
+      if (
+        purgeEvolution &&
+        row &&
+        String(row.provider || "").toUpperCase() === "EVOLUTION" &&
+        String(row.evolution_instance_name || "").trim() &&
+        String(row.evolution_server_url || "").trim() &&
+        String(row.evolution_api_key || "").trim()
+      ) {
+        evolutionPurge.attempted = true;
+        const del = await evolutionDeleteInstance({
+          serverUrl: String(row.evolution_server_url),
+          apiKey: String(row.evolution_api_key),
+          instanceName: String(row.evolution_instance_name),
+        });
+        evolutionPurge.ok = del.ok;
+        evolutionPurge.error = del.ok ? null : del.error || null;
+        evolutionPurge.httpStatus = del.httpStatus;
+      }
       await pool.query(
         `UPDATE pendencias.crm_whatsapp_inboxes SET is_active = false, updated_at = NOW() WHERE id = $1::uuid`,
         [id]
       );
-      return NextResponse.json({ success: true });
+      return NextResponse.json({ success: true, evolutionPurge });
     }
 
     if (action !== "UPSERT_EVOLUTION") {

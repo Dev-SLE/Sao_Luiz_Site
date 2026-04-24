@@ -503,3 +503,53 @@ export async function evolutionDeleteMessageForEveryone(args: {
     return { ok: false, error: em, response: null as any };
   }
 }
+
+/**
+ * Remove a instância na Evolution (DELETE /instance/delete/{instance}).
+ * HTTP 404 trata-se como sucesso (já não existia).
+ */
+export async function evolutionDeleteInstance(args: {
+  serverUrl: string;
+  apiKey: string;
+  instanceName: string;
+}): Promise<{ ok: boolean; error?: string; httpStatus?: number }> {
+  const base = normalizeEvolutionServerUrl(args.serverUrl).replace(/\/+$/, "");
+  const inst = String(args.instanceName || "").trim();
+  if (!base || !args.apiKey || !inst) {
+    return { ok: false, error: "URL, apiKey ou nome da instância ausente", httpStatus: 0 };
+  }
+  const url = `${base}/instance/delete/${encodeURIComponent(inst)}`;
+  try {
+    const resp = await evolutionExternalFetch(url, {
+      method: "DELETE",
+      headers: { apikey: args.apiKey, accept: "application/json" },
+    });
+    const httpStatus = resp.status;
+    const text = await resp.text();
+    let msg = text.slice(0, 400);
+    try {
+      const j = JSON.parse(text) as any;
+      msg = String(j?.message || j?.error || j?.response?.message || text).slice(0, 400);
+    } catch {
+      /* manter texto */
+    }
+    if (resp.ok || httpStatus === 404) {
+      evolutionIntegrationLog("instance_deleted", { instanceName: inst, httpStatus });
+      return { ok: true, httpStatus };
+    }
+    evolutionIntegrationLog("delete_instance_failed", {
+      instanceName: inst,
+      httpStatus,
+      snippet: msg.slice(0, 220),
+    });
+    return { ok: false, error: msg || `HTTP ${httpStatus}`, httpStatus };
+  } catch (e: any) {
+    const em = e?.message || String(e);
+    evolutionIntegrationLog("delete_instance_failed", {
+      instanceName: inst,
+      code: evolutionClientErrorCode({ httpStatus: 0, message: em }),
+      error: em.slice(0, 240),
+    });
+    return { ok: false, error: em, httpStatus: 0 };
+  }
+}

@@ -11,6 +11,10 @@ import {
   buildSofiaSystemInstructions,
 } from "../../../../lib/server/sofiaGovernance";
 import { crmPhoneSuffixForTitle, crmStripTrailingTitlePhone } from "../../../../lib/server/crmPhoneDisplay";
+import {
+  applyCrmMessageDeleteByWaMessageId,
+  applyCrmMessageEditByWaMessageId,
+} from "../../../../lib/server/crmMessageWaMirror";
 
 export const runtime = "nodejs";
 /** Download Meta + upload SharePoint precisa completar antes do fim da invocação (evita mídia presa em DOWNLOADING na Vercel). */
@@ -798,6 +802,22 @@ export async function POST(req: Request) {
         if (!messages.length) continue;
 
         for (const message of messages) {
+          const mType = String(message?.type || "").toLowerCase();
+          if (mType === "edit" && message.edit?.original_message_id) {
+            const orig = String(message.edit.original_message_id || "").trim();
+            const inner = message.edit.message;
+            const newText = parseWhatsAppText(inner);
+            if (orig && String(newText || "").trim()) {
+              await applyCrmMessageEditByWaMessageId(pool, orig, newText);
+            }
+            continue;
+          }
+          if (mType === "revoke" && message.revoke?.original_message_id) {
+            const orig = String(message.revoke.original_message_id || "").trim();
+            if (orig) await applyCrmMessageDeleteByWaMessageId(pool, orig);
+            continue;
+          }
+
           const providerMessageId = String(message?.id || "").trim();
           if (providerMessageId) {
             const dupRes = await pool.query(

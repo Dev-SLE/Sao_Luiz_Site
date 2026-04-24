@@ -16,10 +16,17 @@ function sleep(ms: number) {
 }
 
 /**
- * Conjuntos de eventos (do mais compatível ao mais completo).
- * A doc OpenAPI v2 lista MESSAGES_SET mas não MESSAGES_EDITED — alguns deploys rejeitam eventos desconhecidos e não gravam nada no Manager.
+ * Conjuntos de eventos: 1.º tenta incluir DELETE + EDITED (espelho no CRM); se a Evolution rejeitar, cai para conjuntos menores.
  */
 const WEBHOOK_EVENT_SETS: string[][] = [
+  [
+    "QRCODE_UPDATED",
+    "CONNECTION_UPDATE",
+    "MESSAGES_UPSERT",
+    "MESSAGES_UPDATE",
+    "MESSAGES_DELETE",
+    "MESSAGES_EDITED",
+  ],
   ["QRCODE_UPDATED", "CONNECTION_UPDATE", "MESSAGES_UPSERT", "MESSAGES_UPDATE"],
   ["QRCODE_UPDATED", "CONNECTION_UPDATE", "MESSAGES_UPSERT", "MESSAGES_UPDATE", "MESSAGES_SET"],
   [
