@@ -1908,7 +1908,11 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                       {m.text}
                     </div>
                   )}
-                  <CrmMessageAttachments attachments={(m.attachments || []) as CrmChatAttachment[]} isMe={isMe} />
+                  <CrmMessageAttachments
+                    attachments={(m.attachments || []) as CrmChatAttachment[]}
+                    isMe={isMe}
+                    messageText={m.text}
+                  />
                   <div
                     className={clsx(
                       'mt-1 flex items-center justify-between text-[10px]',

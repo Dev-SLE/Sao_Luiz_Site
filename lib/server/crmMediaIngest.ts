@@ -1,6 +1,9 @@
 import type { Pool } from "pg";
 import { uploadFileToSharePoint } from "@/modules/storage/fileService";
-import { evolutionGetBase64FromMediaMessage } from "@/lib/server/evolutionClient";
+import {
+  evolutionGetBase64FromMediaMessage,
+  evolutionWebhookRootMessageType,
+} from "@/lib/server/evolutionClient";
 import {
   getCrmMediaSettings,
   isMimeAllowedForMediaType,
@@ -194,6 +197,10 @@ function collectEvolutionMediaSlots(inner: any, fallbackMsgId: string): Evolutio
   const m = unwrapEvolutionInner(inner);
   const out: EvolutionMediaSlot[] = [];
   let idx = 0;
+  const hasStickerLike =
+    (m.stickerMessage && typeof m.stickerMessage === "object") ||
+    (m.lottieStickerMessage && typeof m.lottieStickerMessage === "object");
+  /** Figurinha: payloads podem espelhar em imageMessage; pedir getBase64 como imagem dá 400 no WA. */
   const push = (
     mediaType: string,
     protoKey: string,
@@ -221,6 +228,26 @@ function collectEvolutionMediaSlots(inner: any, fallbackMsgId: string): Evolutio
       mediaBlock: block as Record<string, unknown>,
     });
   };
+
+  if (hasStickerLike) {
+    push("sticker", "stickerMessage", m.stickerMessage, (b) => ({
+      mime: b.mimetype ? String(b.mimetype) : "image/webp",
+      fileName: "sticker.webp",
+      seconds: null,
+      w: numOrNull(b.width),
+      h: numOrNull(b.height),
+      key: String(b.fileEncSha256 || b.fileSha256 || `stk_${fallbackMsgId}_${idx++}`),
+    }));
+    push("sticker", "lottieStickerMessage", m.lottieStickerMessage, (b) => ({
+      mime: b.mimetype ? String(b.mimetype) : "application/x-tgsticker",
+      fileName: "sticker.tgs",
+      seconds: null,
+      w: numOrNull(b.width),
+      h: numOrNull(b.height),
+      key: String(b.fileEncSha256 || b.fileSha256 || `lottie_${fallbackMsgId}_${idx++}`),
+    }));
+    return out;
+  }
 
   push("image", "imageMessage", m.imageMessage, (b) => ({
     mime: b.mimetype ? String(b.mimetype) : null,
@@ -288,6 +315,18 @@ function collectEvolutionMediaSlots(inner: any, fallbackMsgId: string): Evolutio
   }));
 
   return out;
+}
+
+/** Evolution valida o tipo do nó contra a mensagem real no WA (p.ex. figurinha vs imagem). */
+function effectiveEvolutionProtoKeyForGetBase64(args: {
+  slot: EvolutionMediaSlot;
+  evolutionItem: unknown;
+}): string {
+  const root = evolutionWebhookRootMessageType(args.evolutionItem).toLowerCase();
+  const pk = String(args.slot.protoKey || "");
+  if (root.includes("lottie") && pk === "imageMessage") return "lottieStickerMessage";
+  if (root.includes("sticker") && pk === "imageMessage") return "stickerMessage";
+  return pk;
 }
 
 /** Conta slots de mídia ingestíveis (imagem, vídeo, áudio, doc, sticker) num item Evolution/Baileys. */
@@ -574,6 +613,21 @@ export async function ingestEvolutionInboundMedia(args: {
 
   let ordinal = 0;
   for (const slot of slots) {
+    const effProto = effectiveEvolutionProtoKeyForGetBase64({
+      slot,
+      evolutionItem: args.evolutionItem,
+    });
+    const remappedToSticker =
+      effProto === "stickerMessage" || effProto === "lottieStickerMessage";
+    const effMediaType = remappedToSticker ? "sticker" : slot.mediaType;
+    const displayNameForRow =
+      remappedToSticker &&
+      (!slot.fileName || /\.(jpe?g|png)$/i.test(String(slot.fileName || "")))
+        ? effProto === "lottieStickerMessage"
+          ? "sticker.tgs"
+          : "sticker.webp"
+        : slot.fileName;
+
     const rowId = await upsertMediaRowStart(args.pool, {
       messageId: args.messageId,
       ordinal: ordinal++,
@@ -582,12 +636,12 @@ export async function ingestEvolutionInboundMedia(args: {
       sourceProviderMediaId: slot.providerMediaKey,
       sourceProviderUrl: null,
       sourceMimeType: slot.mimeType,
-      sourceFileName: slot.fileName,
+      sourceFileName: displayNameForRow,
       sourceSizeBytes: null,
       sourceDurationSeconds: slot.seconds,
-      mediaType: slot.mediaType,
+      mediaType: effMediaType,
       displayMimeType: slot.mimeType,
-      displayFileName: slot.fileName,
+      displayFileName: displayNameForRow,
       displaySizeBytes: null,
       displayDurationSeconds: slot.seconds,
       width: slot.width,
@@ -600,13 +654,14 @@ export async function ingestEvolutionInboundMedia(args: {
         await finalizeMediaFailed(args.pool, rowId, "reachability:evolution_sem_remote_jid");
         continue;
       }
+
       const messageForApi = {
         key: {
           remoteJid,
           fromMe: key.fromMe === true,
           id: key.id || args.providerMessageId,
         },
-        message: { [slot.protoKey]: slot.mediaBlock },
+        message: { [effProto]: slot.mediaBlock },
       };
 
       const b64 = await evolutionGetBase64FromMediaMessage({
@@ -625,22 +680,28 @@ export async function ingestEvolutionInboundMedia(args: {
         mimeFromSlot: slot.mimeType,
         fileName: slot.fileName,
         buffer,
-        mediaType: slot.mediaType,
+        mediaType: effMediaType,
       });
       let mime = mimeResolved.mime;
-      let fname = slot.fileName || `evo_${slot.providerMediaKey}.${extFromMime(mime)}`;
+      let fname =
+        remappedToSticker &&
+        (!slot.fileName || /\.(jpe?g|png)$/i.test(String(slot.fileName || "")))
+          ? effProto === "lottieStickerMessage"
+            ? "sticker.tgs"
+            : "sticker.webp"
+          : slot.fileName || `evo_${slot.providerMediaKey}.${extFromMime(mime)}`;
 
-      const maxB = maxUploadBytesForMediaType(settings, slot.mediaType);
+      const maxB = maxUploadBytesForMediaType(settings, effMediaType);
       if (buffer.length > maxB) {
         await finalizeMediaFailed(args.pool, rowId, `size:arquivo_acima_do_limite_${maxB}`);
         continue;
       }
-      if (!isMimeAllowedForMediaType(settings, slot.mediaType, mime)) {
+      if (!isMimeAllowedForMediaType(settings, effMediaType, mime)) {
         await finalizeMediaFailed(args.pool, rowId, `mime:mime_nao_permitido_${mime}`);
         continue;
       }
 
-      if (slot.mediaType === "audio") {
+      if (effMediaType === "audio") {
         const tr = await maybeTranscodeInboundAudio({
           buffer,
           mimeType: mime,
@@ -670,7 +731,7 @@ export async function ingestEvolutionInboundMedia(args: {
           year: String(now.getFullYear()),
           month: pad2(now.getMonth() + 1),
           conversation_id: args.conversationId,
-          media_type: slot.mediaType,
+          media_type: effMediaType,
           provider_slug: "evolution",
         },
       });
@@ -684,9 +745,17 @@ export async function ingestEvolutionInboundMedia(args: {
         displayDurationSeconds: slot.seconds,
         width: slot.width,
         height: slot.height,
-        metadataPatch: { ingest: "evolution_base64_ok", mime_source: mimeResolved.source },
+        metadataPatch: {
+          ingest: "evolution_base64_ok",
+          mime_source: mimeResolved.source,
+          ...(effProto !== slot.protoKey ? { evolution_proto_remapped: { from: slot.protoKey, to: effProto } } : {}),
+        },
       });
-      console.info("[crm-media] evolution_stored", { messageId: args.messageId, fileId: fileRow.id, mediaType: slot.mediaType });
+      console.info("[crm-media] evolution_stored", {
+        messageId: args.messageId,
+        fileId: fileRow.id,
+        mediaType: effMediaType,
+      });
     } catch (e: any) {
       console.warn("[crm-media] evolution_failed", { messageId: args.messageId, err: String(e?.message || e) });
       await finalizeMediaFailed(args.pool, rowId, `parse:${String(e?.message || e)}`);

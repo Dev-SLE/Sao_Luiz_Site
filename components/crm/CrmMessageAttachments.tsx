@@ -22,17 +22,35 @@ export type CrmChatAttachment = {
 type Props = {
   attachments: CrmChatAttachment[];
   isMe: boolean;
+  /** Texto da mensagem (evita duplicar aviso de falha quando o corpo já é placeholder de mídia). */
+  messageText?: string | null;
 };
 
-export const CrmMessageAttachments: React.FC<Props> = ({ attachments, isMe }) => {
+function shouldHidePhantomTypeMismatchFailure(messageText: string | undefined | null, att: CrmChatAttachment) {
+  if (String(att.processingStatus || "") !== "FAILED") return false;
+  const err = String(att.processingError || "").toLowerCase();
+  if (!err.includes("not of the media type")) return false;
+  const t = String(messageText || "").trim();
+  if (/^\[figurinha recebida\]$/i.test(t)) return true;
+  if (/^\[imagem recebida\]$/i.test(t)) return true;
+  if (/^\[vídeo recebido\]$/i.test(t) || /^\[video recebido\]$/i.test(t)) return true;
+  if (/^\[áudio recebido\]$/i.test(t) || /^\[audio recebido\]$/i.test(t)) return true;
+  if (/^\[documento recebido\]$/i.test(t)) return true;
+  return false;
+}
+
+export const CrmMessageAttachments: React.FC<Props> = ({ attachments, isMe, messageText }) => {
   const [lightbox, setLightbox] = useState<string | null>(null);
-  if (!Array.isArray(attachments) || attachments.length === 0) return null;
+  const visible = (Array.isArray(attachments) ? attachments : []).filter(
+    (a) => !shouldHidePhantomTypeMismatchFailure(messageText, a)
+  );
+  if (!visible.length) return null;
 
   const subtle = isMe ? 'text-white/75' : 'text-slate-500';
 
   return (
     <div className={clsx('mt-2 space-y-2 text-[11px]', subtle)}>
-      {attachments.map((a, idx) => {
+      {visible.map((a, idx) => {
         const key = a.id || `att-${idx}`;
         const mt = String(a.mediaType || a.mimeType || '').toLowerCase();
         const href = a.viewUrl || a.downloadUrl || null;
