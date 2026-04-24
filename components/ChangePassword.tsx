@@ -4,18 +4,7 @@ import { Lock, Save, Loader2, AlertTriangle, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { authClient } from '../lib/auth';
 import { getDefaultPostLoginPath } from '@/lib/post-login-path';
-
-function validatePasswordClient(password: string, username: string): string | null {
-  const p = String(password || '');
-  if (p.length < 12) return 'A senha deve ter no mínimo 12 caracteres.';
-  if (!/[a-z]/.test(p)) return 'A senha precisa ter ao menos 1 letra minúscula.';
-  if (!/[A-Z]/.test(p)) return 'A senha precisa ter ao menos 1 letra maiúscula.';
-  if (!/\d/.test(p)) return 'A senha precisa ter ao menos 1 número.';
-  if (!/[^A-Za-z0-9]/.test(p)) return 'A senha precisa ter ao menos 1 caractere especial.';
-  if (/\s/.test(p)) return 'A senha não pode conter espaços.';
-  if (username && p.toLowerCase().includes(username.toLowerCase())) return 'A senha não pode conter o usuário.';
-  return null;
-}
+import { validateStrongPassword } from '@/lib/server/passwordPolicy';
 
 const ChangePassword: React.FC = () => {
   const router = useRouter();
@@ -56,9 +45,9 @@ const ChangePassword: React.FC = () => {
       return;
     }
 
-    const policyErr = validatePasswordClient(newPass, user?.username || '');
-    if (policyErr) {
-      setError(policyErr);
+    const policy = validateStrongPassword(newPass, user?.username || '');
+    if (!policy.ok) {
+      setError(policy.errors.join(' '));
       return;
     }
 
@@ -85,7 +74,11 @@ const ChangePassword: React.FC = () => {
         await navigateToDefaultPortal();
         return;
       } else {
-        setError('Erro ao salvar senha no servidor. Verifique se a senha atual está correta.');
+        const msg =
+          typeof (resp as any)?.error === 'string'
+            ? String((resp as any).error)
+            : 'Erro ao salvar senha no servidor. Verifique se a senha atual está correta.';
+        setError(msg);
       }
     } catch (err) {
       const raw = err instanceof Error ? err.message : String(err);

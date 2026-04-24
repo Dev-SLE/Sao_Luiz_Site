@@ -15,6 +15,8 @@ import {
   Activity,
   Search,
   Pencil,
+  KeyRound,
+  Loader2,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { authClient } from '../lib/auth';
@@ -108,7 +110,17 @@ const PROFILE_PRESETS: { id: string; label: string; permissions: string[] }[] = 
 
 const Settings: React.FC = () => {
   const { user } = useAuth();
-  const { users, profiles, baseData, addUser, deleteUser, saveProfile, deleteProfile, hasPermission } = useData();
+  const {
+    users,
+    profiles,
+    baseData,
+    addUser,
+    deleteUser,
+    saveProfile,
+    deleteProfile,
+    hasPermission,
+    refreshData,
+  } = useData();
   const [activeTab, setActiveTab] = useState<'USERS' | 'PROFILES' | 'LOGS'>('PROFILES');
 
   // --- Logs Tab State ---
@@ -207,6 +219,12 @@ const Settings: React.FC = () => {
     variant: AppMessageVariant;
   } | null>(null);
   const [confirmDeleteUser, setConfirmDeleteUser] = useState<string | null>(null);
+  const [passwordResetUser, setPasswordResetUser] = useState<UserData | null>(null);
+  const [resetPwdNew, setResetPwdNew] = useState('');
+  const [resetPwdConfirm, setResetPwdConfirm] = useState('');
+  const [resetPwdForceChange, setResetPwdForceChange] = useState(true);
+  const [resetPwdLoading, setResetPwdLoading] = useState(false);
+  const [resetPwdError, setResetPwdError] = useState('');
   const [confirmDeleteProfile, setConfirmDeleteProfile] = useState<string | null>(null);
   const formatLastLogin = (value?: string) => {
     if (!value) return '-';
@@ -315,6 +333,70 @@ const Settings: React.FC = () => {
       setNewUser({ username: '', password: '', role: '', linkedOriginUnit: '', linkedDestUnit: '', linkedBiVendedora: '' });
       setEditingUsername(null);
       setIsAddingUser(false);
+  };
+
+  const openResetPasswordModal = (u: UserData) => {
+    if (!canManageUserRow(u)) {
+      setSettingsNotice({
+        title: 'Ação bloqueada',
+        message: 'Esse usuário administrativo/reservado não pode ser alterado por esta tela.',
+        variant: 'warning',
+      });
+      return;
+    }
+    setPasswordResetUser(u);
+    setResetPwdNew('');
+    setResetPwdConfirm('');
+    setResetPwdForceChange(true);
+    setResetPwdError('');
+  };
+
+  const closeResetPasswordModal = () => {
+    setPasswordResetUser(null);
+    setResetPwdNew('');
+    setResetPwdConfirm('');
+    setResetPwdForceChange(true);
+    setResetPwdError('');
+    setResetPwdLoading(false);
+  };
+
+  const handleAdminResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!passwordResetUser) return;
+    setResetPwdError('');
+    if (resetPwdNew !== resetPwdConfirm) {
+      setResetPwdError('A nova senha e a confirmação não coincidem.');
+      return;
+    }
+    const policy = validateStrongPassword(resetPwdNew, passwordResetUser.username);
+    if (!policy.ok) {
+      setResetPwdError(policy.errors.join(' '));
+      return;
+    }
+    const targetLabel = passwordResetUser.username;
+    const forceNext = resetPwdForceChange;
+    setResetPwdLoading(true);
+    try {
+      await authClient.resetUserPassword({
+        targetUsername: passwordResetUser.username,
+        newPassword: resetPwdNew,
+        forceChangeNextLogin: forceNext,
+      });
+      await refreshData();
+      closeResetPasswordModal();
+      setSettingsNotice({
+        title: 'Palavra-passe atualizada',
+        message: forceNext
+          ? `Palavra-passe de "${targetLabel}" guardada. No próximo login será pedida troca obrigatória para uma nova senha.`
+          : `Palavra-passe de "${targetLabel}" guardada. Comunique ao utilizador por um canal seguro.`,
+        variant: 'success',
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Não foi possível redefinir a palavra-passe.';
+      setResetPwdError(msg.replace(/^Erro na API: \d+ - /i, '').replace(/^Erro na API: /i, ''));
+    } finally {
+      setResetPwdLoading(false);
+    }
   };
 
   const handleSaveProfile = async (e: React.FormEvent) => {
@@ -574,6 +656,16 @@ const Settings: React.FC = () => {
                                             title="Editar usuário"
                                           >
                                             <Pencil size={16} />
+                                          </button>
+                                        )}
+                                        {canManageUserRow(u) && (
+                                          <button
+                                            type="button"
+                                            onClick={() => openResetPasswordModal(u)}
+                                            className="text-slate-500 hover:text-amber-600 p-1"
+                                            title="Redefinir palavra-passe"
+                                          >
+                                            <KeyRound size={16} />
                                           </button>
                                         )}
                                         {canManageUserRow(u) && (
@@ -1005,6 +1097,94 @@ const Settings: React.FC = () => {
           )}
         </div>
       )}
+
+      {passwordResetUser ? (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/55 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal
+          aria-labelledby="reset-pwd-title"
+        >
+          <div className="relative w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl sm:p-8">
+            <button
+              type="button"
+              onClick={closeResetPasswordModal}
+              className="absolute right-3 top-3 rounded-lg p-2 text-slate-500 hover:bg-slate-100"
+              aria-label="Fechar"
+            >
+              <X className="size-5" />
+            </button>
+            <div className="mb-4 flex items-center gap-2 text-sl-navy">
+              <KeyRound className="size-7 shrink-0" />
+              <h2 id="reset-pwd-title" className="font-heading text-lg font-bold tracking-tight">
+                Redefinir palavra-passe
+              </h2>
+            </div>
+            <p className="mb-4 text-sm text-slate-600">
+              Utilizador: <span className="font-semibold text-slate-900">{passwordResetUser.username}</span>
+            </p>
+            {resetPwdError ? (
+              <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+                {resetPwdError}
+              </div>
+            ) : null}
+            <form onSubmit={handleAdminResetPassword} className="space-y-4">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Nova palavra-passe</label>
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  value={resetPwdNew}
+                  onChange={(e) => setResetPwdNew(e.target.value)}
+                  className="w-full rounded-lg border border-slate-200 bg-white p-2.5 text-slate-900 outline-none focus:border-sl-navy focus:ring-2 focus:ring-sl-navy/20"
+                  required
+                />
+                <p className="mt-1 text-xs text-slate-500">
+                  Mínimo 12 caracteres, maiúscula, minúscula, número e símbolo (sem sequências óbvias).
+                </p>
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Confirmar</label>
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  value={resetPwdConfirm}
+                  onChange={(e) => setResetPwdConfirm(e.target.value)}
+                  className="w-full rounded-lg border border-slate-200 bg-white p-2.5 text-slate-900 outline-none focus:border-sl-navy focus:ring-2 focus:ring-sl-navy/20"
+                  required
+                />
+              </div>
+              <label className="flex cursor-pointer items-start gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  className="mt-1 rounded border-slate-300"
+                  checked={resetPwdForceChange}
+                  onChange={(e) => setResetPwdForceChange(e.target.checked)}
+                />
+                <span>Obrigar troca de palavra-passe no próximo login (recomendado após esquecimento).</span>
+              </label>
+              <div className="flex flex-wrap justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={closeResetPasswordModal}
+                  disabled={resetPwdLoading}
+                  className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={resetPwdLoading}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-sl-navy to-sl-navy-light px-4 py-2 text-sm font-bold text-white hover:opacity-95 disabled:opacity-50"
+                >
+                  {resetPwdLoading ? <Loader2 className="size-4 animate-spin" /> : null}
+                  Guardar
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
 
       <AppMessageModal
         open={!!settingsNotice}

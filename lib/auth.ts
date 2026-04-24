@@ -393,6 +393,15 @@ export class NeonDataClient {
     return this.postJson('/changePassword', payload);
   }
 
+  /** Redefinição administrativa (MANAGE_USERS). Ver `POST /api/users/reset-password`. */
+  async resetUserPassword(payload: {
+    targetUsername: string;
+    newPassword: string;
+    forceChangeNextLogin?: boolean;
+  }): Promise<any> {
+    return this.postJson('/users/reset-password', payload);
+  }
+
   // ----------------------------
   // CRM (Fase 1 - DB + rotas)
   // ----------------------------
