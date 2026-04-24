@@ -2,7 +2,13 @@ import { NextResponse } from "next/server";
 import { requireApiPermissions, verifyCronSecret } from "../../../../lib/server/apiAuth";
 import { getPool } from "../../../../lib/server/db";
 import { ensureCrmSchemaTables } from "../../../../lib/server/ensureSchema";
-import { evolutionSendText } from "../../../../lib/server/evolutionClient";
+import {
+  evolutionSendMedia,
+  evolutionSendText,
+  extractEvolutionOutboundWaMessageId,
+} from "../../../../lib/server/evolutionClient";
+import { getFileById } from "../../../../modules/storage/fileService";
+import { getItemContentResponse } from "../../../../lib/server/sharepointGraph";
 import { runWebhookSofiaAutoReply } from "../webhook/route";
 
 export const runtime = "nodejs";
@@ -12,6 +18,29 @@ function normalizePhoneToE164(phoneRaw: string | null | undefined) {
   if (!digits) return null;
   if (digits.startsWith("55")) return digits;
   return `55${digits}`;
+}
+
+function evolutionMediatypeFromMime(mime: string): "image" | "video" | "audio" | "document" {
+  const m = String(mime || "").toLowerCase();
+  if (m.includes("webp")) return "image";
+  if (m.startsWith("image/")) return "image";
+  if (m.startsWith("video/")) return "video";
+  if (m.startsWith("audio/")) return "audio";
+  return "document";
+}
+
+async function readFileBufferFromCatalog(
+  pool: any,
+  fileId: string
+): Promise<{ buffer: Buffer; mime: string; name: string } | null> {
+  const file = await getFileById(pool, fileId);
+  if (!file?.sharepoint_item_id || !file.sharepoint_site_id || !file.sharepoint_drive_id) return null;
+  const res = await getItemContentResponse(file.sharepoint_site_id, file.sharepoint_drive_id, file.sharepoint_item_id);
+  if (!res.ok) return null;
+  const buffer = Buffer.from(await res.arrayBuffer());
+  const mime = String(file.mime_type || res.headers.get("content-type") || "application/octet-stream");
+  const name = String(file.original_name || file.file_name || "arquivo");
+  return { buffer, mime, name };
 }
 
 async function sendWhatsAppText(args: { toE164: string; body: string }) {
@@ -107,6 +136,7 @@ export async function POST(req: Request) {
       const conversationId = String(job.conversation_id || "");
       const attempts = Number(job.attempts || 0);
       const channel = String(job.channel || "WHATSAPP").toUpperCase();
+      const payloadAttachments = Array.isArray(payload?.attachments) ? payload.attachments : [];
 
       const leadRes = await pool.query(
         `
@@ -120,7 +150,8 @@ export async function POST(req: Request) {
       );
       const toE164 = normalizePhoneToE164(leadRes.rows?.[0]?.contact_phone);
 
-      if (channel !== "SOFIA_AUTO_REPLY" && (!toE164 || !body)) {
+      const hasRetryBodyOrMedia = body.length > 0 || payloadAttachments.length > 0;
+      if (channel !== "SOFIA_AUTO_REPLY" && (!toE164 || !hasRetryBodyOrMedia)) {
         failed += 1;
         await pool.query(
           `
@@ -145,21 +176,89 @@ export async function POST(req: Request) {
               return { ok: true, error: null as string | null, response: null as any };
             })()
           : channel === "WHATSAPP_EVOLUTION"
-          ? await evolutionSendText({
-              serverUrl: String(payload?.evolution?.serverUrl || ""),
-              apiKey: String(payload?.evolution?.apiKey || ""),
-              instanceName: String(payload?.evolution?.instanceName || ""),
-              numberDigits: String(payload?.toE164 || toE164 || ""),
-              text: body,
-              quotedContext:
+          ? await (async () => {
+              const numberDigits = String(payload?.toE164 || toE164 || "");
+              const evolutionConfig = {
+                serverUrl: String(payload?.evolution?.serverUrl || ""),
+                apiKey: String(payload?.evolution?.apiKey || ""),
+                instanceName: String(payload?.evolution?.instanceName || ""),
+              };
+              const quotedContext =
                 payload?.evolutionQuoted && typeof payload.evolutionQuoted === "object"
                   ? (payload.evolutionQuoted as any)
-                  : null,
-            })
+                  : null;
+              const attachmentItems = payloadAttachments;
+              let finalOk = true;
+              let finalError: string | null = null;
+              let finalResponse: any = null;
+              for (let i = 0; i < attachmentItems.length; i++) {
+                const item = attachmentItems[i] || {};
+                const fileId = String(item?.fileId || "").trim();
+                if (!fileId) continue;
+                const file = await readFileBufferFromCatalog(pool, fileId);
+                if (!file) {
+                  finalOk = false;
+                  finalError = `arquivo_retry_indisponivel_${fileId}`;
+                  break;
+                }
+                const hinted = String(item?.mediaType || "").trim().toLowerCase();
+                const mediatype =
+                  hinted === "image" || hinted === "video" || hinted === "audio" || hinted === "document"
+                    ? hinted
+                    : evolutionMediatypeFromMime(file.mime);
+                const mediaResponse = await evolutionSendMedia({
+                  ...evolutionConfig,
+                  numberDigits,
+                  mediatype,
+                  mimetype: file.mime,
+                  media: `data:${file.mime};base64,${file.buffer.toString("base64")}`,
+                  fileName: String(item?.fileName || file.name || "arquivo"),
+                  caption: i === 0 ? body.slice(0, 1020) : "",
+                  quotedContext: i === 0 ? quotedContext : null,
+                });
+                finalResponse = mediaResponse.response || finalResponse;
+                if (!mediaResponse.ok) {
+                  finalOk = false;
+                  finalError = mediaResponse.error || "evolution_send_media_failed";
+                  break;
+                }
+              }
+              const tail = body.length > 1020 ? body.slice(1020).trim() : "";
+              if (finalOk && tail) {
+                const textResponse = await evolutionSendText({
+                  ...evolutionConfig,
+                  numberDigits,
+                  text: tail,
+                  quotedContext: attachmentItems.length ? null : quotedContext,
+                });
+                finalResponse = textResponse.response || finalResponse;
+                if (!textResponse.ok) {
+                  finalOk = false;
+                  finalError = textResponse.error || "evolution_send_text_failed";
+                }
+              }
+              if (finalOk && attachmentItems.length === 0 && body) {
+                const textResponse = await evolutionSendText({
+                  ...evolutionConfig,
+                  numberDigits,
+                  text: body,
+                  quotedContext,
+                });
+                finalResponse = textResponse.response || finalResponse;
+                if (!textResponse.ok) {
+                  finalOk = false;
+                  finalError = textResponse.error || "evolution_send_text_failed";
+                }
+              }
+              return { ok: finalOk, error: finalError, response: finalResponse };
+            })()
           : await sendWhatsAppText({ toE164: String(toE164 || ""), body });
       if (send.ok) {
         succeeded += 1;
-        const waMessageId = send.response?.messages?.[0]?.id || null;
+        const waMessageId =
+          channel === "WHATSAPP_EVOLUTION"
+            ? extractEvolutionOutboundWaMessageId(send.response)
+            : send.response?.messages?.[0]?.id || null;
         await pool.query(
           `
             UPDATE pendencias.crm_outbox
@@ -181,7 +280,7 @@ export async function POST(req: Request) {
               JSON.stringify({
                 outbound_whatsapp: {
                   attempted: true,
-                  delivered: true,
+                  delivered: false,
                   status: "sent",
                   message_id: waMessageId,
                   error: null,

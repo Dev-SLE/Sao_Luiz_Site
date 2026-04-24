@@ -50,6 +50,75 @@ function extFromMime(mime: string): string {
   return "bin";
 }
 
+function inferMimeFromFileName(fileName: string | null | undefined): string | null {
+  const n = String(fileName || "").toLowerCase().trim();
+  if (!n || !n.includes(".")) return null;
+  if (n.endsWith(".jpg") || n.endsWith(".jpeg")) return "image/jpeg";
+  if (n.endsWith(".png")) return "image/png";
+  if (n.endsWith(".webp")) return "image/webp";
+  if (n.endsWith(".gif")) return "image/gif";
+  if (n.endsWith(".mp4")) return "video/mp4";
+  if (n.endsWith(".ogg") || n.endsWith(".opus")) return "audio/ogg";
+  if (n.endsWith(".mp3")) return "audio/mpeg";
+  if (n.endsWith(".wav")) return "audio/wav";
+  if (n.endsWith(".pdf")) return "application/pdf";
+  return null;
+}
+
+function inferMimeFromSignature(buffer: Buffer): string | null {
+  if (!buffer || buffer.length < 12) return null;
+  if (buffer[0] === 0xff && buffer[1] === 0xd8) return "image/jpeg";
+  if (
+    buffer[0] === 0x89 &&
+    buffer[1] === 0x50 &&
+    buffer[2] === 0x4e &&
+    buffer[3] === 0x47 &&
+    buffer[4] === 0x0d &&
+    buffer[5] === 0x0a
+  ) {
+    return "image/png";
+  }
+  if (
+    buffer[0] === 0x52 &&
+    buffer[1] === 0x49 &&
+    buffer[2] === 0x46 &&
+    buffer[3] === 0x46 &&
+    buffer[8] === 0x57 &&
+    buffer[9] === 0x45 &&
+    buffer[10] === 0x42 &&
+    buffer[11] === 0x50
+  ) {
+    return "image/webp";
+  }
+  if (buffer[0] === 0x25 && buffer[1] === 0x50 && buffer[2] === 0x44 && buffer[3] === 0x46) return "application/pdf";
+  return null;
+}
+
+function resolveEvolutionMime(args: {
+  mimeFromBase64: string | null | undefined;
+  mimeFromSlot: string | null | undefined;
+  fileName: string | null | undefined;
+  buffer: Buffer;
+  mediaType: string;
+}): { mime: string; source: "base64" | "slot" | "filename" | "signature" | "fallback" } {
+  const fromBase64 = String(args.mimeFromBase64 || "").trim().toLowerCase();
+  if (fromBase64 && fromBase64 !== "application/octet-stream") {
+    return { mime: fromBase64, source: "base64" };
+  }
+  const fromSlot = String(args.mimeFromSlot || "").trim().toLowerCase();
+  if (fromSlot && fromSlot !== "application/octet-stream") {
+    return { mime: fromSlot, source: "slot" };
+  }
+  const fromName = inferMimeFromFileName(args.fileName);
+  if (fromName) return { mime: fromName, source: "filename" };
+  const fromSig = inferMimeFromSignature(args.buffer);
+  if (fromSig) return { mime: fromSig, source: "signature" };
+  if (args.mediaType === "image" || args.mediaType === "sticker") return { mime: "image/webp", source: "fallback" };
+  if (args.mediaType === "audio") return { mime: "audio/ogg", source: "fallback" };
+  if (args.mediaType === "video") return { mime: "video/mp4", source: "fallback" };
+  return { mime: "application/octet-stream", source: "fallback" };
+}
+
 async function downloadMetaMedia(accessToken: string, mediaId: string): Promise<{
   buffer: Buffer;
   mimeType: string;
@@ -90,6 +159,8 @@ function unwrapEvolutionInner(msg: any): any {
   if (msg.ephemeralMessage?.message) return unwrapEvolutionInner(msg.ephemeralMessage.message);
   if (msg.viewOnceMessage?.message) return unwrapEvolutionInner(msg.viewOnceMessage.message);
   if (msg.viewOnceMessageV2?.message) return unwrapEvolutionInner(msg.viewOnceMessageV2.message);
+  if (msg.viewOnceMessageV2Extension?.message) return unwrapEvolutionInner(msg.viewOnceMessageV2Extension.message);
+  if (msg.protocolMessage?.editedMessage?.message) return unwrapEvolutionInner(msg.protocolMessage.editedMessage.message);
   if (msg.documentWithCaptionMessage?.message) return unwrapEvolutionInner(msg.documentWithCaptionMessage.message);
   if (msg.editedMessage?.message) return unwrapEvolutionInner(msg.editedMessage.message);
   return msg;
@@ -512,20 +583,27 @@ export async function ingestEvolutionInboundMedia(args: {
         message: messageForApi,
       });
       if (!b64?.buffer?.length) {
-        await finalizeMediaFailed(args.pool, rowId, b64?.error || "evolution_sem_base64");
+        await finalizeMediaFailed(args.pool, rowId, `reachability:${b64?.error || "evolution_sem_base64"}`);
         continue;
       }
       let buffer = b64.buffer;
-      let mime = b64.mimeType || slot.mimeType || "application/octet-stream";
+      const mimeResolved = resolveEvolutionMime({
+        mimeFromBase64: b64.mimeType,
+        mimeFromSlot: slot.mimeType,
+        fileName: slot.fileName,
+        buffer,
+        mediaType: slot.mediaType,
+      });
+      let mime = mimeResolved.mime;
       let fname = slot.fileName || `evo_${slot.providerMediaKey}.${extFromMime(mime)}`;
 
       const maxB = maxUploadBytesForMediaType(settings, slot.mediaType);
       if (buffer.length > maxB) {
-        await finalizeMediaFailed(args.pool, rowId, `arquivo_acima_do_limite_${maxB}`);
+        await finalizeMediaFailed(args.pool, rowId, `size:arquivo_acima_do_limite_${maxB}`);
         continue;
       }
       if (!isMimeAllowedForMediaType(settings, slot.mediaType, mime)) {
-        await finalizeMediaFailed(args.pool, rowId, `mime_nao_permitido_${mime}`);
+        await finalizeMediaFailed(args.pool, rowId, `mime:mime_nao_permitido_${mime}`);
         continue;
       }
 
@@ -537,7 +615,7 @@ export async function ingestEvolutionInboundMedia(args: {
           settings,
         });
         if (!tr.ok) {
-          await finalizeMediaFailed(args.pool, rowId, tr.reason);
+          await finalizeMediaFailed(args.pool, rowId, `parse:${tr.reason}`);
           continue;
         }
         buffer = tr.buffer;
@@ -573,12 +651,12 @@ export async function ingestEvolutionInboundMedia(args: {
         displayDurationSeconds: slot.seconds,
         width: slot.width,
         height: slot.height,
-        metadataPatch: { ingest: "evolution_base64_ok" },
+        metadataPatch: { ingest: "evolution_base64_ok", mime_source: mimeResolved.source },
       });
       console.info("[crm-media] evolution_stored", { messageId: args.messageId, fileId: fileRow.id, mediaType: slot.mediaType });
     } catch (e: any) {
       console.warn("[crm-media] evolution_failed", { messageId: args.messageId, err: String(e?.message || e) });
-      await finalizeMediaFailed(args.pool, rowId, String(e?.message || e));
+      await finalizeMediaFailed(args.pool, rowId, `parse:${String(e?.message || e)}`);
     }
   }
 }

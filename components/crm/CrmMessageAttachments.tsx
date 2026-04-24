@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import clsx from 'clsx';
-import { FileText, Image as ImageIcon, Video, Volume2, AlertCircle, ExternalLink } from 'lucide-react';
+import { FileText, Image as ImageIcon, Video, Volume2, AlertCircle, ExternalLink, Smile } from 'lucide-react';
 
 export type CrmChatAttachment = {
   id?: string;
@@ -62,6 +62,29 @@ export const CrmMessageAttachments: React.FC<Props> = ({ attachments, isMe }) =>
           return (
             <div key={key} className="italic text-[10px]">
               Mídia em processamento ({String(a.processingStatus || 'PENDING').toLowerCase()})…
+            </div>
+          );
+        }
+
+        if (mt === 'sticker' || mt.includes('sticker')) {
+          if (!href) {
+            return (
+              <div key={key} className="flex items-center gap-1">
+                <Smile size={14} /> {a.filename || 'Figurinha'}
+              </div>
+            );
+          }
+          return (
+            <div key={key} className="space-y-1">
+              <button
+                type="button"
+                className="block w-full max-w-[160px] rounded-lg overflow-hidden border border-black/10 focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-sl-navy/40 bg-white/70"
+                onClick={() => setLightbox(href)}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={href} alt={a.filename || 'Figurinha'} className="w-full h-auto object-contain max-h-40" loading="lazy" />
+              </button>
+              <div className="text-[10px]">Figurinha</div>
             </div>
           );
         }

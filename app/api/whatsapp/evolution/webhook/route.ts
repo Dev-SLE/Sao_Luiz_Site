@@ -724,7 +724,7 @@ function extractUpdateStatus(item: any): string | null {
 }
 
 function isDeliveredLikeStatus(status: string) {
-  return status === "sent" || status === "delivered" || status === "read" || status === "played";
+  return status === "delivered" || status === "read" || status === "played";
 }
 
 function extractUpdateRemoteJid(item: any): string {

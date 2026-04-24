@@ -467,7 +467,6 @@ export async function GET(req: Request) {
       const delivered =
         outbound?.delivered === true ||
         outbound?.delivered === "true" ||
-        raw === "sent" ||
         raw === "delivered" ||
         raw === "read" ||
         raw === "played";
@@ -479,12 +478,12 @@ export async function GET(req: Request) {
           : delivered
             ? raw === "read" || raw === "played"
               ? "read"
-              : raw === "pending" || raw === "queued" || raw === "sending"
-                ? "pending"
-                : "delivered"
+              : "delivered"
             : isFailedLike
               ? "failed"
-              : "pending";
+              : raw === "sent"
+                ? "sent"
+                : "pending";
       return {
       metadata: meta,
       id: r.id as string,
@@ -661,11 +660,13 @@ export async function POST(req: Request) {
     let outboundWhatsApp: {
       attempted: boolean;
       delivered: boolean;
+      sent: boolean;
       error?: string | null;
       response?: any;
     } = {
       attempted: false,
       delivered: false,
+      sent: false,
       error: null,
       response: null,
     };
@@ -909,7 +910,8 @@ export async function POST(req: Request) {
           finalOk = waResp.ok;
           if (!waResp.ok) outboundWhatsApp.error = waResp.error;
         }
-        outboundWhatsApp.delivered = finalOk;
+        outboundWhatsApp.sent = finalOk;
+        outboundWhatsApp.delivered = false;
         outboundWhatsApp.response = finalResp;
       } else {
         let finalResp: any = null;
@@ -1004,7 +1006,8 @@ export async function POST(req: Request) {
           finalOk = finalOk && waAttResp.ok;
           if (!waAttResp.ok) outboundWhatsApp.error = waAttResp.error;
         }
-        outboundWhatsApp.delivered = finalOk;
+        outboundWhatsApp.sent = finalOk;
+        outboundWhatsApp.delivered = false;
         outboundWhatsApp.response = finalResp;
       }
 
@@ -1024,7 +1027,7 @@ export async function POST(req: Request) {
             outbound_whatsapp: {
               attempted: outboundWhatsApp.attempted,
               delivered: outboundWhatsApp.delivered,
-              status: outboundWhatsApp.delivered ? "sent" : "failed",
+              status: outboundWhatsApp.sent ? "sent" : "failed",
               message_id: waMessageId,
               remote_jid: toE164 ? `${toE164}@s.whatsapp.net` : null,
               error: outboundWhatsApp.error || null,
@@ -1033,7 +1036,7 @@ export async function POST(req: Request) {
         ]
       );
 
-      if (!outboundWhatsApp.delivered && !useEvolution) {
+      if (!outboundWhatsApp.sent && !useEvolution) {
         await pool.query(
           `
             INSERT INTO pendencias.crm_outbox (
@@ -1054,7 +1057,7 @@ export async function POST(req: Request) {
           ]
         );
       }
-      if (!outboundWhatsApp.delivered && useEvolution) {
+      if (!outboundWhatsApp.sent && useEvolution) {
         await pool.query(
           `
             INSERT INTO pendencias.crm_outbox (
@@ -1072,6 +1075,13 @@ export async function POST(req: Request) {
               toE164,
               replyToWhatsappMessageId,
               evolutionQuoted: evolutionQuotedContext,
+              attachments: resolvedFiles.map((f) => ({
+                fileId: f.fileId,
+                mimeType: f.mime,
+                fileName: f.name,
+                sizeBytes: f.buffer.length,
+                mediaType: evolutionMediatypeFromMime(f.mime),
+              })),
               evolution: {
                 instanceName: String(row.evolution_instance_name),
                 serverUrl: String(row.evolution_server_url),

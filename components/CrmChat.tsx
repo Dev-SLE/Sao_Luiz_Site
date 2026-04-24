@@ -212,6 +212,7 @@ function MediaPlaceholderHint({ text, isMe }: { text: string; isMe: boolean }) {
   let icon = <Paperclip size={14} className="shrink-0 opacity-90" />;
   if (t.includes('Áudio')) icon = <Mic size={14} className="shrink-0 opacity-90" />;
   else if (t.includes('Imagem')) icon = <ImageIcon size={14} className="shrink-0 opacity-90" />;
+  else if (t.includes('Figurinha')) icon = <Smile size={14} className="shrink-0 opacity-90" />;
   else if (t.includes('Vídeo')) icon = <Video size={14} className="shrink-0 opacity-90" />;
   else if (t.includes('Documento')) icon = <FileText size={14} className="shrink-0 opacity-90" />;
   else if (t.includes('Localização')) icon = <MapPin size={14} className="shrink-0 opacity-90" />;

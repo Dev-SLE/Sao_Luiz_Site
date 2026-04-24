@@ -22,6 +22,13 @@ export function evolutionNumberDigits(remoteJid: string | null | undefined): str
 export function extractEvolutionMessageText(message: any): string {
   if (!message || typeof message !== "object") return "";
   const m = message;
+  if (m.viewOnceMessageV2?.message) return extractEvolutionMessageText(m.viewOnceMessageV2.message);
+  if (m.viewOnceMessageV2Extension?.message) return extractEvolutionMessageText(m.viewOnceMessageV2Extension.message);
+  if (m.ephemeralMessage?.message) return extractEvolutionMessageText(m.ephemeralMessage.message);
+  if (m.editedMessage?.message) return extractEvolutionMessageText(m.editedMessage.message);
+  if (m.protocolMessage?.editedMessage?.message) {
+    return extractEvolutionMessageText(m.protocolMessage.editedMessage.message);
+  }
   // Alguns payloads vêm embrulhados nesses nós
   if (m.message && typeof m.message === "object") return extractEvolutionMessageText(m.message);
   if (m.msg && typeof m.msg === "object") return extractEvolutionMessageText(m.msg);
@@ -58,8 +65,6 @@ export function extractEvolutionMessageText(message: any): string {
   if (m.buttonsMessage) return "[Botões recebidos]";
   if (m.listMessage) return "[Lista recebida]";
   if (m.viewOnceMessage?.message) return extractEvolutionMessageText(m.viewOnceMessage.message);
-  if (m.ephemeralMessage?.message) return extractEvolutionMessageText(m.ephemeralMessage.message);
-  if (m.editedMessage?.message) return extractEvolutionMessageText(m.editedMessage.message);
   const messageType = String(m.messageType || m.type || m.mimetype || "").toLowerCase();
   if (messageType.includes("sticker")) return "[Figurinha recebida]";
   if (messageType.includes("image")) return "[Imagem recebida]";
