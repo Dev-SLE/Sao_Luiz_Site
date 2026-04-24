@@ -1217,6 +1217,21 @@ async function processWebhookMessageEdits(pool: any, body: Record<string, unknow
 
 export async function POST(req: Request) {
   try {
+    console.info("[evolution-webhook] route_post_entry_always", {
+      method: req.method,
+      urlHead: String(req.url || "").slice(0, 240),
+    });
+    const rawBody = await req.text().catch(() => "");
+    let body: Record<string, unknown> = {};
+    let bodyParseOk = false;
+    if (rawBody && String(rawBody).trim()) {
+      try {
+        body = JSON.parse(rawBody) as Record<string, unknown>;
+        bodyParseOk = true;
+      } catch {
+        body = {};
+      }
+    }
     const reqUrl = (() => {
       try {
         return new URL(req.url).pathname;
@@ -1224,15 +1239,14 @@ export async function POST(req: Request) {
         return req.url;
       }
     })();
-    const rawBody = await req.text().catch(() => "");
-    let body: Record<string, unknown> = {};
-    if (rawBody && String(rawBody).trim()) {
-      try {
-        body = JSON.parse(rawBody) as Record<string, unknown>;
-      } catch {
-        body = {};
-      }
-    }
+    console.info("[evolution-webhook] route_body_parsed_always", {
+      path: reqUrl,
+      rawLen: rawBody.length,
+      bodyParseOk,
+      bodyKeys: body && typeof body === "object" ? Object.keys(body as object).slice(0, 40) : [],
+      dataKeys:
+        body?.data && typeof body.data === "object" ? Object.keys(body.data as object).slice(0, 40) : [],
+    });
 
     if (!verifyEvolutionWebhook(req, body)) {
       let hasQueryToken = false;
