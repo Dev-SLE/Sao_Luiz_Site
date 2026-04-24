@@ -40,6 +40,7 @@ export function extractEvolutionMessageText(message: any): string {
   // Notas de voz costumam vir como pttMessage no Baileys
   if (m.pttMessage) return "[Áudio recebido]";
   if (m.audioMessage) return "[Áudio recebido]";
+  if (m.ptvMessage) return "[Vídeo recebido]";
   if (m.videoMessage) return "[Vídeo recebido]";
   if (m.documentMessage?.caption) return String(m.documentMessage.caption);
   if (m.documentMessage) return "[Documento recebido]";

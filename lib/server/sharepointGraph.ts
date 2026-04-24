@@ -9,9 +9,10 @@ function graphHeaders(token: string) {
 export type GraphDriveItem = {
   id: string;
   name: string;
+  size?: number;
   folder?: { childCount?: number };
   file?: { mimeType?: string };
-  parentReference?: { path?: string };
+  parentReference?: { id?: string; path?: string };
   webUrl?: string;
 };
 
@@ -114,8 +115,29 @@ export async function uploadBytesToDriveFolder(params: {
   return json;
 }
 
+/** Sessão de upload resumível (ficheiros grandes); o cliente faz PUT ao `uploadUrl` sem token Graph. */
+export async function createDriveItemUploadSession(params: {
+  siteId: string;
+  driveId: string;
+  folderItemId: string;
+  fileName: string;
+}): Promise<{ uploadUrl: string; expirationDateTime?: string }> {
+  const path = `/sites/${encodeURIComponent(params.siteId)}/drives/${encodeURIComponent(params.driveId)}/items/${encodeURIComponent(params.folderItemId)}:/${encodeURIComponent(params.fileName)}:/createUploadSession`;
+  const r = await graphJson<{ uploadUrl?: string; expirationDateTime?: string }>(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      item: { "@microsoft.graph.conflictBehavior": "replace" },
+    }),
+  });
+  if (!r.ok || !r.json?.uploadUrl) {
+    throw new Error(`SharePoint: createUploadSession falhou (${r.status}): ${r.text?.slice(0, 500)}`);
+  }
+  return { uploadUrl: r.json.uploadUrl, expirationDateTime: r.json.expirationDateTime };
+}
+
 export async function getDriveItem(siteId: string, driveId: string, itemId: string): Promise<GraphDriveItem | null> {
-  const path = `/sites/${encodeURIComponent(siteId)}/drives/${encodeURIComponent(driveId)}/items/${encodeURIComponent(itemId)}?$select=id,name,folder,file,parentReference,webUrl`;
+  const path = `/sites/${encodeURIComponent(siteId)}/drives/${encodeURIComponent(driveId)}/items/${encodeURIComponent(itemId)}?$select=id,name,size,folder,file,parentReference,webUrl`;
   const r = await graphJson<GraphDriveItem>(path);
   if (!r.ok) return null;
   return r.json;

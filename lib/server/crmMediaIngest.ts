@@ -156,6 +156,7 @@ async function downloadMetaMedia(accessToken: string, mediaId: string): Promise<
 function unwrapEvolutionInner(msg: any): any {
   if (!msg || typeof msg !== "object") return msg;
   if (msg.message && typeof msg.message === "object") return unwrapEvolutionInner(msg.message);
+  if (msg.deviceSentMessage?.message) return unwrapEvolutionInner(msg.deviceSentMessage.message);
   if (msg.ephemeralMessage?.message) return unwrapEvolutionInner(msg.ephemeralMessage.message);
   if (msg.viewOnceMessage?.message) return unwrapEvolutionInner(msg.viewOnceMessage.message);
   if (msg.viewOnceMessageV2?.message) return unwrapEvolutionInner(msg.viewOnceMessageV2.message);
@@ -232,6 +233,14 @@ function collectEvolutionMediaSlots(inner: any, fallbackMsgId: string): Evolutio
     w: numOrNull(b.width),
     h: numOrNull(b.height),
     key: String(b.fileEncSha256 || b.fileSha256 || `vid_${fallbackMsgId}_${idx++}`),
+  }));
+  push("video", "ptvMessage", m.ptvMessage, (b) => ({
+    mime: b.mimetype ? String(b.mimetype) : "video/mp4",
+    fileName: "video-note.mp4",
+    seconds: numOrNull(b.seconds),
+    w: numOrNull(b.width),
+    h: numOrNull(b.height),
+    key: String(b.fileEncSha256 || b.fileSha256 || `ptv_${fallbackMsgId}_${idx++}`),
   }));
   push("audio", "audioMessage", m.audioMessage, (b) => ({
     mime: b.mimetype ? String(b.mimetype) : null,
@@ -550,6 +559,7 @@ export async function ingestEvolutionInboundMedia(args: {
   if (!slots.length) return;
 
   const key = args.evolutionItem?.key || {};
+  const remoteJid = String(key.remoteJid || (args.evolutionItem as any)?.remoteJid || "").trim();
 
   let ordinal = 0;
   for (const slot of slots) {
@@ -575,9 +585,13 @@ export async function ingestEvolutionInboundMedia(args: {
     });
 
     try {
+      if (!remoteJid) {
+        await finalizeMediaFailed(args.pool, rowId, "reachability:evolution_sem_remote_jid");
+        continue;
+      }
       const messageForApi = {
         key: {
-          remoteJid: key.remoteJid,
+          remoteJid,
           fromMe: key.fromMe === true,
           id: key.id || args.providerMessageId,
         },

@@ -871,16 +871,13 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
       let attachmentsPayload: Array<{ type?: string; filename?: string; url?: string; fileId?: string; mimeType?: string }> =
         [];
       if (attachmentFiles.length > 0) {
+        const { uploadCrmWhatsappMediaAttachment } = await import('@/lib/client/crmMediaUpload');
         for (const file of attachmentFiles) {
-          const fd = new FormData();
-          fd.append('file', file, file.name);
-          fd.append('conversationId', selectedConversationId || '');
-          const hint =
-            file.type.startsWith('audio/') ? 'audio' : file.type.startsWith('video/') ? 'video' : file.type.startsWith('image/') ? 'image' : 'document';
-          fd.append('mediaType', hint);
-          const up = await fetch('/api/crm/media/upload', { method: 'POST', body: fd });
-          const upJson = await up.json().catch(() => ({}));
-          if (up.ok && upJson?.fileId) {
+          try {
+            const upJson = await uploadCrmWhatsappMediaAttachment({
+              file,
+              conversationId: selectedConversationId || '',
+            });
             attachmentsPayload.push({
               type: file.type || 'application/octet-stream',
               mimeType: String(upJson.mimeType || file.type || ''),
@@ -888,9 +885,8 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
               fileId: String(upJson.fileId),
               url: upJson.viewUrl ? String(upJson.viewUrl) : undefined,
             });
-          } else {
-            const errMsg = typeof upJson?.error === 'string' ? upJson.error : `HTTP ${up.status}`;
-            throw new Error(`Falha ao enviar anexo (${file.name}): ${errMsg}`);
+          } catch (e: any) {
+            throw new Error(`Falha ao enviar anexo (${file.name}): ${e?.message || String(e)}`);
           }
         }
       }
