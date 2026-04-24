@@ -306,6 +306,47 @@ function collectEvolutionMediaSlots(inner: any, fallbackMsgId: string): Evolutio
 }
 
 /**
+ * Alguns `messages.upsert` trazem `message` vazio / só contexto, com `messageType` já definido (imagem, etc.).
+ * A Evolution consegue reidratar o binário com `getBase64FromMediaMessage` usando só a `key`.
+ */
+function inferKeyOnlyEvolutionMediaSlots(evolutionItem: unknown, fallbackMsgId: string): EvolutionMediaSlot[] {
+  const it = evolutionItem as { message?: unknown; msg?: unknown } | null;
+  const inner = it?.message ?? it?.msg ?? null;
+  if (inner && typeof inner === "object") {
+    const raw = unwrapEvolutionInner(inner) as Record<string, unknown>;
+    const keys = Object.keys(raw || {}).filter((k) => k !== "messageContextInfo");
+    if (keys.length) return [];
+  }
+
+  const mt = evolutionWebhookRootMessageType(evolutionItem).toLowerCase();
+  const fid = String(fallbackMsgId || "x").slice(0, 80);
+  const mk = (
+    prefix: string,
+    protoKey: EvolutionMediaSlot["protoKey"],
+    mediaType: EvolutionMediaSlot["mediaType"]
+  ): EvolutionMediaSlot => ({
+    mediaType,
+    protoKey,
+    mimeType: null,
+    fileName: null,
+    seconds: null,
+    width: null,
+    height: null,
+    providerMediaKey: `${prefix}_${fid}`,
+    mediaBlock: {},
+  });
+
+  if (mt.includes("lottie")) return [];
+  if (mt.includes("sticker") && !mt.includes("pack")) return [];
+  if (mt.includes("image")) return [mk("keyonly_img", "imageMessage", "image")];
+  if (mt.includes("ptv")) return [mk("keyonly_ptv", "ptvMessage", "video")];
+  if (mt.includes("video")) return [mk("keyonly_vid", "videoMessage", "video")];
+  if (mt.includes("audio") || mt.includes("ptt")) return [mk("keyonly_aud", "pttMessage", "audio")];
+  if (mt.includes("document") || mt.includes("file")) return [mk("keyonly_doc", "documentMessage", "document")];
+  return [];
+}
+
+/**
  * Chave proto no body do `getBase64FromMediaMessage`.
  * Na Evolution (`src/api/types/wa.types.ts`), `TypeMediaMessage` **não inclui**
  * `lottieStickerMessage` nem `pttMessage` — só `stickerMessage`, `audioMessage`, etc.
@@ -328,7 +369,9 @@ function effectiveEvolutionProtoKeyForGetBase64(args: {
 export function countEvolutionInboundMediaSlots(evolutionItem: unknown, fallbackMsgId: string): number {
   const it = evolutionItem as { message?: unknown; msg?: unknown } | null;
   const inner = it?.message ?? it?.msg ?? evolutionItem;
-  return collectEvolutionMediaSlots(inner, String(fallbackMsgId || "x")).length;
+  const n = collectEvolutionMediaSlots(inner, String(fallbackMsgId || "x")).length;
+  if (n) return n;
+  return inferKeyOnlyEvolutionMediaSlots(evolutionItem, String(fallbackMsgId || "x")).length;
 }
 
 async function upsertMediaRowStart(pool: Pool, args: {
@@ -600,7 +643,10 @@ export async function ingestEvolutionInboundMedia(args: {
 }): Promise<void> {
   const settings = await getCrmMediaSettings(args.pool);
   const inner = args.evolutionItem?.message || args.evolutionItem?.msg || args.evolutionItem;
-  const slots = collectEvolutionMediaSlots(inner, String(args.providerMessageId || args.messageId));
+  let slots = collectEvolutionMediaSlots(inner, String(args.providerMessageId || args.messageId));
+  if (!slots.length) {
+    slots = inferKeyOnlyEvolutionMediaSlots(args.evolutionItem, String(args.providerMessageId || args.messageId));
+  }
   if (!slots.length) return;
 
   const key = args.evolutionItem?.key || {};

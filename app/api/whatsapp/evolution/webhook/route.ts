@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "crypto";
 import { NextResponse } from "next/server";
 import { getPool } from "../../../../../lib/server/db";
 import { ensureCrmSchemaTables } from "../../../../../lib/server/ensureSchema";
@@ -488,18 +489,47 @@ async function shouldCreateLeadForNewContact(input: {
   return decision === "CREATE";
 }
 
-function verifyEvolutionWebhook(req: Request): boolean {
+function utf8BufEq(a: string, b: string): boolean {
+  const ba = Buffer.from(a, "utf8");
+  const bb = Buffer.from(b, "utf8");
+  if (ba.length !== bb.length) return false;
+  return timingSafeEqual(ba, bb);
+}
+
+/**
+ * Valida POST do Evolution. Aceita o mesmo segredo em:
+ * - `?token=` na URL (trim)
+ * - header `x-pendencias-evolution-token`
+ * - `Authorization: Bearer …`
+ * - campo JSON `apikey` (a Evolution envia em todo webhook; alinha com a URL quando o token da query vem errado em pedidos paralelos)
+ */
+function verifyEvolutionWebhook(req: Request, body: Record<string, unknown>): boolean {
   const secret = String(process.env.EVOLUTION_WEBHOOK_TOKEN ?? "").trim();
   const isProd = String(process.env.NODE_ENV || "").toLowerCase() === "production";
   if (!secret) return !isProd;
+
+  const candidates: string[] = [];
   try {
     const url = new URL(req.url);
     const q = url.searchParams.get("token");
-    const h = req.headers.get("x-pendencias-evolution-token");
-    return q === secret || h === secret;
+    if (q != null && String(q).length) candidates.push(String(q).trim());
   } catch {
-    return false;
+    /* ignore */
   }
+  const h = req.headers.get("x-pendencias-evolution-token");
+  if (h != null && String(h).length) candidates.push(String(h).trim());
+  const auth = req.headers.get("authorization");
+  if (auth?.toLowerCase().startsWith("bearer ")) {
+    const t = auth.slice(7).trim();
+    if (t) candidates.push(t);
+  }
+  const bodyApi = body && typeof body === "object" ? (body as any).apikey : null;
+  if (typeof bodyApi === "string" && bodyApi.trim()) candidates.push(bodyApi.trim());
+
+  for (const c of candidates) {
+    if (c && utf8BufEq(c, secret)) return true;
+  }
+  return false;
 }
 
 /**
@@ -935,22 +965,40 @@ export async function POST(req: Request) {
         return req.url;
       }
     })();
-    if (!verifyEvolutionWebhook(req)) {
+    const rawBody = await req.text().catch(() => "");
+    let body: Record<string, unknown> = {};
+    if (rawBody && String(rawBody).trim()) {
+      try {
+        body = JSON.parse(rawBody) as Record<string, unknown>;
+      } catch {
+        body = {};
+      }
+    }
+
+    if (!verifyEvolutionWebhook(req, body)) {
+      let hasQueryToken = false;
+      let queryTokenMatches = false;
+      let bodyApikeyMatches = false;
+      const secret = String(process.env.EVOLUTION_WEBHOOK_TOKEN ?? "").trim();
+      try {
+        const u = new URL(req.url);
+        const q = u.searchParams.get("token");
+        hasQueryToken = q != null && String(q).length > 0;
+        if (hasQueryToken && secret) queryTokenMatches = utf8BufEq(String(q).trim(), secret);
+      } catch {
+        /* ignore */
+      }
+      const ak = (body as any)?.apikey;
+      if (typeof ak === "string" && ak.trim() && secret) bodyApikeyMatches = utf8BufEq(ak.trim(), secret);
       console.warn("[evolution-webhook] unauthorized", {
         path: reqUrl,
-        hasQueryToken: (() => {
-          try {
-            const u = new URL(req.url);
-            return !!u.searchParams.get("token");
-          } catch {
-            return false;
-          }
-        })(),
+        hasQueryToken,
+        queryTokenMatches,
+        bodyHasApikey: typeof (body as any)?.apikey === "string" && String((body as any).apikey).length > 0,
+        bodyApikeyMatches,
       });
       return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
     }
-
-    const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
     const instance = extractEvolutionInstance(body);
     const eventRaw = extractEvolutionEvent(req, body);
     const eventNorm = normalizeEventName(eventRaw);
@@ -1559,7 +1607,9 @@ export async function POST(req: Request) {
               "lottieStickerMessage",
             ].includes(k)
         );
-      const hasMedia = inboundMediaSlotCount > 0 || Boolean(legacyNonTextKeys);
+      /** Inclui rótulo [Imagem recebida] etc. quando o proto vem vazio mas `messageType` já indica mídia (ingest usa key-only na Evolution). */
+      const hasMedia =
+        inboundMediaSlotCount > 0 || Boolean(legacyNonTextKeys) || textLooksLikeInboundMedia;
       if (msgId) {
         const dup = await pool.query(
           `
