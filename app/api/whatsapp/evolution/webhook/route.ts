@@ -828,6 +828,112 @@ function collectUpsertItemsFromWebhookBody(body: Record<string, unknown>): any[]
   return collectUpsertItems(body);
 }
 
+/**
+ * Log temporário incondicional para diagnosticar `messages.upsert` em produção (Vercel search / flags).
+ * TODO: remover ou colocar sob env após validar o pipeline.
+ */
+function logUpsertGateProbeAlways(args: {
+  body: Record<string, unknown>;
+  eventNorm: string;
+  instance: string | null;
+  inboxRow: { evolution_server_url?: string | null; evolution_api_key?: string | null } | null;
+  item: unknown;
+  /** Motivo de não seguir o fluxo completo (ex.: continue no loop). */
+  iterationSkipReason?: string | null;
+  /** Quando definido (ex.: após INSERT), sobrescreve o cálculo heurístico de shouldIngestMedia. */
+  shouldIngestMediaOverride?: boolean | null;
+  /** Payload sem itens — só metadados de body.data. */
+  emptyBatch?: boolean;
+}): void {
+  const data = (args.body?.data ?? args.body) as Record<string, unknown>;
+  const dataMsg = data?.message;
+  const dataMessageKeys =
+    dataMsg && typeof dataMsg === "object" ? Object.keys(dataMsg as object).slice(0, 40) : [];
+  const dataMessageType =
+    (data as { messageType?: unknown }).messageType ?? (data as { MessageType?: unknown }).MessageType ?? null;
+
+  if (args.emptyBatch) {
+    console.info("[evolution-webhook] upsert_gate_probe_always", {
+      eventNorm: args.eventNorm,
+      instance: args.instance,
+      dataMessageType,
+      dataMessageKeys,
+      protoHintsIngest: [] as string[],
+      inboundMediaSlotCount: 0,
+      hasMedia: false,
+      shouldIngestMedia: false,
+      skipReason: args.iterationSkipReason || "payload_sem_messages",
+    });
+    return;
+  }
+
+  const item = args.item;
+  const key = (item as any)?.key || item;
+  const msgId = key && typeof key === "object" ? String((key as { id?: unknown }).id || "") : "";
+  const itemMerged = mergeDeepMediaIntoEvolutionItem(item) as Record<string, unknown>;
+  const protoHintsIngest = extractEvolutionIngestibleMediaProtoHints(itemMerged);
+  const inboundMediaSlotCount = countEvolutionInboundMediaSlots(itemMerged, msgId || "x", true);
+  const msgObj =
+    (itemMerged as { message?: unknown; msg?: unknown }).message ??
+    (itemMerged as { msg?: unknown }).msg ??
+    {};
+  const unwrappedMsg = unwrapEvolutionInner(msgObj) || msgObj;
+  const legacyNonTextKeys =
+    unwrappedMsg &&
+    typeof unwrappedMsg === "object" &&
+    Object.keys(unwrappedMsg as object).some(
+      (k) =>
+        ![
+          "conversation",
+          "extendedTextMessage",
+          "messageContextInfo",
+          "senderKeyDistributionMessage",
+          "stickerMessage",
+          "lottieStickerMessage",
+        ].includes(k)
+    );
+  const tMsg = extractEvolutionMessageText(msgObj) || "";
+  const tUnwrap = extractEvolutionMessageText(unwrappedMsg) || "";
+  const tItem = extractEvolutionMessageText(item) || "";
+  let text = preferEvolutionInboundBody(tMsg, tUnwrap, tItem);
+  const mtHint = bodyTextFromEvolutionMessageTypeHint(evolutionWebhookRootMessageType(itemMerged));
+  if (mtHint && rankEvolutionBodyLabel(mtHint) > rankEvolutionBodyLabel(text)) {
+    text = mtHint;
+  }
+  const textLooksLikeInboundMedia = /^\[(Imagem recebida|Figurinha recebida|Vídeo recebido|Documento recebido|Áudio recebido)\]$/i.test(
+    String(text || "").trim()
+  );
+  const hasMedia =
+    inboundMediaSlotCount > 0 ||
+    Boolean(legacyNonTextKeys) ||
+    textLooksLikeInboundMedia ||
+    protoHintsIngest.length > 0;
+  const evCreds = !!(
+    args.inboxRow &&
+    String(args.inboxRow.evolution_server_url || "").trim() &&
+    String(args.inboxRow.evolution_api_key || "").trim()
+  );
+
+  let shouldIngestMedia: boolean;
+  if (args.shouldIngestMediaOverride !== undefined && args.shouldIngestMediaOverride !== null) {
+    shouldIngestMedia = args.shouldIngestMediaOverride;
+  } else {
+    shouldIngestMedia = !!(hasMedia && evCreds && !args.iterationSkipReason);
+  }
+
+  console.info("[evolution-webhook] upsert_gate_probe_always", {
+    eventNorm: args.eventNorm,
+    instance: args.instance,
+    dataMessageType,
+    dataMessageKeys,
+    protoHintsIngest,
+    inboundMediaSlotCount,
+    hasMedia,
+    shouldIngestMedia,
+    skipReason: args.iterationSkipReason ?? null,
+  });
+}
+
 function extractEvolutionQuotedMessageId(item: any): string | null {
   const m = item?.message || item?.msg || {};
   const candidates = [
@@ -1348,6 +1454,16 @@ export async function POST(req: Request) {
     const pool = getPool();
 
     if (!instance) {
+      const probeItemsEarly = collectUpsertItemsFromWebhookBody(body);
+      logUpsertGateProbeAlways({
+        body,
+        eventNorm,
+        instance: null,
+        inboxRow: null,
+        item: probeItemsEarly[0] ?? {},
+        iterationSkipReason: "instance_ausente",
+        shouldIngestMediaOverride: false,
+      });
       return NextResponse.json({ ok: false, error: "instance ausente" }, { status: 400 });
     }
 
@@ -1363,7 +1479,31 @@ export async function POST(req: Request) {
       [instance]
     );
     const inboxRow = inboxRes.rows?.[0];
+    const items = collectUpsertItemsFromWebhookBody(body);
     if (!inboxRow?.id) {
+      if (!items.length) {
+        logUpsertGateProbeAlways({
+          body,
+          eventNorm,
+          instance,
+          inboxRow: null,
+          item: {},
+          emptyBatch: true,
+          iterationSkipReason: "unknown_instance_inbox",
+        });
+      } else {
+        for (const it of items) {
+          logUpsertGateProbeAlways({
+            body,
+            eventNorm,
+            instance,
+            inboxRow: null,
+            item: it,
+            iterationSkipReason: "unknown_instance_inbox",
+            shouldIngestMediaOverride: false,
+          });
+        }
+      }
       console.warn(
         "[evolution-webhook] Inbox não cadastrada para instance:",
         instance,
@@ -1373,23 +1513,46 @@ export async function POST(req: Request) {
     }
     const inboxId = String(inboxRow.id);
 
-    const items = collectUpsertItemsFromWebhookBody(body);
     console.log("[evolution-webhook] upsert items", { instance, count: items.length });
     if (!items.length) {
+      logUpsertGateProbeAlways({
+        body,
+        eventNorm,
+        instance,
+        inboxRow,
+        item: {},
+        emptyBatch: true,
+        iterationSkipReason: "payload_sem_messages",
+      });
       return NextResponse.json({ ok: true, empty: true, hint: "payload_sem_messages" });
     }
 
     const defaultIds = await ensureDefaultPipelineAndFirstStage(pool);
     if (!defaultIds) {
+      for (const it of items) {
+        logUpsertGateProbeAlways({
+          body,
+          eventNorm,
+          instance,
+          inboxRow,
+          item: it,
+          iterationSkipReason: "crm_pipeline_unavailable",
+          shouldIngestMediaOverride: false,
+        });
+      }
       return NextResponse.json({ error: "Funil CRM não disponível" }, { status: 500 });
     }
 
     const intakeSettings = await loadIntakeSettings(pool);
 
     for (const item of items) {
+      let iterationSkipReason: string | null = null;
+      let shouldIngestMediaOverride: boolean | null | undefined = undefined;
+      try {
       let intakeReplayPayload: { sampleText: string; currentText: string } | null = null;
       const key = item?.key || item;
       if (!key) {
+        iterationSkipReason = "missing_key";
         logUpsertSkip("missing_key", {
           instance,
           itemKeys: item && typeof item === "object" ? Object.keys(item as object) : [],
@@ -1400,10 +1563,12 @@ export async function POST(req: Request) {
 
       const remoteJid = String(key.remoteJid || key.remoteJidAlt || "").trim();
       if (!remoteJid) {
+        iterationSkipReason = "skip_jid";
         logUpsertSkip("skip_jid", { instance, remoteJid: "" });
         continue;
       }
       if (remoteJid.includes("@g.us")) {
+        iterationSkipReason = "skip_group_chat";
         console.info("[evolution-webhook] skip_group_chat", {
           instance,
           hint: "Grupos não entram no CRM (comportamento esperado).",
@@ -1411,12 +1576,14 @@ export async function POST(req: Request) {
         continue;
       }
       if (remoteJid.includes("status@broadcast") || remoteJid.includes("@broadcast")) {
+        iterationSkipReason = "skip_broadcast";
         logUpsertSkip("skip_broadcast", { instance, remoteJid: remoteJid.slice(0, 48) });
         continue;
       }
 
       const phoneDigits = evolutionNumberDigits(remoteJid);
       if (!phoneDigits) {
+        iterationSkipReason = "no_phone_digits";
         logUpsertSkip("no_phone_digits", { instance, remoteJid: remoteJid.slice(0, 48) });
         continue;
       }
@@ -1613,6 +1780,7 @@ export async function POST(req: Request) {
             hasCte: !!cteDetected,
             profileName: profileName || null,
           });
+          iterationSkipReason = "intake_wait";
           continue;
         }
 
@@ -1919,6 +2087,7 @@ export async function POST(req: Request) {
               msgId: msgId.slice(0, 32),
               conversationId,
             });
+            iterationSkipReason = "duplicate_evolution_message_id";
           }
           continue;
         }
@@ -1952,6 +2121,7 @@ export async function POST(req: Request) {
       );
       const newEvMessageId = String(insEv.rows?.[0]?.id || "");
       const shouldIngestMedia = !!(newEvMessageId && hasMedia && evCreds);
+      shouldIngestMediaOverride = shouldIngestMedia;
       if (protoHintsIngest.length > 0 || inboundMediaSlotCount > 0 || crmEvolutionUpsertDebugEnabled()) {
         let afterSkip: string | null = null;
         if (!shouldIngestMedia) {
@@ -2030,6 +2200,17 @@ export async function POST(req: Request) {
         } catch (e) {
           console.error("[evolution-webhook] applyInboundRouting:", e);
         }
+      }
+      } finally {
+        logUpsertGateProbeAlways({
+          body,
+          eventNorm,
+          instance,
+          inboxRow,
+          item,
+          iterationSkipReason,
+          shouldIngestMediaOverride,
+        });
       }
     }
 
