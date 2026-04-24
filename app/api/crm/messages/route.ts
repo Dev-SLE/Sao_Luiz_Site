@@ -46,13 +46,18 @@ function isMetaCloudApiAudioMime(mime: string): boolean {
   );
 }
 
-/** Limite de bytes para retry Evolution com data URI após falha da URL assinada (padrão 2.5MB — cobre imagens ~1.7MB). */
+/**
+ * Limite configurável para retry Evolution com data URI (env).
+ * No código aplica-se ainda um teto duro (~480KB) porque JSON base64 grande dá HTTP 413 no nginx da Evolution.
+ */
 function evolutionMaxBase64RetryBytes(): number {
-  const raw = String(process.env.CRM_EVOLUTION_MEDIA_MAX_BASE64_BYTES || "2500000").trim();
+  const raw = String(process.env.CRM_EVOLUTION_MEDIA_MAX_BASE64_BYTES || "480000").trim();
   const n = parseInt(raw, 10);
-  if (!Number.isFinite(n) || n < 0) return 2_500_000;
+  if (!Number.isFinite(n) || n < 0) return 480_000;
   return Math.min(n, 8_000_000);
 }
+
+const EVOLUTION_BASE64_RETRY_HARD_CAP = 480_000;
 
 function mapSenderToDb(senderType: string) {
   const s = String(senderType || "").toUpperCase();
@@ -726,7 +731,10 @@ export async function POST(req: Request) {
         const correlationId = crypto.randomUUID().replace(/-/g, "").slice(0, 16);
         let finalResp: any = null;
         let finalOk = true;
-        const maxBase64Fallback = evolutionMaxBase64RetryBytes();
+        const maxBase64Fallback = Math.min(
+          evolutionMaxBase64RetryBytes(),
+          EVOLUTION_BASE64_RETRY_HARD_CAP
+        );
         const evolutionMediaSettings = resolvedFiles.length ? await getCrmMediaSettings(pool) : null;
         if (resolvedFiles.length > 0) {
           for (let i = 0; i < resolvedFiles.length; i++) {
@@ -817,14 +825,38 @@ export async function POST(req: Request) {
               ...sendMediaBase,
               media: mediaPayload,
             });
-            if (!waResp.ok && usedSignedUrl && sendBuf.length <= maxBase64Fallback) {
+            const firstErr = String(waResp.error || "");
+            const firstWas413 = /HTTP\s*413\b/i.test(firstErr);
+            const canRetryBase64 =
+              !waResp.ok &&
+              usedSignedUrl &&
+              sendBuf.length <= maxBase64Fallback &&
+              !firstWas413;
+            if (!waResp.ok && usedSignedUrl && sendBuf.length > maxBase64Fallback) {
+              evolutionIntegrationLog("sendMedia_retry_base64_skipped", {
+                correlationId,
+                fileId: f.fileId,
+                bytes: sendBuf.length,
+                capBytes: maxBase64Fallback,
+                reason: "file_exceeds_base64_retry_cap",
+                firstError: firstErr.slice(0, 220),
+              });
+            } else if (!waResp.ok && usedSignedUrl && firstWas413) {
+              evolutionIntegrationLog("sendMedia_retry_base64_skipped", {
+                correlationId,
+                fileId: f.fileId,
+                bytes: sendBuf.length,
+                reason: "first_attempt_http_413",
+              });
+            }
+            if (canRetryBase64) {
               didBase64Retry = true;
               evolutionIntegrationLog("sendMedia_retry_base64", {
                 correlationId,
                 fileId: f.fileId,
                 bytes: sendBuf.length,
                 mediatype: sendMediatype,
-                previousError: String(waResp.error || "").slice(0, 220),
+                previousError: firstErr.slice(0, 220),
               });
               waResp = await evolutionSendMedia({
                 ...sendMediaBase,

@@ -364,13 +364,30 @@ export function extractEvolutionOutboundWaMessageId(json: unknown): string | nul
   const candidates = [
     j?.key?.id,
     j?.data?.key?.id,
+    j?.data?.message?.key?.id,
     j?.response?.key?.id,
     j?.message?.key?.id,
     j?.result?.key?.id,
+    j?.sentMessage?.key?.id,
+    j?.data?.sentMessage?.key?.id,
   ];
   for (const c of candidates) {
     const id = String(c || "").trim();
     if (id) return id;
+  }
+  const msgs = j.messages;
+  if (Array.isArray(msgs)) {
+    for (const m of msgs) {
+      const id = String(m?.key?.id || "").trim();
+      if (id) return id;
+    }
+  }
+  const dataMsgs = j?.data?.messages;
+  if (Array.isArray(dataMsgs)) {
+    for (const m of dataMsgs) {
+      const id = String(m?.key?.id || "").trim();
+      if (id) return id;
+    }
   }
   return null;
 }
@@ -482,12 +499,22 @@ export async function evolutionSendMedia(args: {
     const json = await resp.json().catch(() => ({}));
     if (!resp.ok) {
       const msg = (json as any)?.message || (json as any)?.error || `HTTP ${resp.status}`;
-      const hint =
-        resp.status === 413
-          ? " (payload grande: defina FILES_EVOLUTION_DOWNLOAD_SECRET + URL pública do site, ou aumente client_max_body_size no proxy da Evolution)"
-          : "";
       const m = String(args.media || "");
       const mediaMode = m.startsWith("http") ? "url" : m.startsWith("data:") ? "data_uri" : "other";
+      const hint413DataUri =
+        " (JSON/base64 demasiado grande para o proxy da Evolution: aumente client_max_body_size no Caddy/Nginx **à frente** da API, ou garanta que o envio por **URL assinada** funciona para ficheiros grandes.)";
+      const hint413Url =
+        " (413 com URL assinada é raro; verifique client_max_body_size na Evolution e se a instância aceita o payload.)";
+      const hint413Generic =
+        " (payload grande: use URL assinada para ficheiros grandes, ou aumente client_max_body_size no proxy da Evolution.)";
+      const hint =
+        resp.status === 413
+          ? mediaMode === "data_uri"
+            ? hint413DataUri
+            : mediaMode === "url"
+              ? hint413Url
+              : hint413Generic
+          : "";
       evolutionIntegrationLog("sendMedia_failed", {
         instanceName: args.instanceName,
         httpStatus: resp.status,
