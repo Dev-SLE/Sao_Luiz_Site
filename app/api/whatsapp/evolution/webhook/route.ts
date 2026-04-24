@@ -1221,17 +1221,42 @@ export async function POST(req: Request) {
       method: req.method,
       urlHead: String(req.url || "").slice(0, 240),
     });
-    const rawBody = await req.text().catch(() => "");
+    console.info("[evolution-webhook] before_req_text_always");
+    let rawBody = "";
+    try {
+      rawBody = await req.text();
+    } catch (e: unknown) {
+      const err = String((e as { message?: unknown })?.message ?? e).slice(0, 500);
+      console.error("[evolution-webhook] req_text_failed_always", { err });
+      rawBody = "";
+    }
+    const rawHead = String(rawBody || "").slice(0, 300);
+    console.info("[evolution-webhook] after_req_text_always", {
+      rawLen: rawBody.length,
+      rawHead,
+    });
+
     let body: Record<string, unknown> = {};
     let bodyParseOk = false;
-    if (rawBody && String(rawBody).trim()) {
+    const trimmedRaw = String(rawBody || "").trim();
+    if (trimmedRaw) {
+      console.info("[evolution-webhook] before_json_parse_always", { rawLen: rawBody.length });
       try {
         body = JSON.parse(rawBody) as Record<string, unknown>;
         bodyParseOk = true;
-      } catch {
+      } catch (e: unknown) {
+        const err = String((e as { message?: unknown })?.message ?? e).slice(0, 500);
+        console.error("[evolution-webhook] json_parse_failed_always", { err, rawHead });
         body = {};
       }
     }
+    console.info("[evolution-webhook] after_json_parse_always", {
+      bodyParseOk,
+      bodyKeys: body && typeof body === "object" ? Object.keys(body as object).slice(0, 40) : [],
+      dataKeys:
+        body?.data && typeof body.data === "object" ? Object.keys(body.data as object).slice(0, 40) : [],
+    });
+
     const reqUrl = (() => {
       try {
         return new URL(req.url).pathname;
