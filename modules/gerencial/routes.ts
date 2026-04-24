@@ -34,7 +34,7 @@ export const GERENCIAL_FINANCEIRO_PANELS: GerencialComercialPanelDef[] = [
 export const GERENCIAL_OPERACAO_PANELS: GerencialComercialPanelDef[] = [
   {
     slug: 'visao-geral-operacional',
-    label: 'Visão geral operacional',
+    label: 'Visão de pendências',
     permission: GERENCIAL_BI_TAB.setorOperacao,
   },
   { slug: 'monitor-fluxo', label: 'Monitor de fluxo', permission: GERENCIAL_BI_TAB.fluxoMonitor },

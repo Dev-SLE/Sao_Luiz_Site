@@ -57,7 +57,7 @@ function RedirectToGerencialVisaoGeralOperacional() {
   }, [router]);
   return (
     <div className="flex min-h-[30vh] flex-col items-center justify-center gap-2 px-4 text-center text-sm text-slate-600">
-      <p>A Visão geral operacional foi movida para o hub Gerencial → Operação.</p>
+      <p>A Visão de pendências foi movida para o hub Gerencial → Operação.</p>
       <p className="text-slate-500">A redirecionar…</p>
     </div>
   );
