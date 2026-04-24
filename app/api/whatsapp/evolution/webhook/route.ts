@@ -22,7 +22,11 @@ import {
   applyCrmMessageDeleteByWaMessageId,
   applyCrmMessageEditByWaMessageId,
 } from "../../../../../lib/server/crmMessageWaMirror";
-import { crmEvolutionMediaDebugEnabled, crmEvolutionUpsertDebugEnabled } from "../../../../../lib/server/crmEvolutionDebug";
+import {
+  crmEvolutionMediaDebugEnabled,
+  crmEvolutionUpsertDebugEnabled,
+  crmEvolutionWebhookEventDiagEnabled,
+} from "../../../../../lib/server/crmEvolutionDebug";
 
 export const runtime = "nodejs";
 
@@ -87,6 +91,77 @@ function buildPriorIntakeReplayBody(sampleText: string, currentMessageText: stri
 
 function logUpsertSkip(reason: string, ctx: Record<string, unknown>) {
   console.warn("[evolution-webhook] message_not_persisted", { reason, ...ctx });
+}
+
+const EVOLUTION_DIAG_PROTO_KEYS = new Set([
+  "imageMessage",
+  "videoMessage",
+  "audioMessage",
+  "documentMessage",
+  "pttMessage",
+  "ptvMessage",
+  "stickerMessage",
+  "lottieStickerMessage",
+  "conversation",
+  "extendedTextMessage",
+]);
+
+/** Varre o JSON do webhook (limite de nós) para `messageType` e chaves proto de mídia — qualquer evento Evolution. */
+function summarizeEvolutionWebhookPayloadForDiag(body: Record<string, unknown>): {
+  messageTypes: string[];
+  protoHints: string[];
+  nodesVisited: number;
+} {
+  const messageTypes: string[] = [];
+  const protoHints: string[] = [];
+  let nodesVisited = 0;
+  const seen = new WeakSet<object>();
+
+  function walk(node: unknown, depth: number) {
+    if (nodesVisited > 550 || depth > 16) return;
+    if (node == null || typeof node !== "object") return;
+    if (seen.has(node as object)) return;
+    seen.add(node as object);
+    nodesVisited++;
+    const o = node as Record<string, unknown>;
+    const mt = o.messageType ?? o.MessageType;
+    if (typeof mt === "string" && mt.trim()) messageTypes.push(mt.trim());
+    for (const k of EVOLUTION_DIAG_PROTO_KEYS) {
+      if (o[k] != null && typeof o[k] === "object" && !protoHints.includes(k)) protoHints.push(k);
+    }
+    for (const v of Object.values(o)) {
+      if (v && typeof v === "object") walk(v, depth + 1);
+    }
+  }
+
+  walk(body, 0);
+  return {
+    messageTypes: [...new Set(messageTypes)].slice(0, 40),
+    protoHints,
+    nodesVisited,
+  };
+}
+
+function logEvolutionWebhookPayloadDiag(
+  eventRaw: string,
+  eventNorm: string,
+  instance: string | null,
+  body: Record<string, unknown>,
+  routesToCrmUpsert: boolean
+) {
+  if (!crmEvolutionWebhookEventDiagEnabled()) return;
+  const sum = summarizeEvolutionWebhookPayloadForDiag(body);
+  console.info("[evolution-webhook] event_payload_diag", {
+    instance: instance || null,
+    eventRaw: eventRaw || null,
+    eventNorm: eventNorm || null,
+    routesToCrmUpsert,
+    ...sum,
+    hintNonUpsert:
+      !routesToCrmUpsert && (sum.protoHints.length || sum.messageTypes.some((m) => /image|video|audio|document|ptt|ptv/i.test(m)))
+        ? "Há sinais de mídia no payload mas o evento não foi tratado como messages.upsert — ver eventNorm e configuração na Evolution."
+        : undefined,
+  });
 }
 
 async function getOrMergeWhatsappConversationByLead(pool: any, leadId: string, preferredInboxId?: string | null) {
@@ -1092,6 +1167,7 @@ export async function POST(req: Request) {
       dataKeys:
         body?.data && typeof body.data === "object" ? Object.keys(body.data as object) : [],
     });
+    logEvolutionWebhookPayloadDiag(eventRaw, eventNorm, instance, body, looksLikeMessagesUpsert(body, eventNorm));
 
     if (process.env.NODE_ENV === "development") {
       console.log("[evolution-webhook] POST", {
@@ -1246,7 +1322,7 @@ export async function POST(req: Request) {
       });
     }
 
-    // Só messages.upsert precisa de inbox no CRM — demais eventos não consultam DB (evita log enganoso e ~15s).
+    // Só messages.upsert persiste mensagens no CRM — demais eventos não consultam DB (evita log enganoso e ~15s).
     if (!looksLikeMessagesUpsert(body, eventNorm)) {
       console.log("[evolution-webhook] ignored event", { instance, eventRaw, eventNorm });
       return NextResponse.json({ ok: true, ignored_event: eventRaw || null });

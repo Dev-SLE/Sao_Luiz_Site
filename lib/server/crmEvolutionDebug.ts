@@ -10,6 +10,16 @@ export function crmEvolutionMediaDebugEnabled(): boolean {
   return v === "1" || String(v || "").toLowerCase() === "true";
 }
 
+/**
+ * Log `[evolution-webhook] event_payload_diag` em **todos** os eventos (não só upsert):
+ * `messageType` na árvore do body + pistas de proto (imageMessage, etc.).
+ * Ativar `CRM_EVOLUTION_WEBHOOK_EVENT_DIAG=1` ou `CRM_EVOLUTION_UPSERT_DEBUG=1`.
+ */
+export function crmEvolutionWebhookEventDiagEnabled(): boolean {
+  const v = process.env.CRM_EVOLUTION_WEBHOOK_EVENT_DIAG ?? process.env.CRM_EVOLUTION_UPSERT_DEBUG;
+  return v === "1" || String(v || "").toLowerCase() === "true";
+}
+
 /** URL do webhook com `token` mascarado (primeiros 4 + últimos 4) para logs e respostas API. */
 export function maskEvolutionWebhookUrlForLog(webhookUrl: string): string {
   const s = String(webhookUrl || "").trim();
