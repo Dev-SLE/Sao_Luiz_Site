@@ -193,14 +193,15 @@ function numOrNull(v: any): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/**
+ * Slots enviados ao getBase64 + SharePoint.
+ * Figurinhas (sticker / lottie) **não** entram: a Evolution não trata `lottieStickerMessage` no TypeMediaMessage
+ * e o CRM usa só texto/cartão [[MediaPlaceholderHint]] no chat. Foco em imagem, vídeo, áudio, documento.
+ */
 function collectEvolutionMediaSlots(inner: any, fallbackMsgId: string): EvolutionMediaSlot[] {
   const m = unwrapEvolutionInner(inner);
   const out: EvolutionMediaSlot[] = [];
   let idx = 0;
-  const hasStickerLike =
-    (m.stickerMessage && typeof m.stickerMessage === "object") ||
-    (m.lottieStickerMessage && typeof m.lottieStickerMessage === "object");
-  /** Figurinha: payloads podem espelhar em imageMessage; pedir getBase64 como imagem dá 400 no WA. */
   const push = (
     mediaType: string,
     protoKey: string,
@@ -228,26 +229,6 @@ function collectEvolutionMediaSlots(inner: any, fallbackMsgId: string): Evolutio
       mediaBlock: block as Record<string, unknown>,
     });
   };
-
-  if (hasStickerLike) {
-    push("sticker", "stickerMessage", m.stickerMessage, (b) => ({
-      mime: b.mimetype ? String(b.mimetype) : "image/webp",
-      fileName: "sticker.webp",
-      seconds: null,
-      w: numOrNull(b.width),
-      h: numOrNull(b.height),
-      key: String(b.fileEncSha256 || b.fileSha256 || `stk_${fallbackMsgId}_${idx++}`),
-    }));
-    push("sticker", "lottieStickerMessage", m.lottieStickerMessage, (b) => ({
-      mime: b.mimetype ? String(b.mimetype) : "application/x-tgsticker",
-      fileName: "sticker.tgs",
-      seconds: null,
-      w: numOrNull(b.width),
-      h: numOrNull(b.height),
-      key: String(b.fileEncSha256 || b.fileSha256 || `lottie_${fallbackMsgId}_${idx++}`),
-    }));
-    return out;
-  }
 
   push("image", "imageMessage", m.imageMessage, (b) => ({
     mime: b.mimetype ? String(b.mimetype) : null,
@@ -320,50 +301,30 @@ function collectEvolutionMediaSlots(inner: any, fallbackMsgId: string): Evolutio
     h: null,
     key: String(b.fileEncSha256 || b.fileSha256 || `doc_${fallbackMsgId}_${idx++}`),
   }));
-  push("sticker", "stickerMessage", m.stickerMessage, (b) => ({
-    mime: b.mimetype ? String(b.mimetype) : "image/webp",
-    fileName: "sticker.webp",
-    seconds: null,
-    w: numOrNull(b.width),
-    h: numOrNull(b.height),
-    key: String(b.fileEncSha256 || b.fileSha256 || `stk_${fallbackMsgId}_${idx++}`),
-  }));
-  push("sticker", "lottieStickerMessage", m.lottieStickerMessage, (b) => ({
-    mime: b.mimetype ? String(b.mimetype) : "application/x-tgsticker",
-    fileName: "sticker.tgs",
-    seconds: null,
-    w: numOrNull(b.width),
-    h: numOrNull(b.height),
-    key: String(b.fileEncSha256 || b.fileSha256 || `lottie_${fallbackMsgId}_${idx++}`),
-  }));
 
   return out;
 }
 
-/** Evolution valida o tipo do nó contra a mensagem real no WA (p.ex. figurinha vs imagem). */
+/**
+ * Chave proto no body do `getBase64FromMediaMessage`.
+ * Na Evolution (`src/api/types/wa.types.ts`), `TypeMediaMessage` **não inclui**
+ * `lottieStickerMessage` nem `pttMessage` — só `stickerMessage`, `audioMessage`, etc.
+ * Sem este mapeamento, figurinha animada (.tgs) e PTT falham com "not of the media type".
+ */
 function effectiveEvolutionProtoKeyForGetBase64(args: {
   slot: EvolutionMediaSlot;
   evolutionItem: unknown;
 }): string {
   const root = evolutionWebhookRootMessageType(args.evolutionItem).toLowerCase();
-  const pk = String(args.slot.protoKey || "");
-  if (root.includes("lottie") && pk === "imageMessage") return "lottieStickerMessage";
-  if (root.includes("sticker") && pk === "imageMessage") return "stickerMessage";
-  // Nota de voz: messageType costuma ser ptt / pttMessage; envelope como audioMessage falha no getBase64.
-  if (
-    (root.includes("ptt") || root.includes("voice") || root.includes("pttvoice")) &&
-    pk === "audioMessage"
-  ) {
-    return "pttMessage";
-  }
-  // Áudio comum (ficheiro) por vezes vem só com chave pttMessage em payloads antigos.
-  if (root.includes("audiomessage") && !root.includes("ptt") && pk === "pttMessage") {
-    return "audioMessage";
-  }
+  let pk = String(args.slot.protoKey || "");
+  if (root.includes("lottie") && pk === "imageMessage") pk = "lottieStickerMessage";
+  if (root.includes("sticker") && pk === "imageMessage") pk = "stickerMessage";
+  if (pk === "lottieStickerMessage") return "stickerMessage";
+  if (pk === "pttMessage") return "audioMessage";
   return pk;
 }
 
-/** Conta slots de mídia ingestíveis (imagem, vídeo, áudio, doc, sticker) num item Evolution/Baileys. */
+/** Conta slots de mídia ingestíveis (imagem, vídeo, áudio, doc — sem figurinha). */
 export function countEvolutionInboundMediaSlots(evolutionItem: unknown, fallbackMsgId: string): number {
   const it = evolutionItem as { message?: unknown; msg?: unknown } | null;
   const inner = it?.message ?? it?.msg ?? evolutionItem;
@@ -651,15 +612,12 @@ export async function ingestEvolutionInboundMedia(args: {
       slot,
       evolutionItem: args.evolutionItem,
     });
-    const remappedToSticker =
-      effProto === "stickerMessage" || effProto === "lottieStickerMessage";
+    const remappedToSticker = effProto === "stickerMessage";
     const effMediaType = remappedToSticker ? "sticker" : slot.mediaType;
     const displayNameForRow =
       remappedToSticker &&
       (!slot.fileName || /\.(jpe?g|png)$/i.test(String(slot.fileName || "")))
-        ? effProto === "lottieStickerMessage"
-          ? "sticker.tgs"
-          : "sticker.webp"
+        ? "sticker.webp"
         : slot.fileName;
 
     const rowId = await upsertMediaRowStart(args.pool, {
@@ -720,9 +678,7 @@ export async function ingestEvolutionInboundMedia(args: {
       let fname =
         remappedToSticker &&
         (!slot.fileName || /\.(jpe?g|png)$/i.test(String(slot.fileName || "")))
-          ? effProto === "lottieStickerMessage"
-            ? "sticker.tgs"
-            : "sticker.webp"
+          ? "sticker.webp"
           : slot.fileName || `evo_${slot.providerMediaKey}.${extFromMime(mime)}`;
 
       const maxB = maxUploadBytesForMediaType(settings, effMediaType);

@@ -1550,7 +1550,14 @@ export async function POST(req: Request) {
         typeof unwrappedMsg === "object" &&
         Object.keys(unwrappedMsg).some(
           (k) =>
-            !["conversation", "extendedTextMessage", "messageContextInfo", "senderKeyDistributionMessage"].includes(k)
+            ![
+              "conversation",
+              "extendedTextMessage",
+              "messageContextInfo",
+              "senderKeyDistributionMessage",
+              "stickerMessage",
+              "lottieStickerMessage",
+            ].includes(k)
         );
       const hasMedia = inboundMediaSlotCount > 0 || Boolean(legacyNonTextKeys);
       if (msgId) {
