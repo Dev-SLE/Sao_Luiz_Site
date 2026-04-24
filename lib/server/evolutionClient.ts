@@ -19,9 +19,40 @@ export function evolutionNumberDigits(remoteJid: string | null | undefined): str
   return digits;
 }
 
+/** `messageType` na raiz do item Evolution (v2) quando `message` ainda vem vazio ou só contexto. */
+export function evolutionWebhookRootMessageType(item: unknown): string {
+  const it = item as Record<string, unknown> | null;
+  return String(it?.messageType ?? it?.MessageType ?? "").trim().toLowerCase();
+}
+
+export function bodyTextFromEvolutionMessageTypeHint(mt: string): string | null {
+  const t = String(mt || "").toLowerCase();
+  if (!t) return null;
+  if (t.includes("sticker") || t.includes("lottie")) return "[Figurinha recebida]";
+  if (t.includes("image")) return "[Imagem recebida]";
+  if (t.includes("video") || t.includes("ptv")) return "[Vídeo recebido]";
+  if (t.includes("audio") || t.includes("ptt")) return "[Áudio recebido]";
+  if (t.includes("document")) return "[Documento recebido]";
+  if (t.includes("contact")) return "[Contato recebido]";
+  if (t.includes("location")) return "[Localização recebida]";
+  return null;
+}
+
+function evolutionMessagePayloadIsEmptyStub(msg: unknown): boolean {
+  if (msg == null) return true;
+  if (typeof msg !== "object") return false;
+  const keys = Object.keys(msg as object).filter((k) => k !== "messageContextInfo");
+  return keys.length === 0;
+}
+
 export function extractEvolutionMessageText(message: any): string {
   if (!message || typeof message !== "object") return "";
   const m = message;
+  const rootMt = String(m.messageType || m.type || "").toLowerCase();
+  if (rootMt && evolutionMessagePayloadIsEmptyStub(m.message) && evolutionMessagePayloadIsEmptyStub(m.msg)) {
+    const hint = bodyTextFromEvolutionMessageTypeHint(rootMt);
+    if (hint) return hint;
+  }
   if (m.viewOnceMessageV2?.message) return extractEvolutionMessageText(m.viewOnceMessageV2.message);
   if (m.viewOnceMessageV2Extension?.message) return extractEvolutionMessageText(m.viewOnceMessageV2Extension.message);
   if (m.ephemeralMessage?.message) return extractEvolutionMessageText(m.ephemeralMessage.message);

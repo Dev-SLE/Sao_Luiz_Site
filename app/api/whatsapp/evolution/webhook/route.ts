@@ -4,8 +4,10 @@ import { ensureCrmSchemaTables } from "../../../../../lib/server/ensureSchema";
 import { applyInboundRouting, resolveInboxDefaultAssignment } from "../../../../../lib/server/crmRouting";
 import { ensureDefaultPipelineAndFirstStage } from "../../../../../lib/server/crmDefaultPipeline";
 import {
+  bodyTextFromEvolutionMessageTypeHint,
   evolutionNumberDigits,
   evolutionFetchProfilePictureUrl,
+  evolutionWebhookRootMessageType,
   extractEvolutionMessageText,
 } from "../../../../../lib/server/evolutionClient";
 import { evolutionQrCaptureFromWebhook } from "../../../../../lib/server/evolutionLastQr";
@@ -21,6 +23,29 @@ import {
 } from "../../../../../lib/server/crmMessageWaMirror";
 
 export const runtime = "nodejs";
+
+/** Prioriza rótulos de mídia sobre "[Mensagem recebida]" quando o payload Evolution vem em duas fases. */
+function rankEvolutionBodyLabel(s: string): number {
+  const t = String(s || "").trim().toLowerCase();
+  if (!t) return 0;
+  if (t === "[mensagem recebida]" || t === "[mensagem sem texto]") return 1;
+  if (/^\[[^\]]+(recebida|recebido)\]$/i.test(t)) return 3;
+  return 2;
+}
+
+function preferEvolutionInboundBody(...parts: string[]): string {
+  let best = "[Mensagem sem texto]";
+  let bestR = 0;
+  for (const p of parts) {
+    if (!p) continue;
+    const r = rankEvolutionBodyLabel(p);
+    if (r > bestR || (r === bestR && r >= 2 && String(p).length > String(best).length)) {
+      bestR = r;
+      best = p;
+    }
+  }
+  return best;
+}
 
 /** connection.update: log detalhado no máximo a cada 8s por instância. */
 const lastConnectionDetailLogAt = new Map<string, number>();
@@ -594,7 +619,7 @@ function looksLikeMessagesUpsert(body: Record<string, unknown>, eventNorm: strin
   const d = (body?.data ?? body) as Record<string, unknown> | undefined;
   if (!d || typeof d !== "object") return false;
   if (Array.isArray(d.messages) && d.messages.length) return true;
-  if (d.key && (d.message || (d as any).msg)) return true;
+  if (d.key && (d.message || (d as any).msg || d.messageType)) return true;
   return false;
 }
 
@@ -602,7 +627,7 @@ function collectUpsertItems(data: any): any[] {
   if (!data) return [];
   if (Array.isArray(data)) return data;
   if (Array.isArray(data.messages)) return data.messages;
-  if (data.key && (data.message || data.msg)) return [data];
+  if (data.key && (data.message || data.msg || data.messageType)) return [data];
   return [];
 }
 
@@ -1192,15 +1217,21 @@ export async function POST(req: Request) {
       const inboundMediaSlotCount = countEvolutionInboundMediaSlots(item, msgId || "x");
       const unwrappedMsg = unwrapEvolutionInner(msgObj) || msgObj;
       // Alguns provedores enviam tipo/mídia fora de message; usa fallback com o item inteiro.
-      const text =
-        extractEvolutionMessageText(msgObj) ||
-        extractEvolutionMessageText(unwrappedMsg) ||
-        extractEvolutionMessageText(item) ||
-        "[Mensagem sem texto]";
+      const tMsg = extractEvolutionMessageText(msgObj) || "";
+      const tUnwrap = extractEvolutionMessageText(unwrappedMsg) || "";
+      const tItem = extractEvolutionMessageText(item) || "";
+      let text = preferEvolutionInboundBody(tMsg, tUnwrap, tItem);
+      const mtHint = bodyTextFromEvolutionMessageTypeHint(evolutionWebhookRootMessageType(item));
+      if (mtHint && rankEvolutionBodyLabel(mtHint) > rankEvolutionBodyLabel(text)) {
+        text = mtHint;
+      }
       const textLooksLikeInboundMedia = /^\[(Imagem recebida|Figurinha recebida|Vídeo recebido|Documento recebido|Áudio recebido)\]$/i.test(
         String(text || "").trim()
       );
-      const hasInboundMediaForIntake = inboundMediaSlotCount > 0 || textLooksLikeInboundMedia;
+      const hasInboundMediaForIntake =
+        inboundMediaSlotCount > 0 ||
+        textLooksLikeInboundMedia ||
+        Boolean(mtHint);
       const cteDetected = extractCteFromText(text);
       const last10 = lastN(phoneDigits, 10);
       const titlePhoneSuffix = crmPhoneSuffixForTitle(phoneDigits);
@@ -1525,21 +1556,66 @@ export async function POST(req: Request) {
       if (msgId) {
         const dup = await pool.query(
           `
-            SELECT id
-            FROM pendencias.crm_messages
-            WHERE (provider = 'EVOLUTION' AND provider_message_id = $1)
-               OR metadata->>'message_id' = $1
-               OR metadata#>>'{outbound_whatsapp,message_id}' = $1
+            SELECT m.id, m.body, m.has_attachments,
+              (SELECT COUNT(*)::int FROM pendencias.crm_message_media mm WHERE mm.message_id = m.id) AS media_n
+            FROM pendencias.crm_messages m
+            WHERE (m.provider = 'EVOLUTION' AND m.provider_message_id = $1)
+               OR m.metadata->>'message_id' = $1
+               OR m.metadata#>>'{outbound_whatsapp,message_id}' = $1
             LIMIT 1
           `,
           [msgId]
         );
-        if (dup.rows?.[0]?.id) {
-          logUpsertSkip("duplicate_evolution_message_id", {
-            instance,
-            msgId: msgId.slice(0, 32),
-            conversationId,
-          });
+        const dupRow = dup.rows?.[0];
+        if (dupRow?.id) {
+          const existingId = String(dupRow.id);
+          const existingBody = String(dupRow.body || "").trim();
+          const existingMediaN = Number(dupRow.media_n || 0);
+          const existingRank = rankEvolutionBodyLabel(existingBody);
+          const newRank = rankEvolutionBodyLabel(text);
+          const bodyIsGeneric =
+            !existingBody ||
+            existingBody.toLowerCase() === "[mensagem recebida]" ||
+            existingBody.toLowerCase() === "[mensagem sem texto]";
+          const shouldEnrich =
+            (inboundMediaSlotCount > 0 && existingMediaN === 0) ||
+            (hasMedia && existingMediaN === 0 && !dupRow.has_attachments) ||
+            (bodyIsGeneric && newRank > existingRank);
+          if (shouldEnrich) {
+            const nextBody = preferEvolutionInboundBody(existingBody, text).slice(0, 8000);
+            await pool.query(
+              `
+                UPDATE pendencias.crm_messages
+                SET body = $2, has_attachments = has_attachments OR $3::boolean
+                WHERE id = $1::uuid
+              `,
+              [existingId, nextBody, hasMedia]
+            );
+            if (hasMedia && inboxRow.evolution_server_url && inboxRow.evolution_api_key) {
+              void ingestEvolutionInboundMedia({
+                pool,
+                messageId: existingId,
+                conversationId,
+                evolutionItem: item,
+                serverUrl: String(inboxRow.evolution_server_url),
+                apiKey: String(inboxRow.evolution_api_key),
+                instanceName: instance,
+                providerMessageId: msgId || null,
+              }).catch((e) => console.error("[crm-media] evolution_async_dup", e));
+            }
+            console.info("[evolution-webhook] duplicate_message_enriched", {
+              instance,
+              msgId: msgId.slice(0, 32),
+              slots: inboundMediaSlotCount,
+              hadMediaRows: existingMediaN,
+            });
+          } else {
+            logUpsertSkip("duplicate_evolution_message_id", {
+              instance,
+              msgId: msgId.slice(0, 32),
+              conversationId,
+            });
+          }
           continue;
         }
       }

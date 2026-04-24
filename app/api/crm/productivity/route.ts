@@ -97,13 +97,13 @@ export async function GET(req: Request) {
             COALESCE(AVG(EXTRACT(EPOCH FROM (NOW() - l.updated_at)) / 60), 0)::int AS avg_minutes
           FROM pendencias.crm_stages s
           LEFT JOIN pendencias.crm_leads l ON l.stage_id = s.id
-            AND ($3::timestamptz IS NULL OR l.updated_at >= $3::timestamptz)
-            AND ($4::timestamptz IS NULL OR l.updated_at <= $4::timestamptz)
+            AND ($1::timestamptz IS NULL OR l.updated_at >= $1::timestamptz)
+            AND ($2::timestamptz IS NULL OR l.updated_at <= $2::timestamptz)
           GROUP BY s.name
           ORDER BY avg_minutes DESC
           LIMIT 12
         `,
-        [...convParams, fromTs, toTs]
+        [fromTs, toTs]
       ),
       pool.query(
         `

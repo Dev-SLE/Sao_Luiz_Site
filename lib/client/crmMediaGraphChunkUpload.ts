@@ -15,6 +15,22 @@ function parseNextRangeStart(nextRanges: string[] | undefined, fallback: number)
   return fallback;
 }
 
+function extractGraphDriveItemId(json: Record<string, unknown>): string {
+  const top = String(json.id || "").trim();
+  if (top) return top;
+  const item = json.item;
+  if (item && typeof item === "object") {
+    const id = String((item as Record<string, unknown>).id || "").trim();
+    if (id) return id;
+  }
+  const val = json.value;
+  if (val && typeof val === "object") {
+    const id = String((val as Record<string, unknown>).id || "").trim();
+    if (id) return id;
+  }
+  return "";
+}
+
 /** Fragmentos de 4 MiB (recomendação Graph / margem segura em browsers). */
 const DEFAULT_CHUNK = 4 * 1024 * 1024;
 
@@ -41,17 +57,17 @@ export async function uploadFileToGraphUploadSession(uploadUrl: string, file: Fi
     } catch {
       json = {};
     }
+    const idFromJson = extractGraphDriveItemId(json);
     if (res.status === 200 || res.status === 201) {
-      const id = String(json.id || "").trim();
-      if (id) {
+      if (idFromJson) {
         return {
-          id,
+          id: idFromJson,
           name: json.name != null ? String(json.name) : undefined,
           size: json.size != null ? Number(json.size) : undefined,
         };
       }
-      if (lastBody && String(lastBody.id || "").trim()) {
-        const id2 = String(lastBody.id).trim();
+      if (lastBody && String(extractGraphDriveItemId(lastBody) || "").trim()) {
+        const id2 = extractGraphDriveItemId(lastBody);
         return {
           id: id2,
           name: lastBody.name != null ? String(lastBody.name) : undefined,
@@ -60,12 +76,32 @@ export async function uploadFileToGraphUploadSession(uploadUrl: string, file: Fi
       }
     }
     if (res.status === 202) {
+      const id202 = extractGraphDriveItemId(json);
+      if (id202) {
+        return {
+          id: id202,
+          name: json.name != null ? String(json.name) : undefined,
+          size: json.size != null ? Number(json.size) : undefined,
+        };
+      }
       const nr = json.nextExpectedRanges as string[] | undefined;
-      start = parseNextRangeStart(nr, end + 1);
+      let nextStart = parseNextRangeStart(nr, end + 1);
+      if (nextStart <= start) {
+        nextStart = end + 1;
+      }
+      start = nextStart;
       lastBody = json;
       continue;
     }
     throw new Error(`Upload Graph falhou (${res.status}): ${text.slice(0, 280)}`);
+  }
+  if (lastBody && String(extractGraphDriveItemId(lastBody) || "").trim()) {
+    const id3 = extractGraphDriveItemId(lastBody);
+    return {
+      id: id3,
+      name: lastBody.name != null ? String(lastBody.name) : undefined,
+      size: lastBody.size != null ? Number(lastBody.size) : undefined,
+    };
   }
   throw new Error("Upload Graph terminou sem item final");
 }
