@@ -420,11 +420,16 @@ export async function evolutionSendMedia(args: {
       const msg = (json as any)?.message || (json as any)?.error || `HTTP ${resp.status}`;
       const hint =
         resp.status === 413
-          ? " (payload grande: reduza o áudio ou aumente client_max_body_size no proxy da Evolution)"
+          ? " (payload grande: defina FILES_EVOLUTION_DOWNLOAD_SECRET + URL pública do site, ou aumente client_max_body_size no proxy da Evolution)"
           : "";
+      const m = String(args.media || "");
+      const mediaMode = m.startsWith("http") ? "url" : m.startsWith("data:") ? "data_uri" : "other";
       evolutionIntegrationLog("sendMedia_failed", {
         instanceName: args.instanceName,
         httpStatus: resp.status,
+        mediatype: args.mediatype,
+        mediaMode,
+        mediaChars: m.length,
         error: `${String(msg).slice(0, 220)}${hint}`,
       });
       return { ok: false, error: `${String(msg)}${hint}`, response: json };

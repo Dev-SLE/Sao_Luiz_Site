@@ -781,10 +781,22 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       recordStreamRef.current = stream;
       recordChunksRef.current = [];
-      const mimePreferred =
-        typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported?.('audio/webm;codecs=opus')
-          ? 'audio/webm;codecs=opus'
-          : 'audio/webm';
+      const mimeCandidates = [
+        'audio/ogg;codecs=opus',
+        'audio/ogg',
+        'audio/mp4',
+        'audio/webm;codecs=opus',
+        'audio/webm',
+      ] as const;
+      let mimePreferred = 'audio/webm';
+      if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported) {
+        for (const c of mimeCandidates) {
+          if (MediaRecorder.isTypeSupported(c)) {
+            mimePreferred = c;
+            break;
+          }
+        }
+      }
       const rec = new MediaRecorder(stream, { mimeType: mimePreferred });
       mediaRecorderRef.current = rec;
       rec.ondataavailable = (e) => {
@@ -798,7 +810,11 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
         const blob = new Blob(recordChunksRef.current, { type: fileType });
         recordChunksRef.current = [];
         if (blob.size > 800) {
-          const ext = fileType.includes('webm') ? 'webm' : 'ogg';
+          const ext = fileType.includes('webm')
+            ? 'webm'
+            : fileType.includes('mp4')
+              ? 'm4a'
+              : 'ogg';
           const f = new File([blob], `gravacao-${Date.now()}.${ext}`, { type: fileType });
           setAttachmentFiles((prev) => [...prev, f]);
         }

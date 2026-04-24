@@ -23,6 +23,11 @@ import {
   metaSendMessageWithUploadedMedia,
   metaUploadMediaBuffer,
 } from "../../../../lib/server/crmMetaOutboundMedia";
+import {
+  buildSignedEvolutionMediaFetchUrl,
+  evolutionSignedMediaFetchMissing,
+} from "../../../../lib/server/evolutionMediaSignedUrl";
+import { evolutionIntegrationLog } from "../../../../lib/server/evolutionUrl";
 
 export const runtime = "nodejs";
 
@@ -736,7 +741,21 @@ export async function POST(req: Request) {
                 sendName = tr.fileName;
               }
             }
-            const dataUri = `data:${sendMime};base64,${sendBuf.toString("base64")}`;
+            let mediaPayload = `data:${sendMime};base64,${sendBuf.toString("base64")}`;
+            const signed = buildSignedEvolutionMediaFetchUrl(f.fileId);
+            if (signed) {
+              mediaPayload = signed;
+              evolutionIntegrationLog("sendMedia_via_signed_url", {
+                fileId: f.fileId,
+                bytes: sendBuf.length,
+                mediatype: evolutionMediatypeFromMime(sendMime),
+              });
+            } else if (sendBuf.length > 24_000) {
+              evolutionIntegrationLog("sendMedia_data_uri_large", {
+                bytes: sendBuf.length,
+                missingSignedUrlConfig: evolutionSignedMediaFetchMissing(),
+              });
+            }
             const cap = i === 0 ? (signedText || text || undefined)?.slice(0, 1020) : undefined;
             const waResp = await evolutionSendMedia({
               serverUrl: String(row.evolution_server_url),
@@ -744,7 +763,7 @@ export async function POST(req: Request) {
               instanceName: String(row.evolution_instance_name),
               numberDigits: toE164,
               mediatype: evolutionMediatypeFromMime(sendMime),
-              media: dataUri,
+              media: mediaPayload,
               mimetype: sendMime,
               fileName: sendName,
               caption: cap,

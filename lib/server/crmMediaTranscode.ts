@@ -1,8 +1,20 @@
 import { spawn } from "child_process";
 import * as fs from "fs";
+import { createRequire } from "node:module";
 import * as os from "os";
 import * as path from "path";
 import type { CrmMediaSettings } from "./crmMediaSettings";
+
+const require = createRequire(import.meta.url);
+
+function bundledFfmpegPath(): string | null {
+  try {
+    const p = require("ffmpeg-static") as string | undefined;
+    return p && typeof p === "string" && p.length > 0 ? p : null;
+  } catch {
+    return null;
+  }
+}
 
 export type TranscodeAudioResult =
   | { ok: true; buffer: Buffer; mimeType: string; fileName: string }
@@ -11,6 +23,8 @@ export type TranscodeAudioResult =
 function ffmpegBin(): string | null {
   const fromEnv = String(process.env.FFMPEG_PATH || "").trim();
   if (fromEnv) return fromEnv;
+  const bundled = bundledFfmpegPath();
+  if (bundled) return bundled;
   return "ffmpeg";
 }
 
