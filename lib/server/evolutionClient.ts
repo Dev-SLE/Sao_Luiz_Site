@@ -20,10 +20,18 @@ export function evolutionNumberDigits(remoteJid: string | null | undefined): str
   return digits;
 }
 
-/** `messageType` na raiz do item Evolution (v2) quando `message` ainda vem vazio ou só contexto. */
+/** `messageType` no item Evolution: raiz do WebMessageInfo ou dentro de `message`/`msg`. */
 export function evolutionWebhookRootMessageType(item: unknown): string {
   const it = item as Record<string, unknown> | null;
-  return String(it?.messageType ?? it?.MessageType ?? "").trim().toLowerCase();
+  let mt = String(it?.messageType ?? it?.MessageType ?? "").trim();
+  if (mt) return mt.toLowerCase();
+  const msg = it?.message ?? it?.msg;
+  if (msg && typeof msg === "object") {
+    const m = msg as Record<string, unknown>;
+    mt = String(m.messageType ?? m.MessageType ?? "").trim();
+    if (mt) return mt.toLowerCase();
+  }
+  return "";
 }
 
 export function bodyTextFromEvolutionMessageTypeHint(mt: string): string | null {

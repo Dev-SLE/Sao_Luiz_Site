@@ -175,6 +175,75 @@ export function unwrapEvolutionInner(msg: any): any {
   return msg;
 }
 
+const DEEP_INGESTIBLE_MEDIA_KEYS = [
+  "imageMessage",
+  "videoMessage",
+  "audioMessage",
+  "documentMessage",
+  "pttMessage",
+  "ptvMessage",
+] as const;
+
+function findFirstDeepIngestibleMediaBlock(
+  root: unknown,
+  depth: number,
+  seen: WeakSet<object>
+): { key: (typeof DEEP_INGESTIBLE_MEDIA_KEYS)[number]; block: Record<string, unknown> } | null {
+  if (depth > 16 || root == null || typeof root !== "object") return null;
+  if (seen.has(root as object)) return null;
+  seen.add(root as object);
+  const o = root as Record<string, unknown>;
+  for (const k of DEEP_INGESTIBLE_MEDIA_KEYS) {
+    const v = o[k];
+    if (v && typeof v === "object") return { key: k, block: v as Record<string, unknown> };
+  }
+  for (const v of Object.values(o)) {
+    if (v && typeof v === "object") {
+      const hit = findFirstDeepIngestibleMediaBlock(v, depth + 1, seen);
+      if (hit) return hit;
+    }
+  }
+  return null;
+}
+
+/**
+ * Alguns payloads colocam `imageMessage`/`audioMessage` profundamente (fora do que `unwrapEvolutionInner` cobre)
+ * enquanto `message` superficial só tem `conversation`/`extendedTextMessage` — o diag via árvore vê mídia, o ingest não.
+ * Promove o primeiro bloco de mídia encontrado para irmão de `conversation` em `message`/`msg`.
+ */
+export function mergeDeepMediaIntoEvolutionItem(item: unknown): unknown {
+  if (!item || typeof item !== "object") return item;
+  const hit = findFirstDeepIngestibleMediaBlock(item, 0, new WeakSet());
+  if (!hit) return item;
+  const it = item as Record<string, unknown>;
+  const prevMsg = (it.message ?? it.msg) as Record<string, unknown> | undefined;
+  const baseMsg =
+    prevMsg && typeof prevMsg === "object"
+      ? { ...prevMsg, [hit.key]: (prevMsg as Record<string, unknown>)[hit.key] ?? hit.block }
+      : { [hit.key]: hit.block };
+  return { ...it, message: baseMsg, msg: baseMsg };
+}
+
+/** Lista proto de mídia ingestível presente em qualquer profundidade (para logs / gates). */
+export function extractEvolutionIngestibleMediaProtoHints(root: unknown): string[] {
+  const found = new Set<string>();
+  const seen = new WeakSet<object>();
+  function walk(node: unknown, depth: number) {
+    if (depth > 16 || node == null || typeof node !== "object") return;
+    if (seen.has(node as object)) return;
+    seen.add(node as object);
+    const o = node as Record<string, unknown>;
+    for (const k of DEEP_INGESTIBLE_MEDIA_KEYS) {
+      if (o[k] && typeof o[k] === "object") found.add(k);
+    }
+    for (const v of Object.values(o)) {
+      if (v && typeof v === "object") walk(v, depth + 1);
+    }
+  }
+  walk(root, 0);
+  return [...found];
+}
+
 export type EvolutionMediaSlot = {
   mediaType: string;
   /** Chave proto (ex.: pttMessage) enviada à Evolution getBase64 */
@@ -316,7 +385,10 @@ function inferKeyOnlyEvolutionMediaSlots(evolutionItem: unknown, fallbackMsgId: 
   if (inner && typeof inner === "object") {
     const raw = unwrapEvolutionInner(inner) as Record<string, unknown>;
     const keys = Object.keys(raw || {}).filter((k) => k !== "messageContextInfo");
-    if (keys.length) return [];
+    /** Só `conversation`/`extendedTextMessage` não impedem key-only: mídia pode vir só em `messageType` na raiz. */
+    const textualOnly = new Set(["conversation", "extendedTextMessage"]);
+    const substantive = keys.filter((k) => !textualOnly.has(k));
+    if (substantive.length) return [];
   }
 
   const mt = evolutionWebhookRootMessageType(evolutionItem).toLowerCase();
@@ -367,12 +439,21 @@ function effectiveEvolutionProtoKeyForGetBase64(args: {
 }
 
 /** Conta slots de mídia ingestíveis (imagem, vídeo, áudio, doc — sem figurinha). */
-export function countEvolutionInboundMediaSlots(evolutionItem: unknown, fallbackMsgId: string): number {
-  const it = evolutionItem as { message?: unknown; msg?: unknown } | null;
-  const inner = it?.message ?? it?.msg ?? evolutionItem;
+export function countEvolutionInboundMediaSlots(
+  evolutionItem: unknown,
+  fallbackMsgId: string,
+  /** Se true, `evolutionItem` já passou por `mergeDeepMediaIntoEvolutionItem` (evita dupla fusão). */
+  alreadyMerged?: boolean
+): number {
+  const prepared = (alreadyMerged ? evolutionItem : mergeDeepMediaIntoEvolutionItem(evolutionItem)) as {
+    message?: unknown;
+    msg?: unknown;
+  } | null;
+  const it = prepared as { message?: unknown; msg?: unknown } | null;
+  const inner = it?.message ?? it?.msg ?? prepared;
   const n = collectEvolutionMediaSlots(inner, String(fallbackMsgId || "x")).length;
   if (n) return n;
-  return inferKeyOnlyEvolutionMediaSlots(evolutionItem, String(fallbackMsgId || "x")).length;
+  return inferKeyOnlyEvolutionMediaSlots(prepared, String(fallbackMsgId || "x")).length;
 }
 
 async function upsertMediaRowStart(pool: Pool, args: {
@@ -643,32 +724,39 @@ export async function ingestEvolutionInboundMedia(args: {
   providerMessageId: string | null;
 }): Promise<void> {
   const settings = await getCrmMediaSettings(args.pool);
-  const inner = args.evolutionItem?.message || args.evolutionItem?.msg || args.evolutionItem;
+  const evolutionItemPrepared = mergeDeepMediaIntoEvolutionItem(args.evolutionItem) as typeof args.evolutionItem;
+  const inner =
+    evolutionItemPrepared?.message || evolutionItemPrepared?.msg || evolutionItemPrepared;
   const fid = String(args.providerMessageId || args.messageId);
   const realSlots = collectEvolutionMediaSlots(inner, fid);
-  let slots = realSlots.length ? realSlots : inferKeyOnlyEvolutionMediaSlots(args.evolutionItem, fid);
+  let slots = realSlots.length ? realSlots : inferKeyOnlyEvolutionMediaSlots(evolutionItemPrepared, fid);
   if (!slots.length) return;
   const keyOnlySlots = realSlots.length === 0 && slots.length > 0;
 
+  console.info("[crm-media] evolution_detected", {
+    messageId: args.messageId,
+    providerMessageId: args.providerMessageId,
+    instanceName: args.instanceName,
+    slotCount: slots.length,
+    realSlotCount: realSlots.length,
+    keyOnlySlots,
+    deepProtoHints: extractEvolutionIngestibleMediaProtoHints(evolutionItemPrepared).slice(0, 12),
+  });
   if (crmEvolutionMediaDebugEnabled()) {
-    console.info("[crm-media] evolution_detected", {
+    console.info("[crm-media] evolution_detected_detail", {
       messageId: args.messageId,
-      providerMessageId: args.providerMessageId,
-      instanceName: args.instanceName,
-      slotCount: slots.length,
-      realSlotCount: realSlots.length,
-      keyOnlySlots,
+      slotsPreview: slots.slice(0, 4).map((s) => ({ mediaType: s.mediaType, fileName: s.fileName })),
     });
   }
 
-  const key = args.evolutionItem?.key || {};
-  const remoteJid = String(key.remoteJid || (args.evolutionItem as any)?.remoteJid || "").trim();
+  const key = evolutionItemPrepared?.key || {};
+  const remoteJid = String(key.remoteJid || (evolutionItemPrepared as any)?.remoteJid || "").trim();
 
   let ordinal = 0;
   for (const slot of slots) {
     const effProto = effectiveEvolutionProtoKeyForGetBase64({
       slot,
-      evolutionItem: args.evolutionItem,
+      evolutionItem: evolutionItemPrepared,
     });
     const remappedToSticker = effProto === "stickerMessage";
     const effMediaType = remappedToSticker ? "sticker" : slot.mediaType;

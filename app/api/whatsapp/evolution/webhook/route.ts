@@ -14,7 +14,9 @@ import {
 import { evolutionQrCaptureFromWebhook } from "../../../../../lib/server/evolutionLastQr";
 import {
   countEvolutionInboundMediaSlots,
+  extractEvolutionIngestibleMediaProtoHints,
   ingestEvolutionInboundMedia,
+  mergeDeepMediaIntoEvolutionItem,
   unwrapEvolutionInner,
 } from "../../../../../lib/server/crmMediaIngest";
 import { crmPhoneSuffixForTitle, crmStripTrailingTitlePhone } from "../../../../../lib/server/crmPhoneDisplay";
@@ -621,6 +623,7 @@ function buildUpsertMediaProbePayload(args: {
   unwrappedMsg: unknown;
   inboundMediaSlotCount: number;
   hasMedia: boolean;
+  protoHintsIngest?: string[];
   textPreview: string;
 }): Record<string, unknown> {
   const uw = args.unwrappedMsg && typeof args.unwrappedMsg === "object" ? (args.unwrappedMsg as Record<string, unknown>) : {};
@@ -632,6 +635,7 @@ function buildUpsertMediaProbePayload(args: {
     messageKeys: args.messageKeys.slice(0, 30),
     inboundMediaSlotCount: args.inboundMediaSlotCount,
     hasMedia: args.hasMedia,
+    protoHintsIngest: args.protoHintsIngest?.length ? args.protoHintsIngest : undefined,
     textPreview: args.textPreview,
     imageMessage: mediaBlockProbe(uw.imageMessage),
     videoMessage: mediaBlockProbe(uw.videoMessage),
@@ -1417,16 +1421,18 @@ export async function POST(req: Request) {
         continue;
       }
 
-      const msgObj = item.message || item.msg || {};
       const msgId = String(key.id || "");
-      const inboundMediaSlotCount = countEvolutionInboundMediaSlots(item, msgId || "x");
+      const itemMerged = mergeDeepMediaIntoEvolutionItem(item) as Record<string, unknown>;
+      const msgObj = (itemMerged as { message?: unknown; msg?: unknown }).message ?? (itemMerged as { msg?: unknown }).msg ?? {};
+      const protoHintsIngest = extractEvolutionIngestibleMediaProtoHints(itemMerged);
+      const inboundMediaSlotCount = countEvolutionInboundMediaSlots(itemMerged, msgId || "x", true);
       const unwrappedMsg = unwrapEvolutionInner(msgObj) || msgObj;
       // Alguns provedores enviam tipo/mídia fora de message; usa fallback com o item inteiro.
       const tMsg = extractEvolutionMessageText(msgObj) || "";
       const tUnwrap = extractEvolutionMessageText(unwrappedMsg) || "";
       const tItem = extractEvolutionMessageText(item) || "";
       let text = preferEvolutionInboundBody(tMsg, tUnwrap, tItem);
-      const mtHint = bodyTextFromEvolutionMessageTypeHint(evolutionWebhookRootMessageType(item));
+      const mtHint = bodyTextFromEvolutionMessageTypeHint(evolutionWebhookRootMessageType(itemMerged));
       if (mtHint && rankEvolutionBodyLabel(mtHint) > rankEvolutionBodyLabel(text)) {
         text = mtHint;
       }
@@ -1436,7 +1442,8 @@ export async function POST(req: Request) {
       const hasInboundMediaForIntake =
         inboundMediaSlotCount > 0 ||
         textLooksLikeInboundMedia ||
-        Boolean(mtHint);
+        Boolean(mtHint) ||
+        protoHintsIngest.length > 0;
       const cteDetected = extractCteFromText(text);
       const last10 = lastN(phoneDigits, 10);
       const titlePhoneSuffix = crmPhoneSuffixForTitle(phoneDigits);
@@ -1766,7 +1773,33 @@ export async function POST(req: Request) {
         );
       /** Inclui rótulo [Imagem recebida] etc. quando o proto vem vazio mas `messageType` já indica mídia (ingest usa key-only na Evolution). */
       const hasMedia =
-        inboundMediaSlotCount > 0 || Boolean(legacyNonTextKeys) || textLooksLikeInboundMedia;
+        inboundMediaSlotCount > 0 ||
+        Boolean(legacyNonTextKeys) ||
+        textLooksLikeInboundMedia ||
+        protoHintsIngest.length > 0;
+      const evCreds = !!(inboxRow.evolution_server_url && inboxRow.evolution_api_key);
+      let skipIngestReason: string | null = null;
+      if (!hasMedia) {
+        skipIngestReason =
+          protoHintsIngest.length > 0
+            ? "hasMedia_false_despite_proto_hints_ingest"
+            : "no_media_slots_legacy_wrap_or_caption";
+      } else if (!evCreds) {
+        skipIngestReason = "missing_evolution_server_url_or_api_key";
+      }
+      if (protoHintsIngest.length > 0 || inboundMediaSlotCount > 0 || crmEvolutionUpsertDebugEnabled()) {
+        console.info("[evolution-webhook] upsert_ingest_gate", {
+          instance,
+          msgId: msgId.slice(0, 32),
+          phase: "before_duplicate_check",
+          protoHintsIngest,
+          inboundMediaSlotCount,
+          hasMedia,
+          evolutionCredentialsPresent: evCreds,
+          shouldIngestMediaPrecondition: hasMedia && evCreds,
+          skipIngestReason: hasMedia && evCreds ? null : skipIngestReason,
+        });
+      }
       if (crmEvolutionUpsertDebugEnabled()) {
         const mk = Object.keys((msgObj && typeof msgObj === "object" ? msgObj : {}) as object).slice(0, 30);
         console.info(
@@ -1775,11 +1808,12 @@ export async function POST(req: Request) {
             instance,
             msgId,
             isFromMe,
-            messageType: evolutionWebhookRootMessageType(item),
+            messageType: evolutionWebhookRootMessageType(itemMerged),
             messageKeys: mk,
             unwrappedMsg,
             inboundMediaSlotCount,
             hasMedia,
+            protoHintsIngest,
             textPreview: String(text || "").slice(0, 120),
           })
         );
@@ -1823,11 +1857,22 @@ export async function POST(req: Request) {
               [existingId, nextBody, hasMedia]
             );
             if (hasMedia && inboxRow.evolution_server_url && inboxRow.evolution_api_key) {
+              console.info("[evolution-webhook] upsert_ingest_gate", {
+                instance,
+                msgId: msgId.slice(0, 32),
+                phase: "duplicate_enrich_ingest",
+                protoHintsIngest,
+                inboundMediaSlotCount,
+                hasMedia,
+                evolutionCredentialsPresent: true,
+                shouldIngestMedia: true,
+                skipIngestReason: null,
+              });
               void ingestEvolutionInboundMedia({
                 pool,
                 messageId: existingId,
                 conversationId,
-                evolutionItem: item,
+                evolutionItem: itemMerged,
                 serverUrl: String(inboxRow.evolution_server_url),
                 apiKey: String(inboxRow.evolution_api_key),
                 instanceName: instance,
@@ -1850,6 +1895,25 @@ export async function POST(req: Request) {
               hadMediaRows: existingMediaN,
             });
           } else {
+            if (
+              (protoHintsIngest.length > 0 || inboundMediaSlotCount > 0) &&
+              hasMedia &&
+              evCreds &&
+              !(inboundMediaSlotCount > 0 && existingMediaN === 0)
+            ) {
+              console.info("[evolution-webhook] upsert_ingest_gate", {
+                instance,
+                msgId: msgId.slice(0, 32),
+                phase: "duplicate_skip_no_enrich",
+                protoHintsIngest,
+                inboundMediaSlotCount,
+                hasMedia,
+                evolutionCredentialsPresent: evCreds,
+                shouldIngestMedia: false,
+                skipIngestReason: "duplicate_row_exists_enrich_not_needed",
+                existingMediaN,
+              });
+            }
             logUpsertSkip("duplicate_evolution_message_id", {
               instance,
               msgId: msgId.slice(0, 32),
@@ -1887,12 +1951,32 @@ export async function POST(req: Request) {
         ]
       );
       const newEvMessageId = String(insEv.rows?.[0]?.id || "");
-      if (newEvMessageId && hasMedia && inboxRow.evolution_server_url && inboxRow.evolution_api_key) {
+      const shouldIngestMedia = !!(newEvMessageId && hasMedia && evCreds);
+      if (protoHintsIngest.length > 0 || inboundMediaSlotCount > 0 || crmEvolutionUpsertDebugEnabled()) {
+        let afterSkip: string | null = null;
+        if (!shouldIngestMedia) {
+          if (!hasMedia) afterSkip = "no_media";
+          else if (!evCreds) afterSkip = "missing_evolution_server_url_or_api_key";
+          else if (!newEvMessageId) afterSkip = "insert_returned_no_message_row_id";
+        }
+        console.info("[evolution-webhook] upsert_ingest_gate", {
+          instance,
+          msgId: msgId.slice(0, 32),
+          phase: "after_insert",
+          protoHintsIngest,
+          inboundMediaSlotCount,
+          hasMedia,
+          evolutionCredentialsPresent: evCreds,
+          shouldIngestMedia,
+          skipIngestReason: shouldIngestMedia ? null : afterSkip,
+        });
+      }
+      if (shouldIngestMedia) {
         void ingestEvolutionInboundMedia({
           pool,
           messageId: newEvMessageId,
           conversationId,
-          evolutionItem: item,
+          evolutionItem: itemMerged,
           serverUrl: String(inboxRow.evolution_server_url),
           apiKey: String(inboxRow.evolution_api_key),
           instanceName: instance,
