@@ -245,6 +245,17 @@ export async function evolutionSendText(args: {
       });
       return { ok: false, error: String(msg), response: json };
     }
+    const bodyErr = evolutionResponseBodyIndicatesError(json);
+    if (bodyErr) {
+      evolutionIntegrationLog("sendText_failed", {
+        instanceName: args.instanceName,
+        httpStatus: resp.status,
+        code: "EVOLUTION_BODY_ERROR",
+        bodyRejects: true,
+        error: bodyErr.slice(0, 280),
+      });
+      return { ok: false, error: bodyErr, response: json };
+    }
     return { ok: true, error: null as string | null, response: json };
   } catch (e: any) {
     const em = e?.message || String(e);
@@ -359,6 +370,45 @@ export function extractEvolutionOutboundWaMessageId(json: unknown): string | nul
   return null;
 }
 
+/**
+ * A Evolution costuma devolver HTTP 2xx mesmo quando `success: false` ou quando o erro vem
+ * em `status`/`message` no JSON (ex.: falha ao ir buscar a URL da mídia).
+ */
+export function evolutionResponseBodyIndicatesError(json: unknown): string | null {
+  if (json == null || typeof json !== "object") return null;
+  const j = json as Record<string, any>;
+
+  if (j.success === false) {
+    const parts: string[] = [];
+    const e = j.error;
+    if (e != null && typeof e === "object") {
+      if (e.message != null) parts.push(String(e.message));
+      if (e.code != null) parts.push(String(e.code));
+    } else if (typeof e === "string" && e.trim()) {
+      parts.push(e.trim());
+    }
+    if (Array.isArray(j.message)) parts.push(j.message.map(String).join("; "));
+    else if (typeof j.message === "string" && j.message.trim()) parts.push(j.message.trim());
+    const rsp = j.response;
+    if (rsp && typeof rsp === "object" && Array.isArray(rsp.message)) {
+      parts.push(rsp.message.map(String).join("; "));
+    } else if (rsp && typeof rsp === "object" && typeof rsp.message === "string" && rsp.message.trim()) {
+      parts.push(String(rsp.message).trim());
+    }
+    return parts.filter(Boolean).join(" — ") || "Evolution: success=false";
+  }
+
+  const st = Number(j.status);
+  if (Number.isFinite(st) && st >= 400) {
+    const fromArr = Array.isArray(j.message) ? j.message.map(String).join("; ") : "";
+    const fromStr = typeof j.message === "string" ? j.message.trim() : "";
+    const msg = fromStr || fromArr || (typeof j.error === "string" ? j.error.trim() : "") || "";
+    return msg ? `Evolution status=${st}: ${msg}` : `Evolution status=${st}`;
+  }
+
+  return null;
+}
+
 export async function evolutionSendMedia(args: {
   serverUrl: string;
   apiKey: string;
@@ -433,6 +483,21 @@ export async function evolutionSendMedia(args: {
         error: `${String(msg).slice(0, 220)}${hint}`,
       });
       return { ok: false, error: `${String(msg)}${hint}`, response: json };
+    }
+    const bodyErr = evolutionResponseBodyIndicatesError(json);
+    if (bodyErr) {
+      const m = String(args.media || "");
+      const mediaMode = m.startsWith("http") ? "url" : m.startsWith("data:") ? "data_uri" : "other";
+      evolutionIntegrationLog("sendMedia_failed", {
+        instanceName: args.instanceName,
+        httpStatus: resp.status,
+        mediatype: args.mediatype,
+        mediaMode,
+        mediaChars: m.length,
+        bodyRejects: true,
+        error: bodyErr.slice(0, 280),
+      });
+      return { ok: false, error: bodyErr, response: json };
     }
     return { ok: true, error: null as string | null, response: json };
   } catch (e: any) {

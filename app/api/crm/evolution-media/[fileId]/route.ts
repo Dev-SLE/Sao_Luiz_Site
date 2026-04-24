@@ -9,6 +9,36 @@ export const runtime = "nodejs";
 const MAX_SKEW_MS = 60_000;
 const MAX_AGE_MS = 15 * 60 * 1000;
 
+/** Evolution/Baileys costumam ser sensíveis a nomes não-ASCII em Content-Disposition. */
+function safeInlineFileName(raw: string | null | undefined, contentType: string): string {
+  const base = String(raw || "file")
+    .replace(/[\\/"/?*|<>:\x00-\x1f]/g, "_")
+    .replace(/\s+/g, " ")
+    .trim();
+  const ascii = base.replace(/[^\x20-\x7E]/g, "_").slice(0, 120);
+  if (ascii.length >= 2) return ascii;
+  const ct = String(contentType || "").toLowerCase();
+  const ext =
+    ct.includes("jpeg") || ct.includes("jpg")
+      ? ".jpg"
+      : ct.includes("png")
+        ? ".png"
+        : ct.includes("webp")
+          ? ".webp"
+          : ct.includes("gif")
+            ? ".gif"
+            : ct.includes("ogg")
+              ? ".ogg"
+              : ct.includes("mpeg") || ct.includes("mp3")
+                ? ".mp3"
+                : ct.includes("mp4")
+                  ? ".mp4"
+                  : ct.includes("webm")
+                    ? ".webm"
+                    : ".bin";
+  return `file${ext}`;
+}
+
 function verifyEvolutionMediaSig(fileId: string, t: string, s: string): boolean {
   const secret = String(process.env.FILES_EVOLUTION_DOWNLOAD_SECRET || "").trim();
   if (!secret || !fileId || !t || !s) return false;
@@ -88,12 +118,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ fileId:
         ua,
       })
     );
+    const dispName = safeInlineFileName(file.original_name || file.file_name, ct);
     return new NextResponse(res.body, {
       status: 200,
       headers: {
         "Content-Type": ct,
         "Cache-Control": "no-store",
-        "Content-Disposition": `inline; filename="${encodeURIComponent(file.original_name || file.file_name)}"`,
+        "Content-Disposition": `inline; filename="${dispName}"`,
       },
     });
   } catch (e) {

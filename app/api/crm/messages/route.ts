@@ -754,10 +754,17 @@ export async function POST(req: Request) {
             const signed = buildSignedEvolutionMediaFetchUrl(f.fileId);
             if (signed) {
               mediaPayload = signed;
+              let signedUrlHost: string | null = null;
+              try {
+                signedUrlHost = new URL(signed).hostname;
+              } catch {
+                signedUrlHost = null;
+              }
               evolutionIntegrationLog("sendMedia_via_signed_url", {
                 fileId: f.fileId,
                 bytes: sendBuf.length,
                 mediatype: evolutionMediatypeFromMime(sendMime),
+                signedUrlHost,
               });
             } else if (sendBuf.length > 24_000) {
               evolutionIntegrationLog("sendMedia_data_uri_large", {
