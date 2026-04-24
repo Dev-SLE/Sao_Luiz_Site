@@ -33,20 +33,27 @@ function extractBase64(data: any): string | null {
 }
 
 /** Evolution manda estruturas diferentes; varre poucos níveis. */
-function deepFindQrBase64(obj: any, depth = 0): string | null {
+function deepFindQrBase64(obj: any, depth = 0, parentKey?: string): string | null {
   if (depth > 8 || obj == null) return null;
+  // Base64 de mídia WhatsApp (imageMessage etc.) não é QR — evita falso positivo fora da rota webhook.
+  if (
+    parentKey &&
+    /^(imageMessage|audioMessage|videoMessage|documentMessage|stickerMessage|pttMessage|ptvMessage)$/i.test(parentKey)
+  ) {
+    return null;
+  }
   const tryOne = extractBase64(obj);
   if (tryOne) return tryOne;
   if (typeof obj !== "object") return null;
   if (Array.isArray(obj)) {
     for (const item of obj) {
-      const f = deepFindQrBase64(item, depth + 1);
+      const f = deepFindQrBase64(item, depth + 1, parentKey);
       if (f) return f;
     }
     return null;
   }
-  for (const v of Object.values(obj)) {
-    const f = deepFindQrBase64(v, depth + 1);
+  for (const [k, v] of Object.entries(obj)) {
+    const f = deepFindQrBase64(v, depth + 1, k);
     if (f) return f;
   }
   return null;

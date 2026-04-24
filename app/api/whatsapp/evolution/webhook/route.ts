@@ -1316,7 +1316,14 @@ export async function POST(req: Request) {
       dataKeys:
         body?.data && typeof body.data === "object" ? Object.keys(body.data as object) : [],
     });
-    logEvolutionWebhookPayloadDiag(eventRaw, eventNorm, instance, body, looksLikeMessagesUpsert(body, eventNorm));
+    const isUpsertRoute = looksLikeMessagesUpsert(body, eventNorm);
+    logEvolutionWebhookPayloadDiag(eventRaw, eventNorm, instance, body, isUpsertRoute);
+    console.info("[evolution-webhook] after_diag_before_upsert_branch_always", {
+      eventNorm: eventNorm || null,
+      instance: instance || null,
+      isUpsert: isUpsertRoute,
+      routesToCrmUpsert: isUpsertRoute,
+    });
 
     if (process.env.NODE_ENV === "development") {
       console.log("[evolution-webhook] POST", {
@@ -1353,14 +1360,21 @@ export async function POST(req: Request) {
       }
       return NextResponse.json({ ok: true, qrStored });
     }
-    // Payload com QR sem nome de evento confiável
+    // Payload com QR sem nome de evento confiável — NÃO confundir com base64 de imageMessage/audioMessage
+    // (deepFindQrBase64 varre o payload inteiro; mídia WhatsApp dispara falso positivo e aborta antes do upsert).
     if (
       instance &&
+      !isUpsertRoute &&
       (evolutionQrCaptureFromWebhook(instance, body?.data) || evolutionQrCaptureFromWebhook(instance, body))
     ) {
       if (process.env.NODE_ENV === "development") {
         console.log("[evolution-webhook] QR capturado por payload (evento:", eventRaw || "vazio", ")");
       }
+      console.info("[evolution-webhook] branch_return_always", {
+        branch: "qr_payload_capture",
+        instance,
+        eventNorm: eventNorm || null,
+      });
       return NextResponse.json({ ok: true, qrStored: true });
     }
 
@@ -1472,7 +1486,7 @@ export async function POST(req: Request) {
     }
 
     // Só messages.upsert persiste mensagens no CRM — demais eventos não consultam DB (evita log enganoso e ~15s).
-    if (!looksLikeMessagesUpsert(body, eventNorm)) {
+    if (!isUpsertRoute) {
       console.log("[evolution-webhook] ignored event", { instance, eventRaw, eventNorm });
       return NextResponse.json({ ok: true, ignored_event: eventRaw || null });
     }
@@ -1489,6 +1503,10 @@ export async function POST(req: Request) {
       });
     }
 
+    console.info("[evolution-webhook] before_crm_context_load_always", {
+      instance: instance || null,
+      eventNorm: eventNorm || null,
+    });
     await ensureCrmSchemaTables();
     const pool = getPool();
 
@@ -1518,7 +1536,29 @@ export async function POST(req: Request) {
       [instance]
     );
     const inboxRow = inboxRes.rows?.[0];
+    console.info("[evolution-webhook] before_items_build_always", {
+      instance: instance || null,
+      hasInboxRow: !!inboxRow?.id,
+    });
     const items = collectUpsertItemsFromWebhookBody(body);
+    const firstItem = items[0];
+    const firstMsg = firstItem && typeof firstItem === "object" ? (firstItem as Record<string, unknown>).message : null;
+    const firstMsgObj = firstMsg && typeof firstMsg === "object" ? (firstMsg as Record<string, unknown>) : null;
+    const firstMessageKeys = firstMsgObj ? Object.keys(firstMsgObj).slice(0, 40) : [];
+    const firstMessageType =
+      firstItem && typeof firstItem === "object"
+        ? String(
+            (firstItem as Record<string, unknown>).messageType ??
+              (firstItem as Record<string, unknown>).MessageType ??
+              ""
+          ).trim() || null
+        : null;
+    console.info("[evolution-webhook] after_items_build_always", {
+      instance: instance || null,
+      count: items.length,
+      firstMessageType,
+      firstMessageKeys,
+    });
     if (!inboxRow?.id) {
       if (!items.length) {
         logUpsertGateProbeAlways({
@@ -1548,6 +1588,12 @@ export async function POST(req: Request) {
         instance,
         "— confira evolution_instance_name no CRM (diferença 0/O ou hífen costuma causar isso)."
       );
+      console.info("[evolution-webhook] after_crm_context_load_always", {
+        hasInbox: false,
+        hasDefaultIds: false,
+        inboxId: null,
+        instance: instance || null,
+      });
       return NextResponse.json({ ok: true, skipped: "unknown_instance", instance });
     }
     const inboxId = String(inboxRow.id);
@@ -1563,10 +1609,23 @@ export async function POST(req: Request) {
         emptyBatch: true,
         iterationSkipReason: "payload_sem_messages",
       });
+      console.info("[evolution-webhook] after_crm_context_load_always", {
+        hasInbox: true,
+        hasDefaultIds: false,
+        inboxId,
+        instance: instance || null,
+        hint: "items_empty_default_ids_not_loaded",
+      });
       return NextResponse.json({ ok: true, empty: true, hint: "payload_sem_messages" });
     }
 
     const defaultIds = await ensureDefaultPipelineAndFirstStage(pool);
+    console.info("[evolution-webhook] after_crm_context_load_always", {
+      hasInbox: true,
+      hasDefaultIds: !!defaultIds,
+      inboxId,
+      instance: instance || null,
+    });
     if (!defaultIds) {
       for (const it of items) {
         logUpsertGateProbeAlways({
@@ -1584,7 +1643,13 @@ export async function POST(req: Request) {
 
     const intakeSettings = await loadIntakeSettings(pool);
 
-    for (const item of items) {
+    for (let itemIdx = 0; itemIdx < items.length; itemIdx++) {
+      const item = items[itemIdx];
+      console.info("[evolution-webhook] loop_item_start_always", {
+        instance: instance || null,
+        itemIndex: itemIdx,
+        itemTopKeys: item && typeof item === "object" ? Object.keys(item as object).slice(0, 24) : [],
+      });
       let iterationSkipReason: string | null = null;
       let shouldIngestMediaOverride: boolean | null | undefined = undefined;
       try {
