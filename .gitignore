@@ -1,3 +1,6 @@
+# Documentação (vault Obsidian, guias locais — não versionar)
+docs/
+
 # Build and deps
 node_modules/
 .next/
