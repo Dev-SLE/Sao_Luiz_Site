@@ -265,6 +265,14 @@ function collectEvolutionMediaSlots(inner: any, fallbackMsgId: string): Evolutio
     h: numOrNull(b.height),
     key: String(b.fileEncSha256 || b.fileSha256 || `stk_${fallbackMsgId}_${idx++}`),
   }));
+  push("sticker", "lottieStickerMessage", m.lottieStickerMessage, (b) => ({
+    mime: b.mimetype ? String(b.mimetype) : "application/x-tgsticker",
+    fileName: "sticker.tgs",
+    seconds: null,
+    w: numOrNull(b.width),
+    h: numOrNull(b.height),
+    key: String(b.fileEncSha256 || b.fileSha256 || `lottie_${fallbackMsgId}_${idx++}`),
+  }));
 
   return out;
 }

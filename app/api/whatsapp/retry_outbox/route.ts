@@ -5,6 +5,7 @@ import { ensureCrmSchemaTables } from "../../../../lib/server/ensureSchema";
 import {
   evolutionSendMedia,
   evolutionSendText,
+  evolutionSendWhatsAppAudio,
   extractEvolutionOutboundWaMessageId,
 } from "../../../../lib/server/evolutionClient";
 import { getFileById } from "../../../../modules/storage/fileService";
@@ -206,16 +207,47 @@ export async function POST(req: Request) {
                   hinted === "image" || hinted === "video" || hinted === "audio" || hinted === "document"
                     ? hinted
                     : evolutionMediatypeFromMime(file.mime);
-                const mediaResponse = await evolutionSendMedia({
-                  ...evolutionConfig,
-                  numberDigits,
-                  mediatype,
-                  mimetype: file.mime,
-                  media: `data:${file.mime};base64,${file.buffer.toString("base64")}`,
-                  fileName: String(item?.fileName || file.name || "arquivo"),
-                  caption: i === 0 ? body.slice(0, 1020) : "",
-                  quotedContext: i === 0 ? quotedContext : null,
-                });
+                const capFirst = i === 0 ? body.slice(0, 1020) : "";
+                const capTrim = capFirst.trim();
+                const dataUri = `data:${file.mime};base64,${file.buffer.toString("base64")}`;
+                let mediaResponse: { ok: boolean; error: string | null; response: any };
+                if (mediatype === "audio") {
+                  if (capTrim) {
+                    const capResp = await evolutionSendText({
+                      ...evolutionConfig,
+                      numberDigits,
+                      text: capTrim,
+                      quotedContext: i === 0 ? quotedContext : null,
+                    });
+                    mediaResponse = capResp;
+                    if (mediaResponse.ok) {
+                      mediaResponse = await evolutionSendWhatsAppAudio({
+                        ...evolutionConfig,
+                        numberDigits,
+                        audio: dataUri,
+                        quotedContext: null,
+                      });
+                    }
+                  } else {
+                    mediaResponse = await evolutionSendWhatsAppAudio({
+                      ...evolutionConfig,
+                      numberDigits,
+                      audio: dataUri,
+                      quotedContext: i === 0 ? quotedContext : null,
+                    });
+                  }
+                } else {
+                  mediaResponse = await evolutionSendMedia({
+                    ...evolutionConfig,
+                    numberDigits,
+                    mediatype,
+                    mimetype: file.mime,
+                    media: dataUri,
+                    fileName: String(item?.fileName || file.name || "arquivo"),
+                    caption: capFirst,
+                    quotedContext: i === 0 ? quotedContext : null,
+                  });
+                }
                 finalResponse = mediaResponse.response || finalResponse;
                 if (!mediaResponse.ok) {
                   finalOk = false;

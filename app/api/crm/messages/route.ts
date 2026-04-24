@@ -6,6 +6,7 @@ import {
   evolutionDeleteMessageForEveryone,
   evolutionSendMedia,
   evolutionSendText,
+  evolutionSendWhatsAppAudio,
   extractEvolutionOutboundWaMessageId,
 } from "../../../../lib/server/evolutionClient";
 import { can, getSessionContext } from "../../../../lib/server/authorization";
@@ -352,6 +353,7 @@ export async function GET(req: Request) {
         SELECT
           m.id,
           m.sender_type,
+          m.provider,
           m.body,
           m.metadata,
           m.created_at,
@@ -471,6 +473,17 @@ export async function GET(req: Request) {
         raw === "read" ||
         raw === "played";
       const isFailedLike = raw === "failed" || raw === "error";
+      const attemptedOutbound =
+        outbound?.attempted === true || outbound?.attempted === "true";
+      const providerUpper = String(r.provider || "").toUpperCase();
+      const fromMeMirror =
+        meta?.from_me === true || String(meta?.from_me || "").toLowerCase() === "true";
+      /** Saída espelhada do WhatsApp Web (Evolution) não passa por POST /crm/messages — não tem `outbound_whatsapp.attempted`. */
+      const mirroredEvolutionOutbound =
+        (senderUpper === "AGENT" || senderUpper === "IA") &&
+        providerUpper === "EVOLUTION" &&
+        !attemptedOutbound &&
+        fromMeMirror;
       /** Não priorizar `status: "failed"` legado se `delivered` já for true (merge/json antigo). */
       const statusForUi =
         senderUpper === "CLIENT"
@@ -483,7 +496,9 @@ export async function GET(req: Request) {
               ? "failed"
               : raw === "sent"
                 ? "sent"
-                : "pending";
+                : mirroredEvolutionOutbound
+                  ? "sent"
+                  : "pending";
       return {
       metadata: meta,
       id: r.id as string,
@@ -797,6 +812,7 @@ export async function POST(req: Request) {
               });
             }
             const cap = i === 0 ? (signedText || text || undefined)?.slice(0, 1020) : undefined;
+            const capTrim = String(cap ?? "").trim();
             const sendMediatype =
               forceEvolutionDocumentAudio && evolutionMediatypeFromMime(sendMime) === "audio"
                 ? "document"
@@ -809,6 +825,7 @@ export async function POST(req: Request) {
                 bytes: sendBuf.length,
               });
             }
+            const useWhatsAppAudio = sendMediatype === "audio" && !forceEvolutionDocumentAudio;
             const sendMediaBase = {
               serverUrl: String(row.evolution_server_url),
               apiKey: String(row.evolution_api_key),
@@ -821,15 +838,59 @@ export async function POST(req: Request) {
               correlationId,
               quotedContext: i === 0 ? evolutionQuotedContext : null,
             };
+            const evoAudioBase = {
+              serverUrl: sendMediaBase.serverUrl,
+              apiKey: sendMediaBase.apiKey,
+              instanceName: sendMediaBase.instanceName,
+              numberDigits: sendMediaBase.numberDigits,
+              correlationId,
+            };
+            const sendOutboundAudio = (
+              mediaStr: string,
+              quoted: typeof evolutionQuotedContext
+            ) =>
+              evolutionSendWhatsAppAudio({
+                ...evoAudioBase,
+                audio: mediaStr,
+                quotedContext: quoted,
+              });
+            const sendOutboundMedia = (mediaStr: string) =>
+              evolutionSendMedia({
+                ...sendMediaBase,
+                media: mediaStr,
+              });
+
             let didBase64Retry = false;
-            let waResp = await evolutionSendMedia({
-              ...sendMediaBase,
-              media: mediaPayload,
-            });
+            let waResp: { ok: boolean; error: string | null; response: any };
+            /** Só faz retry URL→base64 na chamada que transporta o ficheiro (não após falha de legenda em `sendText`). */
+            let allowSignedToBase64Retry = false;
+
+            if (useWhatsAppAudio) {
+              if (capTrim) {
+                const capResp = await evolutionSendText({
+                  ...evoAudioBase,
+                  text: capTrim,
+                  quotedContext: i === 0 ? evolutionQuotedContext : null,
+                });
+                waResp = capResp;
+                if (waResp.ok) {
+                  waResp = await sendOutboundAudio(mediaPayload, null);
+                  allowSignedToBase64Retry = true;
+                }
+              } else {
+                waResp = await sendOutboundAudio(mediaPayload, i === 0 ? evolutionQuotedContext : null);
+                allowSignedToBase64Retry = true;
+              }
+            } else {
+              waResp = await sendOutboundMedia(mediaPayload);
+              allowSignedToBase64Retry = true;
+            }
+
             const firstErr = String(waResp.error || "");
             const firstWas413 = /HTTP\s*413\b/i.test(firstErr);
             const canRetryBase64 =
               !waResp.ok &&
+              allowSignedToBase64Retry &&
               usedSignedUrl &&
               sendBuf.length <= maxBase64Fallback &&
               !firstWas413;
@@ -859,22 +920,24 @@ export async function POST(req: Request) {
                 mediatype: sendMediatype,
                 previousError: firstErr.slice(0, 220),
               });
-              waResp = await evolutionSendMedia({
-                ...sendMediaBase,
-                media: dataUriPayload,
-              });
+              waResp = useWhatsAppAudio
+                ? await sendOutboundAudio(dataUriPayload, null)
+                : await sendOutboundMedia(dataUriPayload);
             }
             if (waResp.ok) {
-              evolutionIntegrationLog("sendMedia_ok_summary", {
-                correlationId,
-                fileId: f.fileId,
-                bytes: sendBuf.length,
-                mediatype: sendMediatype,
-                hasWaKey: Boolean(extractEvolutionOutboundWaMessageId(waResp.response)),
-                instanceName: String(row.evolution_instance_name).slice(0, 40),
-                retriedBase64: didBase64Retry,
-                finalMediaMode: didBase64Retry ? "data_uri" : usedSignedUrl ? "url" : "data_uri",
-              });
+              evolutionIntegrationLog(
+                useWhatsAppAudio ? "sendWhatsAppAudio_ok_summary" : "sendMedia_ok_summary",
+                {
+                  correlationId,
+                  fileId: f.fileId,
+                  bytes: sendBuf.length,
+                  mediatype: sendMediatype,
+                  hasWaKey: Boolean(extractEvolutionOutboundWaMessageId(waResp.response)),
+                  instanceName: String(row.evolution_instance_name).slice(0, 40),
+                  retriedBase64: didBase64Retry,
+                  finalMediaMode: didBase64Retry ? "data_uri" : usedSignedUrl ? "url" : "data_uri",
+                }
+              );
             }
             finalResp = waResp.response || finalResp;
             finalOk = finalOk && waResp.ok;

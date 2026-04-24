@@ -46,6 +46,7 @@ export function extractEvolutionMessageText(message: any): string {
   if (m.documentWithCaptionMessage?.message?.documentMessage?.caption)
     return String(m.documentWithCaptionMessage.message.documentMessage.caption);
   if (m.documentWithCaptionMessage) return "[Documento recebido]";
+  if (m.lottieStickerMessage) return "[Figurinha recebida]";
   if (m.stickerMessage) return "[Figurinha recebida]";
   if (m.protocolMessage) return "[Mensagem do sistema recebida]";
   if (m.contactVcard) return "[Contato recebido]";
@@ -573,6 +574,130 @@ export async function evolutionSendMedia(args: {
   } catch (e: any) {
     const em = e?.message || String(e);
     evolutionIntegrationLog("sendMedia_failed", {
+      instanceName: args.instanceName,
+      httpStatus: 0,
+      code: evolutionClientErrorCode({ httpStatus: 0, message: em }),
+      error: em.slice(0, 240),
+      ...corr,
+    });
+    return { ok: false, error: em, response: null as any };
+  }
+}
+
+/**
+ * Notas de voz / PTT na Evolution v2: `POST /message/sendWhatsAppAudio/{instance}` (não usar `sendMedia` com mediatype audio).
+ * Doc: https://doc.evolution-api.com/v2/api-reference/message-controller/send-audio
+ */
+export async function evolutionSendWhatsAppAudio(args: {
+  serverUrl: string;
+  apiKey: string;
+  instanceName: string;
+  numberDigits: string;
+  /** URL pública ou data URI base64 */
+  audio: string;
+  correlationId?: string | null;
+  quotedContext?: {
+    waMessageId: string;
+    remoteJid: string;
+    fromMe: boolean;
+    conversation?: string | null;
+  } | null;
+  /** Doc Evolution: `encoding: true` melhora compatibilidade com base64 */
+  encoding?: boolean;
+}) {
+  const corr = args.correlationId ? { correlationId: String(args.correlationId).slice(0, 32) } : {};
+  const base = normalizeEvolutionServerUrl(args.serverUrl).replace(/\/+$/, "");
+  if (!base) return { ok: false, error: "evolution_server_url vazio", response: null as any };
+  const num = String(args.numberDigits || "").replace(/\D/g, "");
+  if (!num) return { ok: false, error: "número inválido", response: null as any };
+  const url = `${base}/message/sendWhatsAppAudio/${encodeURIComponent(args.instanceName)}`;
+  const qc = args.quotedContext;
+  let quotedPayload: Record<string, unknown> = {};
+  if (qc?.waMessageId && qc.remoteJid) {
+    const snippet = (String(qc.conversation || "").trim() || " ").slice(0, 900);
+    quotedPayload = {
+      quoted: {
+        key: {
+          id: String(qc.waMessageId),
+          remoteJid: String(qc.remoteJid),
+          fromMe: !!qc.fromMe,
+        },
+        message: { conversation: snippet },
+      },
+      quotedMessageId: String(qc.waMessageId),
+    };
+  }
+  const audioStr = String(args.audio || "");
+  const useEncoding = args.encoding !== false && audioStr.startsWith("data:");
+  try {
+    const resp = await evolutionExternalFetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: args.apiKey,
+      },
+      body: JSON.stringify({
+        number: num,
+        audio: audioStr,
+        ...(useEncoding ? { encoding: true } : {}),
+        ...quotedPayload,
+      }),
+    });
+    const json = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      const msg = (json as any)?.message || (json as any)?.error || `HTTP ${resp.status}`;
+      const m = audioStr;
+      const mediaMode = m.startsWith("http") ? "url" : m.startsWith("data:") ? "data_uri" : "other";
+      evolutionIntegrationLog("sendWhatsAppAudio_failed", {
+        instanceName: args.instanceName,
+        httpStatus: resp.status,
+        mediaMode,
+        mediaChars: m.length,
+        error: String(msg).slice(0, 240),
+        ...corr,
+      });
+      return { ok: false, error: String(msg), response: json };
+    }
+    const bodyErr = evolutionResponseBodyIndicatesError(json);
+    if (bodyErr) {
+      const m = audioStr;
+      const mediaMode = m.startsWith("http") ? "url" : m.startsWith("data:") ? "data_uri" : "other";
+      evolutionIntegrationLog("sendWhatsAppAudio_failed", {
+        instanceName: args.instanceName,
+        httpStatus: resp.status,
+        mediaMode,
+        mediaChars: m.length,
+        bodyRejects: true,
+        error: bodyErr.slice(0, 280),
+        ...corr,
+      });
+      return { ok: false, error: bodyErr, response: json };
+    }
+    const waId = extractEvolutionOutboundWaMessageId(json);
+    if (!waId) {
+      const m = audioStr;
+      const mediaMode = m.startsWith("http") ? "url" : m.startsWith("data:") ? "data_uri" : "other";
+      evolutionIntegrationLog("sendWhatsAppAudio_failed", {
+        instanceName: args.instanceName,
+        httpStatus: resp.status,
+        mediaMode,
+        mediaChars: m.length,
+        code: "EVOLUTION_NO_MESSAGE_KEY",
+        error: "Evolution não retornou key.id no JSON",
+        responseKeys:
+          json && typeof json === "object"
+            ? Object.keys(json as object)
+                .slice(0, 12)
+                .join(",")
+            : "",
+        ...corr,
+      });
+      return { ok: false, error: "Evolution não retornou id da mensagem (key.id)", response: json };
+    }
+    return { ok: true, error: null as string | null, response: json };
+  } catch (e: any) {
+    const em = e?.message || String(e);
+    evolutionIntegrationLog("sendWhatsAppAudio_failed", {
       instanceName: args.instanceName,
       httpStatus: 0,
       code: evolutionClientErrorCode({ httpStatus: 0, message: em }),
