@@ -18,9 +18,17 @@ import CrmMyTasks from '@/components/CrmMyTasks';
 import CrmReports from '@/components/CrmReports';
 import CrmContact360 from '@/components/CrmContact360';
 import CrmPrivacyHub from '@/components/CrmPrivacyHub';
-import CrmFunnel from '@/components/CrmFunnel.tsx';
-import CrmChat from '@/components/CrmChat.tsx';
 import { WorkspaceNoAccess } from '@/components/workspace/WorkspaceNoAccess';
+
+const CrmFunnel = dynamic(() => import('@/components/CrmFunnel.tsx'), {
+  ssr: false,
+  loading: () => <div className="surface-card mx-auto max-w-3xl p-4 text-center text-xs text-slate-600">A carregar funil…</div>,
+});
+
+const CrmChat = dynamic(() => import('@/components/CrmChat.tsx'), {
+  ssr: false,
+  loading: () => <div className="surface-card mx-auto max-w-3xl p-4 text-center text-xs text-slate-600">A carregar chat…</div>,
+});
 
 export type CrmModuleProps = {
   pathname: string;

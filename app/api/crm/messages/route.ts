@@ -723,6 +723,7 @@ export async function POST(req: Request) {
             let sendBuf = f.buffer;
             let sendMime = f.mime;
             let sendName = f.name;
+            let forceEvolutionDocumentAudio = false;
             if (evolutionMediatypeFromMime(f.mime) === "audio" && evolutionMediaSettings) {
               const large = f.buffer.length > 120_000;
               const webmOrHeavy = /webm|mpeg|mp4/i.test(f.mime) || large;
@@ -739,6 +740,14 @@ export async function POST(req: Request) {
                 sendBuf = Buffer.from(tr.buffer);
                 sendMime = tr.mimeType;
                 sendName = tr.fileName;
+              } else {
+                forceEvolutionDocumentAudio = true;
+                evolutionIntegrationLog("sendMedia_audio_transcode_failed", {
+                  fileId: f.fileId,
+                  mimeType: f.mime,
+                  bytes: f.buffer.length,
+                  reason: tr.reason?.slice(0, 220),
+                });
               }
             }
             let mediaPayload = `data:${sendMime};base64,${sendBuf.toString("base64")}`;
@@ -757,12 +766,23 @@ export async function POST(req: Request) {
               });
             }
             const cap = i === 0 ? (signedText || text || undefined)?.slice(0, 1020) : undefined;
+            const sendMediatype =
+              forceEvolutionDocumentAudio && evolutionMediatypeFromMime(sendMime) === "audio"
+                ? "document"
+                : evolutionMediatypeFromMime(sendMime);
+            if (sendMediatype === "document" && forceEvolutionDocumentAudio) {
+              evolutionIntegrationLog("sendMedia_audio_fallback_document", {
+                fileId: f.fileId,
+                mimeType: sendMime,
+                bytes: sendBuf.length,
+              });
+            }
             const waResp = await evolutionSendMedia({
               serverUrl: String(row.evolution_server_url),
               apiKey: String(row.evolution_api_key),
               instanceName: String(row.evolution_instance_name),
               numberDigits: toE164,
-              mediatype: evolutionMediatypeFromMime(sendMime),
+              mediatype: sendMediatype,
               media: mediaPayload,
               mimetype: sendMime,
               fileName: sendName,
@@ -826,6 +846,12 @@ export async function POST(req: Request) {
                 sendMime = tr.mimeType;
                 sendName = tr.fileName;
               } else {
+                evolutionIntegrationLog("meta_audio_transcode_failed", {
+                  fileId: f.fileId,
+                  mimeType: f.mime,
+                  bytes: f.buffer.length,
+                  reason: tr.reason?.slice(0, 220),
+                });
                 forceDocumentAudio = true;
                 sendMime = "application/octet-stream";
                 const base = (sendName || "audio").replace(/\.[^.]+$/, "") || "audio";

@@ -27,13 +27,27 @@ export async function GET(_req: Request, { params }: { params: Promise<{ fileId:
     const u = new URL(_req.url);
     const t = u.searchParams.get("t") || "";
     const s = u.searchParams.get("s") || "";
+    const ua = String(_req.headers.get("user-agent") || "").slice(0, 180);
     if (!verifyEvolutionMediaSig(fileId, t, s)) {
+      console.log(
+        JSON.stringify({ ts: new Date().toISOString(), scope: "evolution", event: "signed_media_fetch_denied", fileId, ua })
+      );
       return new NextResponse("Unauthorized", { status: 401 });
     }
     const ts = Number(t);
     if (!Number.isFinite(ts)) return new NextResponse("Bad request", { status: 400 });
     const now = Date.now();
     if (ts > now + MAX_SKEW_MS || now - ts > MAX_AGE_MS) {
+      console.log(
+        JSON.stringify({
+          ts: new Date().toISOString(),
+          scope: "evolution",
+          event: "signed_media_fetch_expired",
+          fileId,
+          ageMs: now - ts,
+          ua,
+        })
+      );
       return new NextResponse("Expired", { status: 401 });
     }
 
@@ -50,10 +64,30 @@ export async function GET(_req: Request, { params }: { params: Promise<{ fileId:
       file.sharepoint_item_id
     );
     if (!res.ok) {
+      console.log(
+        JSON.stringify({
+          ts: new Date().toISOString(),
+          scope: "evolution",
+          event: "signed_media_fetch_sharepoint_failed",
+          fileId,
+          httpStatus: res.status,
+          ua,
+        })
+      );
       return new NextResponse("Bad gateway", { status: 502 });
     }
     const ct = file.mime_type || res.headers.get("content-type") || "application/octet-stream";
     await recordFileAccess(pool, file.id, "evolution_media_fetch", null);
+    console.log(
+      JSON.stringify({
+        ts: new Date().toISOString(),
+        scope: "evolution",
+        event: "signed_media_fetch_ok",
+        fileId,
+        contentType: ct,
+        ua,
+      })
+    );
     return new NextResponse(res.body, {
       status: 200,
       headers: {
