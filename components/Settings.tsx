@@ -34,7 +34,7 @@ import {
   type PermissionSectionId,
 } from '../lib/permissions';
 import { OPERACIONAL_MODULE_KEY, stripOperacionalPermissionsWithoutModule } from '@/lib/workspacePermissionNormalize';
-import { isAdminSuperRole } from '@/lib/adminSuperRoles';
+import { isImmutableMasterUsername } from '@/lib/adminSuperRoles';
 
 type ProfilePermissionRow = {
   key: string;
@@ -238,7 +238,7 @@ const Settings: React.FC = () => {
     if (!targetUsername) return false;
     const isSelf = targetUsername.toLowerCase() === String(user?.username || '').trim().toLowerCase();
     if (isSelf) return false;
-    if (isAdminSuperRole(target.role, targetUsername)) return false;
+    if (isImmutableMasterUsername(targetUsername)) return false;
     return true;
   };
 
@@ -312,7 +312,7 @@ const Settings: React.FC = () => {
       if (!canManageUserRow(u)) {
         setSettingsNotice({
           title: 'Ação bloqueada',
-          message: 'Esse usuário administrativo/reservado não pode ser editado por esta tela.',
+          message: 'O utilizador master reservado (conta modo deus) não pode ser editado por esta tela.',
           variant: 'warning',
         });
         return;
@@ -339,7 +339,7 @@ const Settings: React.FC = () => {
     if (!canManageUserRow(u)) {
       setSettingsNotice({
         title: 'Ação bloqueada',
-        message: 'Esse usuário administrativo/reservado não pode ser alterado por esta tela.',
+          message: 'O utilizador master reservado (conta modo deus) não pode ser alterado por esta tela.',
         variant: 'warning',
       });
       return;

@@ -207,22 +207,13 @@ export class NeonDataClient {
 
   async getCtesView(view: 'pendencias' | 'criticos' | 'em_busca' | 'ocorrencias' | 'concluidos', page = 1, limit = 50): Promise<{ data: any[], total: number }> {
     const endpoint = `/ctes_view?view=${encodeURIComponent(view)}&page=${page}&limit=${limit}`;
-    const url = this.makeApiUrl(endpoint);
-    const cached = this.getCached(url);
-    if (cached) return cached;
-    const data = await this.fetchData(endpoint);
-    this.setCached(url, data, 15_000);
-    return data;
+    /** Sem cache: totais/listas operacionais precisam refletir o servidor imediatamente (evita “congelar” após deploy/correções). */
+    return this.fetchData(endpoint);
   }
 
   async getCtesDashboard(page = 1, limit = 10000): Promise<{ data: any[], total: number }> {
     const endpoint = `/ctes_dashboard?page=${page}&limit=${limit}`;
-    const url = this.makeApiUrl(endpoint);
-    const cached = this.getCached(url);
-    if (cached) return cached;
-    const data = await this.fetchData(endpoint);
-    this.setCached(url, data, 20_000);
-    return data;
+    return this.fetchData(endpoint);
   }
 
   async getCtesViewCounts(payload: {

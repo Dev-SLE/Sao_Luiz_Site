@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef } from 'react';
-import L from 'leaflet';
+import type * as LeafletNS from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
 export type RotasMapPonto = {
@@ -28,7 +28,7 @@ function escapeHtml(s: string): string {
 /** Leaflet imperativo — evita “Map container is already initialized” com react-leaflet + Strict Mode. */
 export function RotasOperacionaisCidadesMap({ points, formatBrl, formatInt, formatKg }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<L.Map | null>(null);
+  const mapRef = useRef<LeafletNS.Map | null>(null);
   const formatRef = useRef({ formatBrl, formatInt, formatKg });
   formatRef.current = { formatBrl, formatInt, formatKg };
 
@@ -57,66 +57,73 @@ export function RotasOperacionaisCidadesMap({ points, formatBrl, formatInt, form
 
     if (!el || !points.length) return;
 
+    let cancelled = false;
     const { formatBrl: fb, formatInt: fi, formatKg: fk } = formatRef.current;
 
-    const centerDefault: L.LatLngExpression = [-14.235, -51.9253];
-    const first = points[0];
-    const center: L.LatLngExpression = first ? [first.lat, first.lng] : centerDefault;
+    void (async () => {
+      const L = await import('leaflet');
+      if (cancelled) return;
 
-    const map = L.map(el, {
-      scrollWheelZoom: true,
-      attributionControl: true,
-    }).setView(center, 5);
-    mapRef.current = map;
+      const centerDefault: [number, number] = [-14.235, -51.9253];
+      const first = points[0];
+      const center: [number, number] = first ? [first.lat, first.lng] : centerDefault;
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-    }).addTo(map);
+      const map = L.map(el, {
+        scrollWheelZoom: true,
+        attributionControl: true,
+      }).setView(center, 5);
+      mapRef.current = map;
 
-    const latlngs = points.map((p) => L.latLng(p.lat, p.lng));
-    if (latlngs.length === 1) {
-      map.setView(latlngs[0], 6);
-    } else {
-      map.fitBounds(L.latLngBounds(latlngs), { padding: [40, 40], maxZoom: 9 });
-    }
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      }).addTo(map);
 
-    for (const p of points) {
-      const t = Math.max(0.05, p.faturamento_total / maxFat);
-      const radius = 8 + t * 32;
-      const cm = L.circleMarker([p.lat, p.lng], {
-        radius,
-        color: '#065f46',
-        fillColor: '#10b981',
-        fillOpacity: 0.75,
-        weight: 2,
-      });
-      const html = `
-        <div style="min-width:190px;font-size:12px;color:#0f172a">
-          <p style="font-weight:700;margin:0 0 4px">${escapeHtml(p.cidade_destino)}</p>
-          <p style="margin:2px 0">Faturamento: ${escapeHtml(fb(p.faturamento_total))}</p>
-          <p style="margin:2px 0">CTEs: ${escapeHtml(fi(p.total_ctes))}</p>
-          <p style="margin:2px 0">Peso: ${escapeHtml(fk(p.peso_total))}</p>
-          <p style="margin:2px 0">Volumes: ${escapeHtml(fi(p.volumes_total))}</p>
-        </div>`;
-      cm.bindPopup(html);
-      cm.addTo(map);
-    }
-
-    window.setTimeout(() => {
-      try {
-        map.invalidateSize();
-      } catch {
-        /* ignore */
+      const latlngs = points.map((p) => L.latLng(p.lat, p.lng));
+      if (latlngs.length === 1) {
+        map.setView(latlngs[0], 6);
+      } else {
+        map.fitBounds(L.latLngBounds(latlngs), { padding: [40, 40], maxZoom: 9 });
       }
-    }, 0);
+
+      for (const p of points) {
+        const t = Math.max(0.05, p.faturamento_total / maxFat);
+        const radius = 8 + t * 32;
+        const cm = L.circleMarker([p.lat, p.lng], {
+          radius,
+          color: '#065f46',
+          fillColor: '#10b981',
+          fillOpacity: 0.75,
+          weight: 2,
+        });
+        const html = `
+          <div style="min-width:190px;font-size:12px;color:#0f172a">
+            <p style="font-weight:700;margin:0 0 4px">${escapeHtml(p.cidade_destino)}</p>
+            <p style="margin:2px 0">Faturamento: ${escapeHtml(fb(p.faturamento_total))}</p>
+            <p style="margin:2px 0">CTEs: ${escapeHtml(fi(p.total_ctes))}</p>
+            <p style="margin:2px 0">Peso: ${escapeHtml(fk(p.peso_total))}</p>
+            <p style="margin:2px 0">Volumes: ${escapeHtml(fi(p.volumes_total))}</p>
+          </div>`;
+        cm.bindPopup(html);
+        cm.addTo(map);
+      }
+
+      window.setTimeout(() => {
+        try {
+          map.invalidateSize();
+        } catch {
+          /* ignore */
+        }
+      }, 0);
+    })();
 
     return () => {
+      cancelled = true;
       try {
-        map.remove();
+        mapRef.current?.remove();
       } catch {
         /* ignore */
       }
-      if (mapRef.current === map) mapRef.current = null;
+      mapRef.current = null;
     };
   }, [pointsKey, points, maxFat]);
 

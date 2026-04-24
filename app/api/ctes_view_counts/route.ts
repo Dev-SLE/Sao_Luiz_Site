@@ -88,11 +88,21 @@ export async function POST(req: Request) {
       `;
     const assignmentJoin = assignmentAvailable
       ? `
-        LEFT JOIN pendencias.cte_assignments a
-          ON a.cte = c.cte
-          AND (a.serie = c.serie OR ltrim(a.serie, '0') = ltrim(c.serie, '0'))
-          AND a.active = true
-          AND a.assignment_type = 'PENDENTE_AG_BAIXAR'
+        LEFT JOIN LATERAL (
+          SELECT
+            aa.id,
+            aa.assignment_type,
+            aa.agency_unit,
+            aa.assigned_username,
+            aa.updated_at
+          FROM pendencias.cte_assignments aa
+          WHERE aa.active = true
+            AND aa.assignment_type = 'PENDENTE_AG_BAIXAR'
+            AND aa.cte = c.cte
+            AND (aa.serie = c.serie OR ltrim(aa.serie, '0') = ltrim(c.serie, '0'))
+          ORDER BY aa.updated_at DESC, aa.id DESC
+          LIMIT 1
+        ) a ON true
       `
       : ``;
     const assignmentIdExpr = assignmentAvailable ? "a.id" : "NULL";
@@ -106,13 +116,26 @@ export async function POST(req: Request) {
       : "";
 
     const sql = `
-      WITH base AS (
+      WITH base_ranked AS (
         SELECT
           c.*,
           COALESCE(i.status_calculado, c.status) AS status_calculado,
           COALESCE(i.note_count, 0) AS note_count,
           ${assignmentSelect}
-          CASE WHEN $1 = 'concluidos' THEN c.status ELSE COALESCE(i.status_calculado, c.status) END AS status_key
+          CASE WHEN $1 = 'concluidos' THEN c.status ELSE COALESCE(i.status_calculado, c.status) END AS status_key,
+          ROW_NUMBER() OVER (
+            PARTITION BY c.cte, c.serie
+            ORDER BY
+              CASE
+                WHEN COALESCE(i.view, '') = 'criticos' THEN 1
+                WHEN COALESCE(i.view, '') IN ('ocorrencias', 'tad') THEN 2
+                WHEN COALESCE(i.view, '') = 'em_busca' THEN 3
+                WHEN COALESCE(i.view, '') = 'pendencias' THEN 4
+                WHEN COALESCE(i.view, '') = 'concluidos' THEN 5
+                ELSE 6
+              END,
+              c.data_emissao DESC
+          ) AS rn
         FROM pendencias.ctes c
         LEFT JOIN pendencias.cte_view_index i
           ON i.cte = c.cte
@@ -169,6 +192,9 @@ export async function POST(req: Request) {
           AND ($7::text IS NULL OR $7::text = '' OR ${assignmentAgencyExpr} = $7::text)
           AND ($8::text IS NULL OR $8::text = '' OR ${assignmentUserExpr} = $8::text)
           AND (NOT $9::boolean OR ($10::text <> '' AND ${assignmentUserExpr} = $10::text))
+      ),
+      base AS (
+        SELECT * FROM base_ranked WHERE rn = 1
       ),
       base_for_status AS (
         SELECT * FROM base b

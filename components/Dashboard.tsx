@@ -22,13 +22,47 @@ import clsx from 'clsx';
 import { COLORS } from '../constants';
 import { StatusBadge } from '@/components/workspace-ui';
 
+/** Agrupa cada linha do dashboard numa chave de cartão (alinha fila + SLA, sem “sumir” em OUTROS). */
+function resolveDashboardStatusKey(item: { STATUS?: string; STATUS_CALCULADO?: string }): string {
+  const display = String(item.STATUS || '').trim();
+  const calc = String(item.STATUS_CALCULADO || '').trim();
+  const du = display
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase();
+  if (du.includes('EM BUSCA')) return 'EM BUSCA';
+  if (du.includes('OCORR')) return 'OCORRÊNCIA';
+  const pick = calc || display;
+  const u = pick
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase();
+  if (u.includes('CRITICO')) return 'CRÍTICO';
+  if (u.includes('FORA DO PRAZO')) return 'FORA DO PRAZO';
+  if (u.includes('PRIORIDADE')) return 'PRIORIDADE';
+  if (u.includes('VENCE AMANHA')) return 'VENCE AMANHÃ';
+  if (u.includes('NO PRAZO')) return 'NO PRAZO';
+  if (pick) return pick;
+  return 'OUTROS';
+}
+
+const DASHBOARD_STATUS_CARD_ORDER: { key: string; label: string }[] = [
+  { key: 'FORA DO PRAZO', label: 'Fora do prazo' },
+  { key: 'CRÍTICO', label: 'Crítico' },
+  { key: 'PRIORIDADE', label: 'Vence hoje' },
+  { key: 'VENCE AMANHÃ', label: 'Vence amanhã' },
+  { key: 'NO PRAZO', label: 'No prazo' },
+  { key: 'EM BUSCA', label: 'Em busca' },
+  { key: 'OCORRÊNCIA', label: 'Ocorrência' },
+];
+
 /** Paleta alinhada ao site institucional + tons serenos */
 const NAVY = '#0a1628';
 const NAVY_MID = '#1a2d50';
 const BRAND_RED = '#c41230';
 
 const Dashboard: React.FC = () => {
-  const { processedData, baseData } = useData();
+  const { processedData, counts, operacionalDashboardDistinctTotal } = useData();
   const { user } = useAuth();
 
   const [selectedUnit, setSelectedUnit] = useState<string>('');
@@ -48,6 +82,9 @@ const Dashboard: React.FC = () => {
     'PRIORIDADE': COLORS.priority,
     'VENCE AMANHÃ': COLORS.tomorrow,
     'NO PRAZO': COLORS.ontime,
+    'EM BUSCA': '#7c3aed',
+    'OCORRÊNCIA': '#ca8a04',
+    OUTROS: '#94a3b8',
   };
 
   const PAYMENT_COLORS: Record<string, string> = {
@@ -113,19 +150,6 @@ const Dashboard: React.FC = () => {
   const isUserUnitBound = !!user?.linkedDestUnit;
   const activeUnit = isUserUnitBound ? user.linkedDestUnit : selectedUnit;
 
-  const latestEmissaoDate = useMemo(() => {
-    if (baseData.length === 0) return '--/--/----';
-    let maxVal = 0;
-    let maxStr = '';
-    baseData.forEach((d) => {
-      const currentVal = parseDateToComparable(d.DATA_EMISSAO);
-      if (currentVal > maxVal) {
-        maxVal = currentVal;
-        maxStr = d.DATA_EMISSAO;
-      }
-    });
-    return maxStr || '--/--/----';
-  }, [baseData]);
 
   const availableUnits = useMemo(() => {
     const units = new Set(processedData.map((d) => d.ENTREGA).filter(Boolean));
@@ -147,6 +171,20 @@ const Dashboard: React.FC = () => {
     });
   }, [processedData, activeUnit, appliedDateFrom, appliedDateTo]);
 
+  const latestEmissaoDate = useMemo(() => {
+    if (baseScopeData.length === 0) return '--/--/----';
+    let maxVal = 0;
+    let maxStr = '';
+    baseScopeData.forEach((d) => {
+      const currentVal = parseDateToComparable(d.DATA_EMISSAO);
+      if (currentVal > maxVal) {
+        maxVal = currentVal;
+        maxStr = d.DATA_EMISSAO;
+      }
+    });
+    return maxStr || '--/--/----';
+  }, [baseScopeData]);
+
   const statusCardsData = useMemo(() => {
     return baseScopeData.filter((item) => {
       if (paymentFilters.length > 0 && !paymentFilters.includes(item.FRETE_PAGO || 'OUTROS')) return false;
@@ -157,8 +195,8 @@ const Dashboard: React.FC = () => {
   const paymentCardsData = useMemo(() => {
     return baseScopeData.filter((item) => {
       if (statusFilters.length > 0) {
-        const status = item.STATUS_CALCULADO || item.STATUS || 'OUTROS';
-        if (!statusFilters.includes(status)) return false;
+        const statusKey = resolveDashboardStatusKey(item);
+        if (!statusFilters.includes(statusKey)) return false;
       }
       return true;
     });
@@ -168,8 +206,8 @@ const Dashboard: React.FC = () => {
     return baseScopeData.filter((item) => {
       if (paymentFilters.length > 0 && !paymentFilters.includes(item.FRETE_PAGO || 'OUTROS')) return false;
       if (statusFilters.length > 0) {
-        const status = item.STATUS_CALCULADO || item.STATUS || 'OUTROS';
-        if (!statusFilters.includes(status)) return false;
+        const statusKey = resolveDashboardStatusKey(item);
+        if (!statusFilters.includes(statusKey)) return false;
       }
       return true;
     });
@@ -194,8 +232,8 @@ const Dashboard: React.FC = () => {
         avgTicket: 0,
       };
     }
-    const onTime = fullyFilteredData.filter((d) => (d.STATUS_CALCULADO || d.STATUS) === 'NO PRAZO').length;
-    const critical = fullyFilteredData.filter((d) => (d.STATUS_CALCULADO || d.STATUS) === 'CRÍTICO').length;
+    const onTime = fullyFilteredData.filter((d) => resolveDashboardStatusKey(d) === 'NO PRAZO').length;
+    const critical = fullyFilteredData.filter((d) => resolveDashboardStatusKey(d) === 'CRÍTICO').length;
     return {
       onTimeRate: (onTime / total) * 100,
       criticalRate: (critical / total) * 100,
@@ -228,7 +266,7 @@ const Dashboard: React.FC = () => {
   const statusAgg = useMemo(() => {
     const counts: Record<string, { qty: number; val: number }> = {};
     statusCardsData.forEach((item) => {
-      const status = item.STATUS_CALCULADO || 'OUTROS';
+      const status = resolveDashboardStatusKey(item);
       const v = safeParseValue(item.VALOR_CTE);
       if (!counts[status]) counts[status] = { qty: 0, val: 0 };
       counts[status].qty++;
@@ -281,26 +319,42 @@ const Dashboard: React.FC = () => {
       .slice(0, 12);
 
     let pieData: { name: string; value: number; monetary: number }[] = [];
-    const keys = pieMode === 'status' ? Object.keys(STATUS_COLORS) : Object.keys(PAYMENT_COLORS);
     const tempMap: Record<string, { metric: number; monetary: number }> = {};
-    keys.forEach((k) => (tempMap[k] = { metric: 0, monetary: 0 }));
+    if (pieMode === 'payment') {
+      Object.keys(PAYMENT_COLORS).forEach((k) => {
+        tempMap[k] = { metric: 0, monetary: 0 };
+      });
+      tempMap.OUTROS = { metric: 0, monetary: 0 };
+    }
 
     fullyFilteredData.forEach((item) => {
-      const key = pieMode === 'status' ? item.STATUS_CALCULADO || 'OUTROS' : item.FRETE_PAGO || 'OUTROS';
       const val = safeParseValue(item.VALOR_CTE);
       const metric = viewMode === 'qty' ? 1 : val;
-
-      if (tempMap[key]) {
+      if (pieMode === 'status') {
+        const key = resolveDashboardStatusKey(item);
+        if (!tempMap[key]) tempMap[key] = { metric: 0, monetary: 0 };
         tempMap[key].metric += metric;
         tempMap[key].monetary += val;
+      } else {
+        const key = item.FRETE_PAGO || 'OUTROS';
+        if (tempMap[key]) {
+          tempMap[key].metric += metric;
+          tempMap[key].monetary += val;
+        } else if (tempMap.OUTROS) {
+          tempMap.OUTROS.metric += metric;
+          tempMap.OUTROS.monetary += val;
+        }
       }
     });
 
-    pieData = Object.keys(tempMap).map((k) => ({
-      name: k,
-      value: tempMap[k].metric,
-      monetary: tempMap[k].monetary,
-    }));
+    pieData = Object.entries(tempMap)
+      .filter(([, v]) => v.metric > 0 || v.monetary > 0)
+      .sort((a, b) => b[1].metric - a[1].metric)
+      .map(([k, v]) => ({
+        name: k,
+        value: v.metric,
+        monetary: v.monetary,
+      }));
 
     return { barData, pieData, groupByClient };
   }, [fullyFilteredData, activeUnit, viewMode, pieMode]);
@@ -557,17 +611,17 @@ const Dashboard: React.FC = () => {
             <h2 className="text-sm font-bold text-slate-800">Por status</h2>
             <span className="text-[11px] font-medium text-slate-400">Clique para incluir ou excluir do conjunto</span>
           </div>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5 md:gap-3">
-            {['FORA DO PRAZO', 'CRÍTICO', 'PRIORIDADE', 'VENCE AMANHÃ', 'NO PRAZO'].map((status) => (
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-7 md:gap-3">
+            {DASHBOARD_STATUS_CARD_ORDER.map(({ key, label }) => (
               <FilterCard
-                key={status}
-                label={status === 'PRIORIDADE' ? 'Vence hoje' : status}
-                qty={statusAgg[status]?.qty || 0}
-                val={statusAgg[status]?.val || 0}
-                color={STATUS_COLORS[status]}
-                selected={statusFilters.includes(status)}
+                key={key}
+                label={label}
+                qty={statusAgg[key]?.qty || 0}
+                val={statusAgg[key]?.val || 0}
+                color={STATUS_COLORS[key] || STATUS_COLORS.OUTROS}
+                selected={statusFilters.includes(key)}
                 dimmed={statusFilters.length > 0}
-                onClick={() => setStatusFilters((prev) => toggleFilter(prev, status))}
+                onClick={() => setStatusFilters((prev) => toggleFilter(prev, key))}
               />
             ))}
           </div>
@@ -607,6 +661,21 @@ const Dashboard: React.FC = () => {
               <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Pendências no escopo</p>
               <p className="mt-2 text-4xl font-bold tabular-nums tracking-tight text-slate-900">{formatNumber(mainKPIs.qty)}</p>
               <p className="mt-2 text-sm text-slate-500">Quantidade após filtros ativos</p>
+              {!statusFilters.length &&
+              !paymentFilters.length &&
+              !appliedDateFrom &&
+              !appliedDateTo &&
+              !activeUnit ? (
+                <p className="mt-3 text-xs leading-relaxed text-slate-500">
+                  Total distinto (CT-e + série, sem concluídos), alinhado ao backend:{' '}
+                  <span className="font-semibold text-slate-700">{formatNumber(operacionalDashboardDistinctTotal)}</span>
+                  . Totais por aba (podem sobrepor entre si): Pendências{' '}
+                  <span className="font-medium text-slate-700">{formatNumber(counts.pendencias)}</span>, Críticos{' '}
+                  <span className="font-medium text-slate-700">{formatNumber(counts.criticos)}</span>, Em busca{' '}
+                  <span className="font-medium text-slate-700">{formatNumber(counts.emBusca)}</span>, Ocorrências{' '}
+                  <span className="font-medium text-slate-700">{formatNumber(counts.ocorrencias)}</span>.
+                </p>
+              ) : null}
             </div>
             <div
               className="rounded-2xl p-3 shadow-sm"

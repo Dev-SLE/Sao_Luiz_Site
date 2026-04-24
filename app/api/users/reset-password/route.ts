@@ -4,7 +4,7 @@ import bcrypt from "../../../../bcrypt.js";
 import { serverLog } from "../../../../lib/server/appLog";
 import { requireApiPermissions } from "../../../../lib/server/apiAuth";
 import { validateStrongPassword } from "../../../../lib/server/passwordPolicy";
-import { isAdminSuperRole } from "../../../../lib/adminSuperRoles";
+import { isImmutableMasterUsername } from "../../../../lib/adminSuperRoles";
 
 export const runtime = "nodejs";
 
@@ -56,11 +56,10 @@ export async function POST(req: Request) {
 
     const row = result.rows[0];
     const canonicalUsername = String(row.username || "").trim();
-    const targetRole = String(row.role || "").trim();
 
-    if (isAdminSuperRole(targetRole, canonicalUsername)) {
+    if (isImmutableMasterUsername(canonicalUsername)) {
       return NextResponse.json(
-        { error: "Este utilizador não pode ter a palavra-passe redefinida por esta ação." },
+        { error: "A palavra-passe desta conta master reservada não pode ser redefinida por esta ação." },
         { status: 403 },
       );
     }

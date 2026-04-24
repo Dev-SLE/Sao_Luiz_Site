@@ -14,6 +14,17 @@ const BUILTIN_SUPER = new Set([
 /** Nomes de utilizador reservados com bypass total (igual às super-roles). Case-insensitive. */
 const CODED_MASTER_USERNAMES = new Set(["sle_master", "master"]);
 
+/**
+ * Contas "modo deus" reservadas: não podem ser editadas/eliminadas/redefinidas por outros
+ * (perfil admin/master normal fica abaixo disto e pode ser gerido).
+ */
+export function isImmutableMasterUsername(username: string | null | undefined): boolean {
+  const u = String(username ?? "")
+    .trim()
+    .toLowerCase();
+  return !!u && CODED_MASTER_USERNAMES.has(u);
+}
+
 function parseRoleCsv(raw: string | undefined | null): string[] {
   return String(raw ?? "")
     .split(/[,;|\n]/)

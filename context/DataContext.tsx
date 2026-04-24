@@ -48,6 +48,8 @@ interface DataContextType {
   isCteEmBusca: (cte: string, serie: string, originalStatus: string) => boolean;
   isCteOcorrencia: (cte: string, serie: string) => boolean;
   counts: KPICounts;
+  /** Total distinto (cte+serie) do dashboard operacional, alinhado à API `ctes_dashboard` (sem concluídos). */
+  operacionalDashboardDistinctTotal: number;
   getLatestNote: (cte: string) => NoteData | null;
   // Pagination setters
   setCtesPage: (page: number) => void;
@@ -159,6 +161,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [processedData, setProcessedData] = useState<CteData[]>([]);
   const [fullData, setFullData] = useState<CteData[]>([]);
   const [counts, setCounts] = useState<KPICounts>({ pendencias: 0, criticos: 0, emBusca: 0, ocorrencias: 0, concluidos: 0 });
+  const [operacionalDashboardDistinctTotal, setOperacionalDashboardDistinctTotal] = useState(0);
 
   const [pendenciasState, setPendenciasState] = useState<{ data: CteData[]; page: number; limit: number; total: number }>({ data: [], page: 1, limit: 50, total: 0 });
   const [criticosState, setCriticosState] = useState<{ data: CteData[]; page: number; limit: number; total: number }>({ data: [], page: 1, limit: 50, total: 0 });
@@ -300,6 +303,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         ocorrencias: ocorrResp.total || 0,
         concluidos: conclResp.total || 0,
       });
+      setOperacionalDashboardDistinctTotal(Number(dashboardResp.total) || 0);
 
       // Mantém os campos antigos (não usados com server-side)
       setCtesTotal(pendResp.total || 0);
@@ -638,7 +642,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       globalData, 
       isCteEmBusca, 
       isCteOcorrencia, 
-      counts, 
+      counts,
+      operacionalDashboardDistinctTotal,
       getLatestNote,
       // Pagination setters
       setCtesPage,
