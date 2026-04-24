@@ -16,6 +16,10 @@ function mediaHintFromFile(file: File): string {
   if (file.type.startsWith("audio/")) return "audio";
   if (file.type.startsWith("video/")) return "video";
   if (file.type.startsWith("image/")) return "image";
+  const ext = (file.name || "").split(".").pop()?.toLowerCase() || "";
+  if (["mp4", "webm", "mov", "mkv", "3gp", "avi", "m4v"].includes(ext)) return "video";
+  if (["jpg", "jpeg", "png", "gif", "webp"].includes(ext)) return "image";
+  if (["ogg", "opus", "mp3", "wav", "m4a", "aac", "amr", "webm"].includes(ext)) return "audio";
   return "document";
 }
 

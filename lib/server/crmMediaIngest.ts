@@ -21,12 +21,16 @@ function mapWaTypeToMediaType(waType: string): string {
 }
 
 export function inferMediaCategoryFromMimeOrHint(mime: string, hint?: string | null): string {
+  const m = String(mime || "")
+    .trim()
+    .toLowerCase()
+    .split(";")[0]
+    .trim();
+  if (m.startsWith("video/")) return "video";
+  if (m.startsWith("image/")) return "image";
+  if (m.startsWith("audio/")) return "audio";
   const h = String(hint || "").toLowerCase();
   if (["image", "audio", "video", "document", "sticker"].includes(h)) return h;
-  const m = String(mime || "").toLowerCase();
-  if (m.startsWith("image/")) return "image";
-  if (m.startsWith("video/")) return "video";
-  if (m.startsWith("audio/")) return "audio";
   if (m === "application/pdf" || m.includes("word") || m.includes("excel") || m.includes("sheet")) return "document";
   return "document";
 }
@@ -153,7 +157,7 @@ async function downloadMetaMedia(accessToken: string, mediaId: string): Promise<
   throw new Error(lastErr);
 }
 
-function unwrapEvolutionInner(msg: any): any {
+export function unwrapEvolutionInner(msg: any): any {
   if (!msg || typeof msg !== "object") return msg;
   if (msg.message && typeof msg.message === "object") return unwrapEvolutionInner(msg.message);
   if (msg.deviceSentMessage?.message) return unwrapEvolutionInner(msg.deviceSentMessage.message);
@@ -284,6 +288,13 @@ function collectEvolutionMediaSlots(inner: any, fallbackMsgId: string): Evolutio
   }));
 
   return out;
+}
+
+/** Conta slots de mídia ingestíveis (imagem, vídeo, áudio, doc, sticker) num item Evolution/Baileys. */
+export function countEvolutionInboundMediaSlots(evolutionItem: unknown, fallbackMsgId: string): number {
+  const it = evolutionItem as { message?: unknown; msg?: unknown } | null;
+  const inner = it?.message ?? it?.msg ?? evolutionItem;
+  return collectEvolutionMediaSlots(inner, String(fallbackMsgId || "x")).length;
 }
 
 async function upsertMediaRowStart(pool: Pool, args: {

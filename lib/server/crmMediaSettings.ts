@@ -19,7 +19,16 @@ export type CrmMediaSettings = {
 const DEFAULT_ALLOWED: Record<string, string[]> = {
   image: ["image/jpeg", "image/png", "image/webp", "image/gif"],
   audio: ["audio/ogg", "audio/opus", "audio/mpeg", "audio/mp4", "audio/webm", "audio/aac", "audio/amr", "audio/wav"],
-  video: ["video/mp4", "video/webm", "video/quicktime", "video/3gpp"],
+  video: [
+    "video/mp4",
+    "video/webm",
+    "video/quicktime",
+    "video/3gpp",
+    "video/x-matroska",
+    "video/matroska",
+    "video/avi",
+    "video/x-msvideo",
+  ],
   document: [
     "application/pdf",
     "application/msword",

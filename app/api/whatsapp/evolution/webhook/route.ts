@@ -9,7 +9,11 @@ import {
   extractEvolutionMessageText,
 } from "../../../../../lib/server/evolutionClient";
 import { evolutionQrCaptureFromWebhook } from "../../../../../lib/server/evolutionLastQr";
-import { ingestEvolutionInboundMedia } from "../../../../../lib/server/crmMediaIngest";
+import {
+  countEvolutionInboundMediaSlots,
+  ingestEvolutionInboundMedia,
+  unwrapEvolutionInner,
+} from "../../../../../lib/server/crmMediaIngest";
 import { crmPhoneSuffixForTitle, crmStripTrailingTitlePhone } from "../../../../../lib/server/crmPhoneDisplay";
 import {
   applyCrmMessageDeleteByWaMessageId,
@@ -424,10 +428,13 @@ async function shouldCreateLeadForNewContact(input: {
   minMessagesBeforeCreate: number;
   bufferedMessageCount: number;
   bufferedText: string;
+  /** Mídia real (imagem, sticker, etc.) — não descartar no intake só por falta de palavra-chave. */
+  hasInboundMedia: boolean;
 }) {
   if (input.denylisted) return false;
   // fromMe precisa espelhar no CRM mesmo em primeiro contato.
   if (input.isFromMe) return true;
+  if (input.hasInboundMedia) return true;
   if (input.allowlisted || input.isAgencyContact) return true;
   if (input.mode === "OFF") return true;
   if (input.mode === "AGENCY_ONLY") return false;
@@ -1181,8 +1188,19 @@ export async function POST(req: Request) {
       }
 
       const msgObj = item.message || item.msg || {};
+      const msgId = String(key.id || "");
+      const inboundMediaSlotCount = countEvolutionInboundMediaSlots(item, msgId || "x");
+      const unwrappedMsg = unwrapEvolutionInner(msgObj) || msgObj;
       // Alguns provedores enviam tipo/mídia fora de message; usa fallback com o item inteiro.
-      const text = extractEvolutionMessageText(msgObj) || extractEvolutionMessageText(item) || "[Mensagem sem texto]";
+      const text =
+        extractEvolutionMessageText(msgObj) ||
+        extractEvolutionMessageText(unwrappedMsg) ||
+        extractEvolutionMessageText(item) ||
+        "[Mensagem sem texto]";
+      const textLooksLikeInboundMedia = /^\[(Imagem recebida|Figurinha recebida|Vídeo recebido|Documento recebido|Áudio recebido)\]$/i.test(
+        String(text || "").trim()
+      );
+      const hasInboundMediaForIntake = inboundMediaSlotCount > 0 || textLooksLikeInboundMedia;
       const cteDetected = extractCteFromText(text);
       const last10 = lastN(phoneDigits, 10);
       const titlePhoneSuffix = crmPhoneSuffixForTitle(phoneDigits);
@@ -1332,6 +1350,7 @@ export async function POST(req: Request) {
           minMessagesBeforeCreate: intakeSettings.minMessagesBeforeCreate,
           bufferedMessageCount: Number(bufferRow?.message_count || 1),
           bufferedText: String(bufferRow?.sample_text || text),
+          hasInboundMedia: hasInboundMediaForIntake,
         });
         if (!shouldCreate) {
           await pool.query(
@@ -1495,12 +1514,14 @@ export async function POST(req: Request) {
         }
       }
 
-      const hasMedia =
-        msgObj &&
-        Object.keys(msgObj).some(
-          (k) => !["conversation", "extendedTextMessage"].includes(k)
+      const legacyNonTextKeys =
+        unwrappedMsg &&
+        typeof unwrappedMsg === "object" &&
+        Object.keys(unwrappedMsg).some(
+          (k) =>
+            !["conversation", "extendedTextMessage", "messageContextInfo", "senderKeyDistributionMessage"].includes(k)
         );
-      const msgId = String(key.id || "");
+      const hasMedia = inboundMediaSlotCount > 0 || Boolean(legacyNonTextKeys);
       if (msgId) {
         const dup = await pool.query(
           `

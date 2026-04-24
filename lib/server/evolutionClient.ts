@@ -29,6 +29,7 @@ export function extractEvolutionMessageText(message: any): string {
   if (m.protocolMessage?.editedMessage?.message) {
     return extractEvolutionMessageText(m.protocolMessage.editedMessage.message);
   }
+  if (m.deviceSentMessage?.message) return extractEvolutionMessageText(m.deviceSentMessage.message);
   // Alguns payloads vêm embrulhados nesses nós
   if (m.message && typeof m.message === "object") return extractEvolutionMessageText(m.message);
   if (m.msg && typeof m.msg === "object") return extractEvolutionMessageText(m.msg);
