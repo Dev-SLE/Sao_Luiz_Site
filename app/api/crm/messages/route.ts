@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { NextResponse } from "next/server";
 import { getPool } from "../../../../lib/server/db";
 import { ensureCrmSchemaTables } from "../../../../lib/server/ensureSchema";
@@ -43,6 +44,14 @@ function isMetaCloudApiAudioMime(mime: string): boolean {
     b === "audio/ogg" ||
     b === "audio/opus"
   );
+}
+
+/** Limite de bytes para retry Evolution com data URI após falha da URL assinada (padrão 2.5MB — cobre imagens ~1.7MB). */
+function evolutionMaxBase64RetryBytes(): number {
+  const raw = String(process.env.CRM_EVOLUTION_MEDIA_MAX_BASE64_BYTES || "2500000").trim();
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n) || n < 0) return 2_500_000;
+  return Math.min(n, 8_000_000);
 }
 
 function mapSenderToDb(senderType: string) {
@@ -714,8 +723,10 @@ export async function POST(req: Request) {
         outboundWhatsApp.delivered = false;
         outboundWhatsApp.error = "Lead sem telefone válido para envio WhatsApp";
       } else if (useEvolution) {
+        const correlationId = crypto.randomUUID().replace(/-/g, "").slice(0, 16);
         let finalResp: any = null;
         let finalOk = true;
+        const maxBase64Fallback = evolutionMaxBase64RetryBytes();
         const evolutionMediaSettings = resolvedFiles.length ? await getCrmMediaSettings(pool) : null;
         if (resolvedFiles.length > 0) {
           for (let i = 0; i < resolvedFiles.length; i++) {
@@ -743,6 +754,7 @@ export async function POST(req: Request) {
               } else {
                 forceEvolutionDocumentAudio = true;
                 evolutionIntegrationLog("sendMedia_audio_transcode_failed", {
+                  correlationId,
                   fileId: f.fileId,
                   mimeType: f.mime,
                   bytes: f.buffer.length,
@@ -750,10 +762,11 @@ export async function POST(req: Request) {
                 });
               }
             }
-            let mediaPayload = `data:${sendMime};base64,${sendBuf.toString("base64")}`;
+            const dataUriPayload = `data:${sendMime};base64,${sendBuf.toString("base64")}`;
             const signed = buildSignedEvolutionMediaFetchUrl(f.fileId);
+            const usedSignedUrl = Boolean(signed);
+            let mediaPayload = signed || dataUriPayload;
             if (signed) {
-              mediaPayload = signed;
               let signedUrlHost: string | null = null;
               try {
                 signedUrlHost = new URL(signed).hostname;
@@ -761,6 +774,7 @@ export async function POST(req: Request) {
                 signedUrlHost = null;
               }
               evolutionIntegrationLog("sendMedia_via_signed_url", {
+                correlationId,
                 fileId: f.fileId,
                 bytes: sendBuf.length,
                 mediatype: evolutionMediatypeFromMime(sendMime),
@@ -768,6 +782,7 @@ export async function POST(req: Request) {
               });
             } else if (sendBuf.length > 24_000) {
               evolutionIntegrationLog("sendMedia_data_uri_large", {
+                correlationId,
                 bytes: sendBuf.length,
                 missingSignedUrlConfig: evolutionSignedMediaFetchMissing(),
               });
@@ -779,23 +794,55 @@ export async function POST(req: Request) {
                 : evolutionMediatypeFromMime(sendMime);
             if (sendMediatype === "document" && forceEvolutionDocumentAudio) {
               evolutionIntegrationLog("sendMedia_audio_fallback_document", {
+                correlationId,
                 fileId: f.fileId,
                 mimeType: sendMime,
                 bytes: sendBuf.length,
               });
             }
-            const waResp = await evolutionSendMedia({
+            const sendMediaBase = {
               serverUrl: String(row.evolution_server_url),
               apiKey: String(row.evolution_api_key),
               instanceName: String(row.evolution_instance_name),
               numberDigits: toE164,
               mediatype: sendMediatype,
-              media: mediaPayload,
               mimetype: sendMime,
-              fileName: sendName,
-              caption: cap,
+              fileName: sendName || "media",
+              caption: cap ?? "",
+              correlationId,
               quotedContext: i === 0 ? evolutionQuotedContext : null,
+            };
+            let didBase64Retry = false;
+            let waResp = await evolutionSendMedia({
+              ...sendMediaBase,
+              media: mediaPayload,
             });
+            if (!waResp.ok && usedSignedUrl && sendBuf.length <= maxBase64Fallback) {
+              didBase64Retry = true;
+              evolutionIntegrationLog("sendMedia_retry_base64", {
+                correlationId,
+                fileId: f.fileId,
+                bytes: sendBuf.length,
+                mediatype: sendMediatype,
+                previousError: String(waResp.error || "").slice(0, 220),
+              });
+              waResp = await evolutionSendMedia({
+                ...sendMediaBase,
+                media: dataUriPayload,
+              });
+            }
+            if (waResp.ok) {
+              evolutionIntegrationLog("sendMedia_ok_summary", {
+                correlationId,
+                fileId: f.fileId,
+                bytes: sendBuf.length,
+                mediatype: sendMediatype,
+                hasWaKey: Boolean(extractEvolutionOutboundWaMessageId(waResp.response)),
+                instanceName: String(row.evolution_instance_name).slice(0, 40),
+                retriedBase64: didBase64Retry,
+                finalMediaMode: didBase64Retry ? "data_uri" : usedSignedUrl ? "url" : "data_uri",
+              });
+            }
             finalResp = waResp.response || finalResp;
             finalOk = finalOk && waResp.ok;
             if (!waResp.ok) outboundWhatsApp.error = waResp.error;
@@ -809,6 +856,7 @@ export async function POST(req: Request) {
               instanceName: String(row.evolution_instance_name),
               numberDigits: toE164,
               text: tail,
+              correlationId,
               quotedContext: null,
             });
             finalResp = waResp.response || finalResp;
@@ -822,6 +870,7 @@ export async function POST(req: Request) {
             instanceName: String(row.evolution_instance_name),
             numberDigits: toE164,
             text: signedText,
+            correlationId,
             quotedContext: evolutionQuotedContext,
           });
           finalResp = waResp.response;
@@ -840,7 +889,6 @@ export async function POST(req: Request) {
             let sendBuf = f.buffer;
             let sendMime = f.mime;
             let sendName = f.name;
-            let forceDocumentAudio = false;
             if (inferMetaOutboundKind(f.mime) === "audio" && !isMetaCloudApiAudioMime(sendMime)) {
               const tr = await maybeTranscodeInboundAudio({
                 buffer: sendBuf,
@@ -859,11 +907,10 @@ export async function POST(req: Request) {
                   bytes: f.buffer.length,
                   reason: tr.reason?.slice(0, 220),
                 });
-                forceDocumentAudio = true;
-                sendMime = "application/octet-stream";
-                const base = (sendName || "audio").replace(/\.[^.]+$/, "") || "audio";
-                const ext = f.name && f.name.includes(".") ? f.name.slice(f.name.lastIndexOf(".")) : ".webm";
-                sendName = `${base}${ext}`;
+                finalOk = false;
+                outboundWhatsApp.error =
+                  "Áudio: transcodificação falhou (ffmpeg). Verifique FFMPEG_PATH ou deploy com ffmpeg-static; envio em formato bruto para a Meta desativado para evitar falhas silenciosas.";
+                break;
               }
             }
             const up = await metaUploadMediaBuffer({
@@ -876,7 +923,7 @@ export async function POST(req: Request) {
               outboundWhatsApp.error = up.error;
               break;
             }
-            const kind = forceDocumentAudio ? "document" : inferMetaOutboundKind(sendMime);
+            const kind = inferMetaOutboundKind(sendMime);
             const cap = i === 0 ? (signedText || text || undefined)?.slice(0, 1020) : undefined;
             const send = await metaSendMessageWithUploadedMedia({
               toE164,

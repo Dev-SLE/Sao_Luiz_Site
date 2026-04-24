@@ -58,9 +58,17 @@ export async function GET(_req: Request, { params }: { params: Promise<{ fileId:
     const t = u.searchParams.get("t") || "";
     const s = u.searchParams.get("s") || "";
     const ua = String(_req.headers.get("user-agent") || "").slice(0, 180);
+    const vercelId = String(_req.headers.get("x-vercel-id") || "").slice(0, 120);
     if (!verifyEvolutionMediaSig(fileId, t, s)) {
       console.log(
-        JSON.stringify({ ts: new Date().toISOString(), scope: "evolution", event: "signed_media_fetch_denied", fileId, ua })
+        JSON.stringify({
+          ts: new Date().toISOString(),
+          scope: "evolution",
+          event: "signed_media_fetch_denied",
+          fileId,
+          ua,
+          vercelId: vercelId || undefined,
+        })
       );
       return new NextResponse("Unauthorized", { status: 401 });
     }
@@ -76,10 +84,21 @@ export async function GET(_req: Request, { params }: { params: Promise<{ fileId:
           fileId,
           ageMs: now - ts,
           ua,
+          vercelId: vercelId || undefined,
         })
       );
       return new NextResponse("Expired", { status: 401 });
     }
+
+    console.log(
+      JSON.stringify({
+        ts: new Date().toISOString(),
+        scope: "evolution",
+        event: "signed_media_fetch_accepted",
+        fileId,
+        vercelId: vercelId || undefined,
+      })
+    );
 
     const pool = getPool();
     const file = await getFileById(pool, fileId);
@@ -102,6 +121,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ fileId:
           fileId,
           httpStatus: res.status,
           ua,
+          vercelId: vercelId || undefined,
         })
       );
       return new NextResponse("Bad gateway", { status: 502 });
@@ -116,6 +136,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ fileId:
         fileId,
         contentType: ct,
         ua,
+        vercelId: vercelId || undefined,
       })
     );
     const dispName = safeInlineFileName(file.original_name || file.file_name, ct);

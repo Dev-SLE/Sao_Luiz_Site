@@ -16,6 +16,7 @@
     "check": "npm run typecheck && npm run test:smoke",
     "check:storage": "node scripts/check-sharepoint-env.mjs",
     "check:evolution-inboxes": "node scripts/check-evolution-inbox-urls.mjs",
+    "check:evolution-media-reachability": "node scripts/check-evolution-media-reachability.mjs",
     "test:sharepoint-graph": "node scripts/test-sharepoint-graph.mjs"
   },
   "dependencies": {

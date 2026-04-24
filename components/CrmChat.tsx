@@ -89,6 +89,8 @@ interface Message {
   replyTo?: { messageId?: string; sender?: string; text?: string } | null;
   deleted?: boolean;
   createdAt?: string | null;
+  /** Vem do GET /api/crm/messages (ex.: erro WhatsApp / Evolution). */
+  metadata?: Record<string, unknown> | null;
 }
 
 interface RelatedLeadHistoryItem {
@@ -1994,6 +1996,23 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                       </span>
                     </div>
                   </div>
+                  {isMe && m.status === 'failed' && (
+                    (() => {
+                      const ob = (m as Message).metadata as
+                        | { outbound_whatsapp?: { error?: string | null } }
+                        | undefined;
+                      const err = String(ob?.outbound_whatsapp?.error || '').trim();
+                      if (!err) return null;
+                      return (
+                        <div
+                          className="mt-1 text-[9px] text-amber-100/95 break-words max-w-[min(100%,320px)]"
+                          title={err}
+                        >
+                          {err.length > 220 ? `${err.slice(0, 220)}…` : err}
+                        </div>
+                      );
+                    })()
+                  )}
                 </div>
               </div>
             );

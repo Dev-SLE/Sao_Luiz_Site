@@ -182,6 +182,7 @@ export async function evolutionSendText(args: {
   instanceName: string;
   numberDigits: string;
   text: string;
+  correlationId?: string | null;
   /**
    * Citação nativa no WhatsApp (Evolution v2 / Baileys): exige key.id, key.remoteJid e key.fromMe
    * + message.conversation — só `id` não renderiza resposta no aparelho.
@@ -193,6 +194,7 @@ export async function evolutionSendText(args: {
     conversation?: string | null;
   } | null;
 }) {
+  const corr = args.correlationId ? { correlationId: String(args.correlationId).slice(0, 32) } : {};
   const base = normalizeEvolutionServerUrl(args.serverUrl).replace(/\/+$/, "");
   if (!base) {
     return { ok: false, error: "evolution_server_url vazio", response: null as any };
@@ -242,6 +244,7 @@ export async function evolutionSendText(args: {
         httpStatus: resp.status,
         code,
         error: String(msg).slice(0, 240),
+        ...corr,
       });
       return { ok: false, error: String(msg), response: json };
     }
@@ -253,6 +256,7 @@ export async function evolutionSendText(args: {
         code: "EVOLUTION_BODY_ERROR",
         bodyRejects: true,
         error: bodyErr.slice(0, 280),
+        ...corr,
       });
       return { ok: false, error: bodyErr, response: json };
     }
@@ -263,6 +267,7 @@ export async function evolutionSendText(args: {
       instanceName: args.instanceName,
       code: evolutionClientErrorCode({ httpStatus: 0, message: em }),
       error: em.slice(0, 240),
+      ...corr,
     });
     return { ok: false, error: em, response: null as any };
   }
@@ -420,6 +425,8 @@ export async function evolutionSendMedia(args: {
   mimetype?: string | null;
   fileName?: string | null;
   caption?: string | null;
+  /** Correlação com POST /api/crm/messages e logs Vercel */
+  correlationId?: string | null;
   quotedContext?: {
     waMessageId: string;
     remoteJid: string;
@@ -447,13 +454,20 @@ export async function evolutionSendMedia(args: {
       },
     };
   }
+  const captionText =
+    args.caption != null && String(args.caption).trim().length > 0
+      ? String(args.caption).trim().slice(0, 1020)
+      : "";
+  const mimeForBody = String(args.mimetype || "").trim() || "application/octet-stream";
+  const fileNameForBody = String(args.fileName || "").trim() || "media";
+  const corr = args.correlationId ? { correlationId: String(args.correlationId).slice(0, 32) } : {};
   const body: Record<string, unknown> = {
     number: num,
     mediatype: args.mediatype,
     media: args.media,
-    ...(args.mimetype ? { mimetype: args.mimetype } : {}),
-    ...(args.fileName ? { fileName: args.fileName } : {}),
-    ...(args.caption ? { caption: args.caption } : {}),
+    mimetype: mimeForBody,
+    fileName: fileNameForBody,
+    caption: captionText,
     ...quotedPayload,
   };
   try {
@@ -481,6 +495,7 @@ export async function evolutionSendMedia(args: {
         mediaMode,
         mediaChars: m.length,
         error: `${String(msg).slice(0, 220)}${hint}`,
+        ...corr,
       });
       return { ok: false, error: `${String(msg)}${hint}`, response: json };
     }
@@ -496,8 +511,31 @@ export async function evolutionSendMedia(args: {
         mediaChars: m.length,
         bodyRejects: true,
         error: bodyErr.slice(0, 280),
+        ...corr,
       });
       return { ok: false, error: bodyErr, response: json };
+    }
+    const waId = extractEvolutionOutboundWaMessageId(json);
+    if (!waId) {
+      const m = String(args.media || "");
+      const mediaMode = m.startsWith("http") ? "url" : m.startsWith("data:") ? "data_uri" : "other";
+      evolutionIntegrationLog("sendMedia_failed", {
+        instanceName: args.instanceName,
+        httpStatus: resp.status,
+        mediatype: args.mediatype,
+        mediaMode,
+        mediaChars: m.length,
+        code: "EVOLUTION_NO_MESSAGE_KEY",
+        error: "Evolution não retornou key.id no JSON",
+        responseKeys:
+          json && typeof json === "object"
+            ? Object.keys(json as object)
+                .slice(0, 12)
+                .join(",")
+            : "",
+        ...corr,
+      });
+      return { ok: false, error: "Evolution não retornou id da mensagem (key.id)", response: json };
     }
     return { ok: true, error: null as string | null, response: json };
   } catch (e: any) {
@@ -507,6 +545,7 @@ export async function evolutionSendMedia(args: {
       httpStatus: 0,
       code: evolutionClientErrorCode({ httpStatus: 0, message: em }),
       error: em.slice(0, 240),
+      ...corr,
     });
     return { ok: false, error: em, response: null as any };
   }
