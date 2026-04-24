@@ -312,85 +312,123 @@ export async function evolutionSendText(args: {
   }
 }
 
-/** Baixa mídia via Evolution (POST /chat/getBase64FromMediaMessage/{instance}). */
+/**
+ * Baixa mídia via Evolution (POST /chat/getBase64FromMediaMessage/{instance}).
+ *
+ * Na Evolution (Baileys), se o JSON tiver `message.message` preenchido, a API usa esse corpo
+ * direto; se **não** tiver, chama `getMessage(key)` e reidrata da BD — evita
+ * "The message is not of the media type" quando o webhook só traz um espelho incompleto.
+ */
 export async function evolutionGetBase64FromMediaMessage(args: {
   serverUrl: string;
   apiKey: string;
   instanceName: string;
-  /** Envelope { key, message } com um único nó de mídia em `message`. */
-  message: { key: Record<string, unknown>; message: Record<string, unknown> };
+  /** `key` obrigatório; `message` opcional (nós proto de mídia) para fallback se a BD não tiver a mensagem. */
+  message: { key: Record<string, unknown>; message?: Record<string, unknown> };
+  convertToMp4?: boolean;
 }): Promise<{ buffer: Buffer | null; mimeType: string | null; error?: string }> {
   const base = normalizeEvolutionServerUrl(args.serverUrl).replace(/\/+$/, "");
   if (!base || !args.apiKey || !args.instanceName) {
     return { buffer: null, mimeType: null, error: "evolution_url_ou_credenciais_ausentes" };
   }
   const url = `${base}/chat/getBase64FromMediaMessage/${encodeURIComponent(args.instanceName)}`;
+  const convertToMp4 = args.convertToMp4 === true;
+  const key = args.message?.key;
+  const inner = args.message?.message;
+  const hasInner =
+    inner && typeof inner === "object" && Object.keys(inner as object).filter((k) => k !== "messageContextInfo").length > 0;
+
+  const strategies: Array<{ name: string; payload: Record<string, unknown> }> = [];
+  if (key && typeof key === "object" && String((key as any).id || "").trim()) {
+    strategies.push({ name: "key_only_db", payload: { message: { key }, convertToMp4 } });
+  }
+  if (hasInner && key) {
+    strategies.push({ name: "webhook_envelope", payload: { message: { key, message: inner }, convertToMp4 } });
+  }
+
+  if (!strategies.length) {
+    return { buffer: null, mimeType: null, error: "evolution_get_base64_sem_key" };
+  }
+
   let lastErr = "evolution_get_base64_failed";
-  for (let attempt = 1; attempt <= 2; attempt++) {
-    try {
-      const resp = await evolutionExternalFetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: args.apiKey,
-          accept: "application/json",
-        },
-        body: JSON.stringify({
-          message: args.message,
-          convertToMp4: false,
-        }),
-      });
-      const json = (await resp.json().catch(() => ({}))) as any;
-      if (!resp.ok) {
-        const msg = json?.response?.message || json?.message || json?.error || `HTTP ${resp.status}`;
-        const flat = Array.isArray(msg) ? msg.join(", ") : String(msg);
-        lastErr = flat;
+
+  for (const strat of strategies) {
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const resp = await evolutionExternalFetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: args.apiKey,
+            accept: "application/json",
+          },
+          body: JSON.stringify(strat.payload),
+        });
+        const json = (await resp.json().catch(() => ({}))) as any;
+        if (!resp.ok) {
+          const msg = json?.response?.message || json?.message || json?.error || `HTTP ${resp.status}`;
+          const flat = Array.isArray(msg) ? msg.join(", ") : String(msg);
+          lastErr = flat;
+          evolutionIntegrationLog("getBase64_failed", {
+            instanceName: args.instanceName,
+            strategy: strat.name,
+            httpStatus: resp.status,
+            error: flat.slice(0, 400),
+          });
+          if (attempt < 2) await new Promise((r) => setTimeout(r, 350 * attempt));
+          continue;
+        }
+        const raw =
+          json?.base64 ||
+          json?.data?.base64 ||
+          json?.media?.base64 ||
+          json?.response?.base64 ||
+          json?.base64Data;
+        let mime =
+          json?.mimetype ||
+          json?.mimeType ||
+          json?.data?.mimetype ||
+          json?.media?.mimetype ||
+          null;
+        if (typeof raw !== "string" || raw.length < 8) {
+          lastErr = "resposta_sem_base64";
+          if (attempt < 2) await new Promise((r) => setTimeout(r, 350 * attempt));
+          continue;
+        }
+        let b64 = raw.trim();
+        if (b64.startsWith("data:")) {
+          const semi = b64.indexOf(";");
+          const comma = b64.indexOf(",");
+          if (semi > 5 && comma > semi) {
+            mime = mime || b64.slice(5, semi);
+            b64 = b64.slice(comma + 1);
+          }
+        }
+        const buffer = Buffer.from(b64, "base64");
+        if (!buffer.length) {
+          lastErr = "base64_invalido";
+          if (attempt < 2) await new Promise((r) => setTimeout(r, 350 * attempt));
+          continue;
+        }
+        evolutionIntegrationLog("getBase64_ok", {
+          instanceName: args.instanceName,
+          strategy: strat.name,
+          bytes: buffer.length,
+        });
+        return { buffer, mimeType: mime ? String(mime) : null };
+      } catch (e: any) {
+        lastErr = e?.message || String(e);
         evolutionIntegrationLog("getBase64_failed", {
           instanceName: args.instanceName,
-          httpStatus: resp.status,
-          error: flat.slice(0, 400),
+          strategy: strat.name,
+          httpStatus: 0,
+          error: lastErr.slice(0, 400),
         });
         if (attempt < 2) await new Promise((r) => setTimeout(r, 350 * attempt));
-        continue;
       }
-      const raw =
-        json?.base64 ||
-        json?.data?.base64 ||
-        json?.media?.base64 ||
-        json?.response?.base64 ||
-        json?.base64Data;
-      let mime =
-        json?.mimetype ||
-        json?.mimeType ||
-        json?.data?.mimetype ||
-        json?.media?.mimetype ||
-        null;
-      if (typeof raw !== "string" || raw.length < 8) {
-        lastErr = "resposta_sem_base64";
-        if (attempt < 2) await new Promise((r) => setTimeout(r, 350 * attempt));
-        continue;
-      }
-      let b64 = raw.trim();
-      if (b64.startsWith("data:")) {
-        const semi = b64.indexOf(";");
-        const comma = b64.indexOf(",");
-        if (semi > 5 && comma > semi) {
-          mime = mime || b64.slice(5, semi);
-          b64 = b64.slice(comma + 1);
-        }
-      }
-      const buffer = Buffer.from(b64, "base64");
-      if (!buffer.length) {
-        lastErr = "base64_invalido";
-        if (attempt < 2) await new Promise((r) => setTimeout(r, 350 * attempt));
-        continue;
-      }
-      return { buffer, mimeType: mime ? String(mime) : null };
-    } catch (e: any) {
-      lastErr = e?.message || String(e);
-      if (attempt < 2) await new Promise((r) => setTimeout(r, 350 * attempt));
     }
   }
+
   return { buffer: null, mimeType: null, error: lastErr };
 }
 
