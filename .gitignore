@@ -1,9 +1,5 @@
-# Documentação (vault Obsidian, guias locais — não versionar)
-# Usar `docs/*` (não `docs/`) para permitir negação de subpastas versionadas.
-docs/*
-!docs/contexto-agente/
-!docs/contexto-agente/**
-docs/contexto-agente/.obsidian/
+# Documentação interna (Obsidian, guias locais) — não versionar nem enviar ao remoto
+docs/
 
 # Build and deps
 node_modules/
