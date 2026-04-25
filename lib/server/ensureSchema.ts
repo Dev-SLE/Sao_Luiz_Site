@@ -517,6 +517,34 @@ export async function ensureCrmSchemaTables() {
   await pool.query(`ALTER TABLE pendencias.crm_sofia_settings ADD COLUMN IF NOT EXISTS generate_summary_enabled boolean NOT NULL DEFAULT true`);
 
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS pendencias.crm_sofia_ai_actions_log (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      created_at timestamptz NOT NULL DEFAULT now(),
+      conversation_id uuid REFERENCES pendencias.crm_conversations(id) ON DELETE SET NULL,
+      lead_id uuid REFERENCES pendencias.crm_leads(id) ON DELETE SET NULL,
+      source text NOT NULL,
+      task_type text NOT NULL,
+      provider text NOT NULL,
+      model_name text,
+      ok boolean NOT NULL DEFAULT false,
+      http_status int,
+      error_label text,
+      input_tokens int,
+      output_tokens int,
+      latency_ms int,
+      meta jsonb NOT NULL DEFAULT '{}'::jsonb
+    )
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_crm_sofia_ai_actions_log_created
+    ON pendencias.crm_sofia_ai_actions_log (created_at DESC)
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_crm_sofia_ai_actions_log_conversation
+    ON pendencias.crm_sofia_ai_actions_log (conversation_id, created_at DESC)
+  `);
+
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS pendencias.crm_evolution_intake_settings (
       id int PRIMARY KEY DEFAULT 1,
       lead_filter_mode text NOT NULL DEFAULT 'BUSINESS_ONLY',

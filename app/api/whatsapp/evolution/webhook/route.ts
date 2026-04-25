@@ -29,6 +29,8 @@ import {
   crmEvolutionUpsertDebugEnabled,
   crmEvolutionWebhookEventDiagEnabled,
 } from "../../../../../lib/server/crmEvolutionDebug";
+import { geminiGenerateContent, openAiChatCompletion } from "../../../../../lib/server/aiChatProviders";
+import { insertSofiaAiAuditLog } from "../../../../../lib/server/sofiaAiAuditLog";
 
 export const runtime = "nodejs";
 
@@ -341,59 +343,68 @@ function parseLast10ListFromEnv(raw: string | undefined): Set<string> {
   return out;
 }
 
-async function callOpenAiForIntake(prompt: string): Promise<string | null> {
-  const apiKey = process.env.OPENAI_API_KEY;
-  const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
-  if (!apiKey) return null;
-  const resp = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
+const INTAKE_SYSTEM =
+  "Classifique contato para CRM logístico. Responda somente CREATE, WAIT ou SKIP.";
+
+async function aiIntakeDecision(
+  pool: { query: (sql: string, params?: unknown[]) => Promise<unknown> },
+  prompt: string,
+  meta: { evolutionInstance?: string | null }
+): Promise<"CREATE" | "WAIT" | "SKIP" | null> {
+  const auditMeta = { evolutionInstance: meta.evolutionInstance ?? null };
+  const provider = String(process.env.AI_PROVIDER || "OPENAI").toUpperCase();
+
+  const runOpenai = async (): Promise<string | null> => {
+    const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
+    const r = await openAiChatCompletion({
+      scope: "evolution_intake",
       model,
       temperature: 0.2,
       messages: [
-        {
-          role: "system",
-          content:
-            "Classifique contato para CRM logístico. Responda somente CREATE, WAIT ou SKIP.",
-        },
+        { role: "system", content: INTAKE_SYSTEM },
         { role: "user", content: prompt },
       ],
-    }),
-  });
-  if (!resp.ok) return null;
-  const json = await resp.json().catch(() => ({}));
-  return json?.choices?.[0]?.message?.content ? String(json.choices[0].message.content) : null;
-}
+    });
+    if (r.errorLabel !== "missing_key") {
+      await insertSofiaAiAuditLog(pool, {
+        conversationId: null,
+        leadId: null,
+        source: "evolution_intake",
+        taskType: "intake_triage",
+        provider: "OPENAI",
+        modelName: model,
+        result: r,
+        meta: auditMeta,
+      });
+    }
+    return r.text;
+  };
 
-async function callGeminiForIntake(prompt: string): Promise<string | null> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  const model = process.env.GEMINI_MODEL || "gemini-1.5-flash";
-  if (!apiKey) return null;
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
-    model
-  )}:generateContent?key=${encodeURIComponent(apiKey)}`;
-  const resp = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      generationConfig: { temperature: 0.2 },
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-    }),
-  });
-  if (!resp.ok) return null;
-  const json = await resp.json().catch(() => ({}));
-  const text = json?.candidates?.[0]?.content?.parts?.[0]?.text;
-  return text ? String(text) : null;
-}
+  const runGemini = async (): Promise<string | null> => {
+    const model = process.env.GEMINI_MODEL || "gemini-1.5-flash";
+    const r = await geminiGenerateContent({
+      scope: "evolution_intake",
+      model,
+      temperature: 0.2,
+      contents: [{ role: "user", parts: [{ text: `${INTAKE_SYSTEM}\n\n${prompt}` }] }],
+    });
+    if (r.errorLabel !== "missing_key") {
+      await insertSofiaAiAuditLog(pool, {
+        conversationId: null,
+        leadId: null,
+        source: "evolution_intake",
+        taskType: "intake_triage",
+        provider: "GEMINI",
+        modelName: model,
+        result: r,
+        meta: auditMeta,
+      });
+    }
+    return r.text;
+  };
 
-async function aiIntakeDecision(prompt: string): Promise<"CREATE" | "WAIT" | "SKIP" | null> {
-  const provider = String(process.env.AI_PROVIDER || "OPENAI").toUpperCase();
   const raw =
-    provider === "GEMINI" ? await callGeminiForIntake(prompt) : await callOpenAiForIntake(prompt);
+    provider === "GEMINI" ? (await runGemini()) || (await runOpenai()) : (await runOpenai()) || (await runGemini());
   if (!raw) return null;
   const t = raw.toUpperCase();
   if (t.includes("CREATE")) return "CREATE";
@@ -520,6 +531,8 @@ async function findAgencyByLast10(pool: any, last10: string): Promise<{ id: stri
 }
 
 async function shouldCreateLeadForNewContact(input: {
+  pool: { query: (sql: string, params?: unknown[]) => Promise<unknown> };
+  evolutionInstance?: string | null;
   mode: string;
   isFromMe: boolean;
   isAgencyContact: boolean;
@@ -557,13 +570,17 @@ async function shouldCreateLeadForNewContact(input: {
   });
   if (bufferedSignal) return true;
   if (!input.aiEnabled) return false;
-  const decision = await aiIntakeDecision([
-    "Contexto: triagem de novo contato no CRM logístico.",
-    "Responda apenas CREATE, WAIT ou SKIP.",
-    `Mensagem atual: ${input.text}`,
-    `Histórico curto: ${input.bufferedText}`,
-    "Regra: CREATE só se parecer conversa de negócio (rastreio/cte/coleta/entrega/cotação/agência).",
-  ].join("\n"));
+  const decision = await aiIntakeDecision(
+    input.pool,
+    [
+      "Contexto: triagem de novo contato no CRM logístico.",
+      "Responda apenas CREATE, WAIT ou SKIP.",
+      `Mensagem atual: ${input.text}`,
+      `Histórico curto: ${input.bufferedText}`,
+      "Regra: CREATE só se parecer conversa de negócio (rastreio/cte/coleta/entrega/cotação/agência).",
+    ].join("\n"),
+    { evolutionInstance: input.evolutionInstance ?? null }
+  );
   return decision === "CREATE";
 }
 
@@ -1852,6 +1869,8 @@ export async function POST(req: Request) {
           businessSignal: preSignal,
         });
         const shouldCreate = await shouldCreateLeadForNewContact({
+          pool,
+          evolutionInstance: instance,
           mode: intakeSettings.mode,
           isFromMe,
           isAgencyContact: !!agencyContact,

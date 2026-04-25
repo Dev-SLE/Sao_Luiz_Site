@@ -29,7 +29,13 @@ export async function GET(req: Request) {
       `
     );
     const row = res.rows?.[0];
+    const openaiKeyPresent = Boolean(String(process.env.OPENAI_API_KEY || "").trim());
+    const geminiKeyPresent = Boolean(String(process.env.GEMINI_API_KEY || "").trim());
     return NextResponse.json({
+      aiSecretsStatus: {
+        openai: openaiKeyPresent ? "configured" : "missing",
+        gemini: geminiKeyPresent ? "configured" : "missing",
+      },
       settings: row
         ? {
             id: String(row.id),

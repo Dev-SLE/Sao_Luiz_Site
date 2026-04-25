@@ -7,6 +7,12 @@ import {
   buildSofiaSystemInstructions,
 } from "../../../../../lib/server/sofiaGovernance";
 import { requireApiPermissions } from "../../../../../lib/server/apiAuth";
+import {
+  geminiGenerateContent,
+  openAiChatCompletion,
+  type AiChatHttpResult,
+} from "../../../../../lib/server/aiChatProviders";
+import { insertSofiaAiAuditLog } from "../../../../../lib/server/sofiaAiAuditLog";
 
 export const runtime = "nodejs";
 
@@ -165,16 +171,34 @@ function isRepeatedAgainstRecentIa(candidate: string, lastIaMessages: string[]) 
   return lastIaMessages.some((m) => normalizeForCompare(m) === c);
 }
 
-async function callOpenAi(args: {
+type SofiaRespondAuditCtx = {
+  pool: { query: (sql: string, params?: unknown[]) => Promise<unknown> };
+  conversationId: string;
+  leadId: string | null;
+  taskType: "reply_suggestion" | "conversation_summary";
+};
+
+async function auditIfAttempted(ctx: SofiaRespondAuditCtx, provider: "OPENAI" | "GEMINI", model: string, result: AiChatHttpResult) {
+  if (result.errorLabel === "missing_key") return;
+  await insertSofiaAiAuditLog(ctx.pool, {
+    conversationId: ctx.conversationId,
+    leadId: ctx.leadId,
+    source: "sofia_respond",
+    taskType: ctx.taskType,
+    provider,
+    modelName: model,
+    result,
+  });
+}
+
+async function callOpenAiAudited(ctx: SofiaRespondAuditCtx, args: {
   prompt: string;
   turns: AiTurn[];
   modelOverride?: string | null;
   systemInstructions?: string | null;
 }) {
-  const apiKey = process.env.OPENAI_API_KEY;
   const model =
     (args.modelOverride && String(args.modelOverride).trim()) || process.env.OPENAI_MODEL || "gpt-4o-mini";
-  if (!apiKey) return null;
   const customSystem = String(args.systemInstructions || "").trim();
   const messages = [
     { role: "system", content: buildSofiaSystemInstructions(customSystem) },
@@ -184,34 +208,24 @@ async function callOpenAi(args: {
     })),
     { role: "user", content: args.prompt },
   ];
-  const resp = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0.55,
-      messages,
-    }),
+  const r = await openAiChatCompletion({
+    scope: "sofia_respond",
+    model,
+    temperature: 0.55,
+    messages,
   });
-  if (!resp.ok) return null;
-  const json = await resp.json().catch(() => ({}));
-  return json?.choices?.[0]?.message?.content ? String(json.choices[0].message.content) : null;
+  await auditIfAttempted(ctx, "OPENAI", model, r);
+  return r.text;
 }
 
-async function callGemini(args: {
+async function callGeminiAudited(ctx: SofiaRespondAuditCtx, args: {
   prompt: string;
   turns: AiTurn[];
   modelOverride?: string | null;
   systemInstructions?: string | null;
 }) {
-  const apiKey = process.env.GEMINI_API_KEY;
   const model =
     (args.modelOverride && String(args.modelOverride).trim()) || process.env.GEMINI_MODEL || "gemini-1.5-flash";
-  if (!apiKey) return null;
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
   const customSystem = String(args.systemInstructions || "").trim();
   const contents = [
     ...(customSystem
@@ -223,53 +237,50 @@ async function callGemini(args: {
     })),
     { role: "user", parts: [{ text: args.prompt }] },
   ];
-  const resp = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      generationConfig: { temperature: 0.55 },
-      contents,
-    }),
+  const r = await geminiGenerateContent({
+    scope: "sofia_respond",
+    model,
+    temperature: 0.55,
+    contents,
   });
-  if (!resp.ok) return null;
-  const json = await resp.json().catch(() => ({}));
-  const text = json?.candidates?.[0]?.content?.parts?.[0]?.text;
-  return text ? String(text) : null;
+  await auditIfAttempted(ctx, "GEMINI", model, r);
+  return r.text;
 }
 
-async function callAiProvider(opts: {
-  provider?: string | null;
-  prompt: string;
-  turns: AiTurn[];
-  modelOverride?: string | null;
-  systemInstructions?: string | null;
-}) {
+async function callAiProviderAudited(
+  ctx: SofiaRespondAuditCtx,
+  opts: {
+    provider?: string | null;
+    prompt: string;
+    turns: AiTurn[];
+    modelOverride?: string | null;
+    systemInstructions?: string | null;
+  }
+) {
   const selected = String(opts.provider || process.env.AI_PROVIDER || "OPENAI").toUpperCase();
   if (selected === "GEMINI") {
-    const gemini = await callGemini({
+    const gemini = await callGeminiAudited(ctx, {
       prompt: opts.prompt,
       turns: opts.turns,
       modelOverride: opts.modelOverride,
       systemInstructions: opts.systemInstructions,
     });
     if (gemini) return gemini;
-    return callOpenAi({
+    return callOpenAiAudited(ctx, {
       prompt: opts.prompt,
       turns: opts.turns,
       modelOverride: process.env.OPENAI_MODEL || null,
       systemInstructions: opts.systemInstructions,
     });
   }
-  const openai = await callOpenAi({
+  const openai = await callOpenAiAudited(ctx, {
     prompt: opts.prompt,
     turns: opts.turns,
     modelOverride: opts.modelOverride,
     systemInstructions: opts.systemInstructions,
   });
   if (openai) return openai;
-  return callGemini({
+  return callGeminiAudited(ctx, {
     prompt: opts.prompt,
     turns: opts.turns,
     modelOverride: process.env.GEMINI_MODEL || null,
@@ -312,7 +323,7 @@ export async function POST(req: Request) {
     const [convRes, settingsRes, lastMsgsRes] = await Promise.all([
       pool.query(
         `
-          SELECT c.id, c.channel, c.topic, l.title, l.cte_number, l.contact_phone
+          SELECT c.id, c.channel, c.topic, l.id AS lead_id, l.title, l.cte_number, l.contact_phone
                , l.customer_status, l.agency_requested_at, l.agency_sla_minutes
                , c.status, c.sla_breached_at
           FROM pendencias.crm_conversations c
@@ -350,6 +361,7 @@ export async function POST(req: Request) {
 
     const conv = convRes.rows?.[0];
     if (!conv) return NextResponse.json({ error: "conversa não encontrada" }, { status: 404 });
+    const leadIdForAudit = conv.lead_id != null ? String(conv.lead_id) : null;
     const settings = settingsRes.rows?.[0] || {};
     const transcript = (lastMsgsRes.rows || [])
       .reverse()
@@ -398,13 +410,21 @@ export async function POST(req: Request) {
         "Evite repetição e não invente dados.",
       ].join("\n");
       const summaryRaw =
-        (await callAiProvider({
-          provider: settings.ai_provider,
-          prompt: summaryPrompt,
-          turns: aiTurns,
-          modelOverride: settings.model_name,
-          systemInstructions: settings.system_instructions,
-        })) || "";
+        (await callAiProviderAudited(
+          {
+            pool,
+            conversationId,
+            leadId: leadIdForAudit,
+            taskType: "conversation_summary",
+          },
+          {
+            provider: settings.ai_provider,
+            prompt: summaryPrompt,
+            turns: aiTurns,
+            modelOverride: settings.model_name,
+            systemInstructions: settings.system_instructions,
+          }
+        )) || "";
       const summary = normalizeAiText(summaryRaw || "", 620);
       return NextResponse.json({ summary });
     }
@@ -495,13 +515,21 @@ export async function POST(req: Request) {
         : null,
     });
 
-    let suggestion = await callAiProvider({
-      provider: settings.ai_provider,
-      prompt,
-      turns: aiTurns,
-      modelOverride: settings.model_name,
-      systemInstructions: settings.system_instructions,
-    });
+    let suggestion = await callAiProviderAudited(
+      {
+        pool,
+        conversationId,
+        leadId: leadIdForAudit,
+        taskType: "reply_suggestion",
+      },
+      {
+        provider: settings.ai_provider,
+        prompt,
+        turns: aiTurns,
+        modelOverride: settings.model_name,
+        systemInstructions: settings.system_instructions,
+      }
+    );
     const aiGenerated = !!suggestion?.trim();
     if (!suggestion) {
       suggestion = fallbackReply({

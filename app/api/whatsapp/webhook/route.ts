@@ -15,6 +15,8 @@ import {
   applyCrmMessageDeleteByWaMessageId,
   applyCrmMessageEditByWaMessageId,
 } from "../../../../lib/server/crmMessageWaMirror";
+import { geminiGenerateContent, openAiChatCompletion } from "../../../../lib/server/aiChatProviders";
+import { insertSofiaAiAuditLog } from "../../../../lib/server/sofiaAiAuditLog";
 
 export const runtime = "nodejs";
 /** Download Meta + upload SharePoint precisa completar antes do fim da invocação (evita mídia presa em DOWNLOADING na Vercel). */
@@ -380,72 +382,84 @@ function isGenericReply(text: string) {
   return hasGenericPattern && !hasQuestion && !hasCollection;
 }
 
-async function callOpenAi(prompt: string, modelOverride?: string | null) {
-  const apiKey = process.env.OPENAI_API_KEY;
+async function callOpenAiMetaAudited(
+  pool: { query: (sql: string, params?: unknown[]) => Promise<unknown> },
+  audit: { conversationId: string; leadId: string },
+  prompt: string,
+  modelOverride?: string | null
+): Promise<string | null> {
   const model =
     (modelOverride && String(modelOverride).trim()) || process.env.OPENAI_MODEL || "gpt-4o-mini";
-  if (!apiKey) return null;
-  try {
-    const resp = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        temperature: 0.55,
-        messages: [
-          {
-            role: "system",
-            content: buildSofiaSystemInstructions(null),
-          },
-          { role: "user", content: prompt },
-        ],
-      }),
+  const r = await openAiChatCompletion({
+    scope: "meta_webhook_auto",
+    model,
+    temperature: 0.55,
+    messages: [
+      { role: "system", content: buildSofiaSystemInstructions(null) },
+      { role: "user", content: prompt },
+    ],
+  });
+  if (r.errorLabel !== "missing_key") {
+    await insertSofiaAiAuditLog(pool, {
+      conversationId: audit.conversationId,
+      leadId: audit.leadId,
+      source: "meta_webhook_auto",
+      taskType: "auto_reply",
+      provider: "OPENAI",
+      modelName: model,
+      result: r,
     });
-    if (!resp.ok) return null;
-    const json = await resp.json().catch(() => ({}));
-    return json?.choices?.[0]?.message?.content ? String(json.choices[0].message.content) : null;
-  } catch {
-    return null;
   }
+  return r.text;
 }
 
-async function callGemini(prompt: string, modelOverride?: string | null) {
-  const apiKey = process.env.GEMINI_API_KEY;
+async function callGeminiMetaAudited(
+  pool: { query: (sql: string, params?: unknown[]) => Promise<unknown> },
+  audit: { conversationId: string; leadId: string },
+  prompt: string,
+  modelOverride?: string | null
+): Promise<string | null> {
   const model =
     (modelOverride && String(modelOverride).trim()) || process.env.GEMINI_MODEL || "gemini-1.5-flash";
-  if (!apiKey) return null;
-  try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
-    const resp = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        generationConfig: { temperature: 0.55 },
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-      }),
+  const r = await geminiGenerateContent({
+    scope: "meta_webhook_auto",
+    model,
+    temperature: 0.55,
+    contents: [
+      {
+        role: "user",
+        parts: [{ text: `${buildSofiaSystemInstructions(null)}\n\n${prompt}` }],
+      },
+    ],
+  });
+  if (r.errorLabel !== "missing_key") {
+    await insertSofiaAiAuditLog(pool, {
+      conversationId: audit.conversationId,
+      leadId: audit.leadId,
+      source: "meta_webhook_auto",
+      taskType: "auto_reply",
+      provider: "GEMINI",
+      modelName: model,
+      result: r,
     });
-    if (!resp.ok) return null;
-    const json = await resp.json().catch(() => ({}));
-    const text = json?.candidates?.[0]?.content?.parts?.[0]?.text;
-    return text ? String(text) : null;
-  } catch {
-    return null;
   }
+  return r.text;
 }
 
-async function callAiProvider(opts: { provider?: string | null; prompt: string; modelOverride?: string | null }) {
+async function callAiProviderMetaAudited(
+  pool: { query: (sql: string, params?: unknown[]) => Promise<unknown> },
+  audit: { conversationId: string; leadId: string },
+  opts: { provider?: string | null; prompt: string; modelOverride?: string | null }
+) {
   const selected = String(opts.provider || process.env.AI_PROVIDER || "OPENAI").toUpperCase();
   if (selected === "GEMINI") {
-    const gemini = await callGemini(opts.prompt, opts.modelOverride);
+    const gemini = await callGeminiMetaAudited(pool, audit, opts.prompt, opts.modelOverride);
     if (gemini) return gemini;
-    return callOpenAi(opts.prompt, process.env.OPENAI_MODEL || null);
+    return callOpenAiMetaAudited(pool, audit, opts.prompt, process.env.OPENAI_MODEL || null);
   }
-  const openai = await callOpenAi(opts.prompt, opts.modelOverride);
+  const openai = await callOpenAiMetaAudited(pool, audit, opts.prompt, opts.modelOverride);
   if (openai) return openai;
-  return callGemini(opts.prompt, process.env.GEMINI_MODEL || null);
+  return callGeminiMetaAudited(pool, audit, opts.prompt, process.env.GEMINI_MODEL || null);
 }
 
 async function sendWhatsAppText(toE164: string, body: string) {
@@ -607,7 +621,7 @@ export async function runWebhookSofiaAutoReply(
         : null,
     });
 
-    const aiReply = await callAiProvider({
+    const aiReply = await callAiProviderMetaAudited(pool, { conversationId, leadId }, {
       provider: s.ai_provider,
       prompt,
       modelOverride: s.model_name,

@@ -1,11 +1,17 @@
-/** Logs extra no webhook `messages.upsert` (Vercel: ativar só durante diagnóstico). */
+function evolutionDebugDisabledInProduction(): boolean {
+  return String(process.env.NODE_ENV || "").toLowerCase() === "production";
+}
+
+/** Logs extra no webhook `messages.upsert` (Vercel: ativar só durante diagnóstico). Em produção sempre desligado. */
 export function crmEvolutionUpsertDebugEnabled(): boolean {
+  if (evolutionDebugDisabledInProduction()) return false;
   const v = process.env.CRM_EVOLUTION_UPSERT_DEBUG;
   return v === "1" || String(v || "").toLowerCase() === "true";
 }
 
 /** Logs extra no pipeline ingest / getBase64. Herda `CRM_EVOLUTION_UPSERT_DEBUG` se só uma flag for definida. */
 export function crmEvolutionMediaDebugEnabled(): boolean {
+  if (evolutionDebugDisabledInProduction()) return false;
   const v = process.env.CRM_EVOLUTION_MEDIA_DEBUG ?? process.env.CRM_EVOLUTION_UPSERT_DEBUG;
   return v === "1" || String(v || "").toLowerCase() === "true";
 }
@@ -16,6 +22,7 @@ export function crmEvolutionMediaDebugEnabled(): boolean {
  * Ativar `CRM_EVOLUTION_WEBHOOK_EVENT_DIAG=1` ou `CRM_EVOLUTION_UPSERT_DEBUG=1`.
  */
 export function crmEvolutionWebhookEventDiagEnabled(): boolean {
+  if (evolutionDebugDisabledInProduction()) return false;
   const v = process.env.CRM_EVOLUTION_WEBHOOK_EVENT_DIAG ?? process.env.CRM_EVOLUTION_UPSERT_DEBUG;
   return v === "1" || String(v || "").toLowerCase() === "true";
 }

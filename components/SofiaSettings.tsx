@@ -69,6 +69,7 @@ const SofiaSettings: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
   const [successText, setSuccessText] = useState<string | null>(null);
+  const [aiSecretsStatus, setAiSecretsStatus] = useState<{ openai: string; gemini: string } | null>(null);
 
   useEffect(() => {
     const run = async () => {
@@ -76,6 +77,9 @@ const SofiaSettings: React.FC = () => {
       setErrorText(null);
       try {
         const api = await authClient.getSofiaSettings().catch(() => null);
+        if (api?.aiSecretsStatus) {
+          setAiSecretsStatus(api.aiSecretsStatus as { openai: string; gemini: string });
+        }
         if (api?.settings) {
           const s = api.settings;
           setState((prev) => ({
@@ -162,6 +166,9 @@ const SofiaSettings: React.FC = () => {
     try {
       await authClient.applySofiaTemplate();
       const api = await authClient.getSofiaSettings();
+      if (api?.aiSecretsStatus) {
+        setAiSecretsStatus(api.aiSecretsStatus as { openai: string; gemini: string });
+      }
       const s = api?.settings;
       if (s) {
         setState((prev) => ({
@@ -357,6 +364,14 @@ const SofiaSettings: React.FC = () => {
             <div>
               <label className="text-ui-label">Provedor de IA</label>
               <p className="text-[11px] text-slate-600">Escolha qual API a Sofia usará (OpenAI ou Gemini).</p>
+              {aiSecretsStatus ? (
+                <p className="text-[11px] text-slate-700 rounded-md bg-slate-50 border border-slate-200 px-2 py-1.5 mb-2">
+                  Chaves no servidor (somente leitura): OpenAI{' '}
+                  {aiSecretsStatus.openai === 'configured' ? 'configurada' : 'ausente'} · Gemini{' '}
+                  {aiSecretsStatus.gemini === 'configured' ? 'configurada' : 'ausente'}. Os valores ficam nas variáveis
+                  de ambiente do deploy; não são armazenados nem exibidos aqui.
+                </p>
+              ) : null}
               <select
                 className="field-ui w-full"
                 value={state.aiProvider}
