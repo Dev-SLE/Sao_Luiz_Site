@@ -1,5 +1,9 @@
 # Documentação (vault Obsidian, guias locais — não versionar)
-docs/
+# Usar `docs/*` (não `docs/`) para permitir negação de subpastas versionadas.
+docs/*
+!docs/contexto-agente/
+!docs/contexto-agente/**
+docs/contexto-agente/.obsidian/
 
 # Build and deps
 node_modules/
@@ -36,6 +40,9 @@ tsconfig.tsbuildinfo
 
 # Cursor / IDE (planos e estado local)
 .cursor/
+
+# Obsidian (vault aberto na raiz do repo)
+.obsidian/
 
 # Python
 __pycache__/

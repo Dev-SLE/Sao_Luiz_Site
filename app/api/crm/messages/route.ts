@@ -30,6 +30,11 @@ import {
   evolutionSignedMediaFetchMissing,
 } from "../../../../lib/server/evolutionMediaSignedUrl";
 import { evolutionIntegrationLog } from "../../../../lib/server/evolutionUrl";
+import {
+  displayFilenameForAttachment,
+  filenameLooksCorrupt,
+  type CrmInboundMediaNormalized,
+} from "../../../../lib/server/crmMediaNormalize";
 
 export const runtime = "nodejs";
 
@@ -262,13 +267,45 @@ function evolutionMediatypeFromMime(mime: string): "image" | "video" | "audio" |
   return "document";
 }
 
+function parseCrmMessageMediaMetadataJson(row: any): Record<string, unknown> {
+  const mj = row.metadata_json;
+  if (mj == null || mj === undefined) return {};
+  if (typeof mj === "string") {
+    try {
+      return JSON.parse(mj) as Record<string, unknown>;
+    } catch {
+      return {};
+    }
+  }
+  if (typeof mj === "object") return mj as Record<string, unknown>;
+  return {};
+}
+
 function mapCrmMessageMediaRow(row: any, settings: Awaited<ReturnType<typeof getCrmMediaSettings>>) {
   const fid = row.stored_file_id ? String(row.stored_file_id) : null;
+  const meta = parseCrmMessageMediaMetadataJson(row);
+  const normalized = meta.normalized as CrmInboundMediaNormalized | undefined;
+  const rawName = row.display_file_name != null ? String(row.display_file_name) : null;
+  const filenameFromNormalized =
+    normalized && typeof normalized.nome_arquivo === "string" && normalized.nome_arquivo.trim()
+      ? normalized.nome_arquivo.trim()
+      : null;
+  const filename =
+    filenameFromNormalized ||
+    (rawName && !filenameLooksCorrupt(rawName) ? rawName : null) ||
+    displayFilenameForAttachment(rawName, row.media_type, row.display_mime_type);
+  const normalizedOut =
+    normalized &&
+    typeof normalized.tipo === "string" &&
+    normalized.storage_provider === "sharepoint" &&
+    typeof normalized.mime_type === "string"
+      ? normalized
+      : undefined;
   return {
     id: String(row.id),
     mediaType: String(row.media_type || ""),
     mimeType: row.display_mime_type ? String(row.display_mime_type) : null,
-    filename: row.display_file_name ? String(row.display_file_name) : null,
+    filename,
     fileId: fid,
     viewUrl: fid ? `/api/files/${fid}/view` : null,
     downloadUrl: fid ? `/api/files/${fid}/download` : null,
@@ -279,6 +316,7 @@ function mapCrmMessageMediaRow(row: any, settings: Awaited<ReturnType<typeof get
     width: row.width != null ? Number(row.width) : null,
     height: row.height != null ? Number(row.height) : null,
     inlineVideoAllowed: inlineVideoAllowedFromSettings(settings, String(row.media_type || ""), row.display_size_bytes),
+    normalized: normalizedOut,
   };
 }
 

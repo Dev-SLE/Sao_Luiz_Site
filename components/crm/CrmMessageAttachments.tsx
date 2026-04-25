@@ -2,6 +2,19 @@ import React, { useState } from 'react';
 import clsx from 'clsx';
 import { FileText, Image as ImageIcon, Video, Volume2, AlertCircle, ExternalLink, Smile } from 'lucide-react';
 
+/** Metadados canónicos gravados em `crm_message_media.metadata_json.normalized` (GET /api/crm/messages). */
+export type CrmChatAttachmentNormalized = {
+  tipo: string;
+  storage_provider: "sharepoint";
+  storage_path: string | null;
+  file_catalog_id: string | null;
+  nome_arquivo: string;
+  nome_original: string | null;
+  mime_type: string;
+  extensao: string;
+  tamanho_bytes: number;
+};
+
 export type CrmChatAttachment = {
   id?: string;
   mediaType?: string | null;
@@ -17,6 +30,7 @@ export type CrmChatAttachment = {
   width?: number | null;
   height?: number | null;
   inlineVideoAllowed?: boolean | null;
+  normalized?: CrmChatAttachmentNormalized | null;
 };
 
 type Props = {
@@ -31,6 +45,28 @@ type Props = {
  * ou figurinha com linha image falhando enquanto o corpo já diz [Figurinha recebida].
  * Não esconder para áudio/imagem/etc. isolados — senão some o único feedback e parece que "não chegou".
  */
+function filenameLooksCorruptClient(name: string | null | undefined): boolean {
+  const s = String(name || "").trim();
+  if (!s) return true;
+  return /object\s*object/i.test(s);
+}
+
+/** Rótulo para UI: API já sanitiza na maioria dos casos; fallback para anexos antigos. */
+function attachmentDisplayFilename(a: CrmChatAttachment): string | null {
+  const n = a.normalized?.nome_arquivo?.trim();
+  if (n) return n;
+  const f = a.filename?.trim();
+  if (f && !filenameLooksCorruptClient(f)) return f;
+  const mt = String(a.mediaType || a.mimeType || "").toLowerCase();
+  const mime = String(a.mimeType || "");
+  if (mt.includes("image") || mime.startsWith("image/")) return "Imagem";
+  if (mt.includes("video") || mime.startsWith("video/")) return "Vídeo";
+  if (mt.includes("audio") || mime.startsWith("audio/")) return "Áudio";
+  if (mt.includes("document")) return "Documento";
+  if (mt.includes("sticker")) return "Figurinha";
+  return "Ficheiro";
+}
+
 function shouldHidePhantomTypeMismatchFailure(
   messageText: string | undefined | null,
   att: CrmChatAttachment,
@@ -67,6 +103,7 @@ export const CrmMessageAttachments: React.FC<Props> = ({ attachments, isMe, mess
     <div className={clsx('mt-2 space-y-2 text-[11px]', subtle)}>
       {visible.map((a, idx) => {
         const key = a.id || `att-${idx}`;
+        const displayName = attachmentDisplayFilename(a);
         const mt = String(a.mediaType || a.mimeType || '').toLowerCase();
         const href = a.viewUrl || a.downloadUrl || null;
         const dl = a.downloadUrl || a.viewUrl || null;
@@ -84,8 +121,8 @@ export const CrmMessageAttachments: React.FC<Props> = ({ attachments, isMe, mess
             >
               <AlertCircle size={14} className="shrink-0 mt-0.5" />
               <span>
-                Falha ao processar mídia
-                {a.processingError ? `: ${String(a.processingError).slice(0, 120)}` : ''}
+                Mídia recebida; falha ao carregar o ficheiro
+                {a.processingError ? ` (${String(a.processingError).slice(0, 120)})` : ''}
               </span>
             </div>
           );
@@ -103,7 +140,7 @@ export const CrmMessageAttachments: React.FC<Props> = ({ attachments, isMe, mess
           if (!href) {
             return (
               <div key={key} className="flex items-center gap-1">
-                <Smile size={14} /> {a.filename || 'Figurinha'}
+                <Smile size={14} /> {displayName || 'Figurinha'}
               </div>
             );
           }
@@ -115,7 +152,7 @@ export const CrmMessageAttachments: React.FC<Props> = ({ attachments, isMe, mess
                 onClick={() => setLightbox(href)}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={href} alt={a.filename || 'Figurinha'} className="w-full h-auto object-contain max-h-40" loading="lazy" />
+                <img src={href} alt={displayName || 'Figurinha'} className="w-full h-auto object-contain max-h-40" loading="lazy" />
               </button>
               <div className="text-[10px]">Figurinha</div>
             </div>
@@ -126,7 +163,7 @@ export const CrmMessageAttachments: React.FC<Props> = ({ attachments, isMe, mess
           if (!href) {
             return (
               <div key={key} className="flex items-center gap-1">
-                <ImageIcon size={14} /> {a.filename || 'Imagem'}
+                <ImageIcon size={14} /> {displayName || 'Imagem'}
               </div>
             );
           }
@@ -138,9 +175,9 @@ export const CrmMessageAttachments: React.FC<Props> = ({ attachments, isMe, mess
                 onClick={() => setLightbox(href)}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={href} alt={a.filename || ''} className="w-full h-auto object-cover max-h-48 bg-black/5" loading="lazy" />
+                <img src={href} alt={displayName || ''} className="w-full h-auto object-cover max-h-48 bg-black/5" loading="lazy" />
               </button>
-              {a.filename ? <div className="truncate text-[10px]">{a.filename}</div> : null}
+              {displayName ? <div className="truncate text-[10px]">{displayName}</div> : null}
             </div>
           );
         }
@@ -175,7 +212,7 @@ export const CrmMessageAttachments: React.FC<Props> = ({ attachments, isMe, mess
           }
           return (
             <div key={key} className="flex items-center gap-1">
-              <Video size={14} /> {a.filename || 'Vídeo'}
+              <Video size={14} /> {displayName || 'Vídeo'}
             </div>
           );
         }
@@ -191,7 +228,7 @@ export const CrmMessageAttachments: React.FC<Props> = ({ attachments, isMe, mess
           }
           return (
             <div key={key} className="flex items-center gap-1">
-              <Volume2 size={14} /> {a.filename || 'Áudio'}
+              <Volume2 size={14} /> {displayName || 'Áudio'}
             </div>
           );
         }
@@ -206,10 +243,10 @@ export const CrmMessageAttachments: React.FC<Props> = ({ attachments, isMe, mess
                 rel="noreferrer"
                 className={clsx('underline underline-offset-2', isMe ? 'text-white' : 'text-sl-navy')}
               >
-                {a.filename || 'Documento'}
+                {displayName || 'Documento'}
               </a>
             ) : (
-              <span>{a.filename || 'Documento'}</span>
+              <span>{displayName || 'Documento'}</span>
             )}
           </div>
         );

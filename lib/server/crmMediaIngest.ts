@@ -11,6 +11,13 @@ import {
   maxUploadBytesForMediaType,
 } from "@/lib/server/crmMediaSettings";
 import { maybeTranscodeInboundAudio } from "@/lib/server/crmMediaTranscode";
+import {
+  buildSafeEvolutionUploadFileName,
+  evolutionBlockStableId,
+  safeMediaString,
+  type CrmInboundMediaNormalized,
+  mediaExtFromMime,
+} from "@/lib/server/crmMediaNormalize";
 
 const META_GRAPH = "https://graph.facebook.com/v23.0";
 
@@ -271,7 +278,7 @@ function numOrNull(v: any): number | null {
 function collectEvolutionMediaSlots(inner: any, fallbackMsgId: string): EvolutionMediaSlot[] {
   const m = unwrapEvolutionInner(inner);
   const out: EvolutionMediaSlot[] = [];
-  let idx = 0;
+  let slotKeyIdx = 0;
   const push = (
     mediaType: string,
     protoKey: string,
@@ -300,30 +307,42 @@ function collectEvolutionMediaSlots(inner: any, fallbackMsgId: string): Evolutio
     });
   };
 
-  push("image", "imageMessage", m.imageMessage, (b) => ({
-    mime: b.mimetype ? String(b.mimetype) : null,
-    fileName: b.fileName ? String(b.fileName) : null,
-    seconds: numOrNull(b.seconds),
-    w: numOrNull(b.width),
-    h: numOrNull(b.height),
-    key: String(b.fileEncSha256 || b.fileSha256 || `img_${fallbackMsgId}_${idx++}`),
-  }));
-  push("video", "videoMessage", m.videoMessage, (b) => ({
-    mime: b.mimetype ? String(b.mimetype) : null,
-    fileName: b.fileName ? String(b.fileName) : null,
-    seconds: numOrNull(b.seconds),
-    w: numOrNull(b.width),
-    h: numOrNull(b.height),
-    key: String(b.fileEncSha256 || b.fileSha256 || `vid_${fallbackMsgId}_${idx++}`),
-  }));
-  push("video", "ptvMessage", m.ptvMessage, (b) => ({
-    mime: b.mimetype ? String(b.mimetype) : "video/mp4",
-    fileName: "video-note.mp4",
-    seconds: numOrNull(b.seconds),
-    w: numOrNull(b.width),
-    h: numOrNull(b.height),
-    key: String(b.fileEncSha256 || b.fileSha256 || `ptv_${fallbackMsgId}_${idx++}`),
-  }));
+  push("image", "imageMessage", m.imageMessage, (b) => {
+    const block = b as Record<string, unknown>;
+    const i = slotKeyIdx++;
+    return {
+      mime: safeMediaString(b.mimetype),
+      fileName: safeMediaString(b.fileName),
+      seconds: numOrNull(b.seconds),
+      w: numOrNull(b.width),
+      h: numOrNull(b.height),
+      key: evolutionBlockStableId(block, "img", fallbackMsgId, i),
+    };
+  });
+  push("video", "videoMessage", m.videoMessage, (b) => {
+    const block = b as Record<string, unknown>;
+    const i = slotKeyIdx++;
+    return {
+      mime: safeMediaString(b.mimetype),
+      fileName: safeMediaString(b.fileName),
+      seconds: numOrNull(b.seconds),
+      w: numOrNull(b.width),
+      h: numOrNull(b.height),
+      key: evolutionBlockStableId(block, "vid", fallbackMsgId, i),
+    };
+  });
+  push("video", "ptvMessage", m.ptvMessage, (b) => {
+    const block = b as Record<string, unknown>;
+    const i = slotKeyIdx++;
+    return {
+      mime: safeMediaString(b.mimetype) || "video/mp4",
+      fileName: "video-note.mp4",
+      seconds: numOrNull(b.seconds),
+      w: numOrNull(b.width),
+      h: numOrNull(b.height),
+      key: evolutionBlockStableId(block, "ptv", fallbackMsgId, i),
+    };
+  });
   {
     const pttBlock =
       m.pttMessage && typeof m.pttMessage === "object" && Object.keys(m.pttMessage).length
@@ -335,42 +354,58 @@ function collectEvolutionMediaSlots(inner: any, fallbackMsgId: string): Evolutio
         : null;
     /** Evitar dois slots (áudio + PTT) para a mesma nota de voz — o segundo costuma dar 400 no getBase64. */
     if (pttBlock && audioBlock) {
-      push("audio", "pttMessage", pttBlock, (b) => ({
-        mime: b.mimetype ? String(b.mimetype) : null,
-        fileName: "voice.ptt",
-        seconds: numOrNull(b.seconds),
-        w: null,
-        h: null,
-        key: String(b.fileEncSha256 || b.fileSha256 || `ptt_${fallbackMsgId}_${idx++}`),
-      }));
+      push("audio", "pttMessage", pttBlock, (b) => {
+        const block = b as Record<string, unknown>;
+        const i = slotKeyIdx++;
+        return {
+          mime: safeMediaString(b.mimetype),
+          fileName: "voice.ptt",
+          seconds: numOrNull(b.seconds),
+          w: null,
+          h: null,
+          key: evolutionBlockStableId(block, "ptt", fallbackMsgId, i),
+        };
+      });
     } else if (pttBlock) {
-      push("audio", "pttMessage", pttBlock, (b) => ({
-        mime: b.mimetype ? String(b.mimetype) : null,
-        fileName: "voice.ptt",
-        seconds: numOrNull(b.seconds),
-        w: null,
-        h: null,
-        key: String(b.fileEncSha256 || b.fileSha256 || `ptt_${fallbackMsgId}_${idx++}`),
-      }));
+      push("audio", "pttMessage", pttBlock, (b) => {
+        const block = b as Record<string, unknown>;
+        const i = slotKeyIdx++;
+        return {
+          mime: safeMediaString(b.mimetype),
+          fileName: "voice.ptt",
+          seconds: numOrNull(b.seconds),
+          w: null,
+          h: null,
+          key: evolutionBlockStableId(block, "ptt", fallbackMsgId, i),
+        };
+      });
     } else if (audioBlock) {
-      push("audio", "audioMessage", audioBlock, (b) => ({
-        mime: b.mimetype ? String(b.mimetype) : null,
-        fileName: b.ptt ? "voice.opus" : "audio.bin",
-        seconds: numOrNull(b.seconds),
-        w: null,
-        h: null,
-        key: String(b.fileEncSha256 || b.fileSha256 || `aud_${fallbackMsgId}_${idx++}`),
-      }));
+      push("audio", "audioMessage", audioBlock, (b) => {
+        const block = b as Record<string, unknown>;
+        const i = slotKeyIdx++;
+        return {
+          mime: safeMediaString(b.mimetype),
+          fileName: b.ptt ? "voice.opus" : "audio.bin",
+          seconds: numOrNull(b.seconds),
+          w: null,
+          h: null,
+          key: evolutionBlockStableId(block, "aud", fallbackMsgId, i),
+        };
+      });
     }
   }
-  push("document", "documentMessage", m.documentMessage, (b) => ({
-    mime: b.mimetype ? String(b.mimetype) : null,
-    fileName: b.fileName ? String(b.fileName) : null,
-    seconds: null,
-    w: null,
-    h: null,
-    key: String(b.fileEncSha256 || b.fileSha256 || `doc_${fallbackMsgId}_${idx++}`),
-  }));
+  push("document", "documentMessage", m.documentMessage, (b) => {
+    const block = b as Record<string, unknown>;
+    const i = slotKeyIdx++;
+    return {
+      mime: safeMediaString(b.mimetype),
+      fileName: safeMediaString(b.fileName),
+      seconds: null,
+      w: null,
+      h: null,
+      key: evolutionBlockStableId(block, "doc", fallbackMsgId, i),
+    };
+  });
 
   return out;
 }
@@ -619,6 +654,8 @@ export async function ingestMetaInboundMedia(args: {
 
   let rowId: string;
   try {
+    const metaMime = safeMediaString(block?.mime_type) || null;
+    const metaFname = safeMediaString(block?.filename);
     rowId = await upsertMediaRowStart(args.pool, {
       messageId: args.messageId,
       ordinal,
@@ -626,13 +663,13 @@ export async function ingestMetaInboundMedia(args: {
       sourceProviderMessageId: args.providerMessageId,
       sourceProviderMediaId: mediaId,
       sourceProviderUrl: sourceUrl,
-      sourceMimeType: block?.mime_type ? String(block.mime_type) : null,
-      sourceFileName: block?.filename ? String(block.filename) : null,
+      sourceMimeType: metaMime,
+      sourceFileName: metaFname,
       sourceSizeBytes: block?.file_size != null ? Number(block.file_size) : null,
       sourceDurationSeconds: block?.duration != null ? Number(block.duration) : null,
       mediaType,
-      displayMimeType: block?.mime_type ? String(block.mime_type) : null,
-      displayFileName: block?.filename ? String(block.filename) : null,
+      displayMimeType: metaMime,
+      displayFileName: metaFname,
       displaySizeBytes: block?.file_size != null ? Number(block.file_size) : null,
       displayDurationSeconds: block?.duration != null ? Number(block.duration) : null,
       width: block?.width != null ? Number(block.width) : null,
@@ -648,7 +685,7 @@ export async function ingestMetaInboundMedia(args: {
     const downloaded = await downloadMetaMedia(args.accessToken, mediaId);
     let buffer = downloaded.buffer;
     let mime = downloaded.mimeType;
-    let fname = block?.filename ? String(block.filename) : downloaded.suggestedName;
+    let fname = safeMediaString(block?.filename) || downloaded.suggestedName;
 
     const maxB = maxUploadBytesForMediaType(settings, mediaType);
     if (buffer.length > maxB) {
@@ -695,6 +732,17 @@ export async function ingestMetaInboundMedia(args: {
       },
     });
 
+    const metaNormalized: CrmInboundMediaNormalized = {
+      tipo: mediaType,
+      storage_provider: "sharepoint",
+      storage_path: fileRow.sharepoint_path ? String(fileRow.sharepoint_path) : null,
+      file_catalog_id: String(fileRow.id),
+      nome_arquivo: fname,
+      nome_original: safeMediaString(block?.filename),
+      mime_type: mime,
+      extensao: mediaExtFromMime(mime),
+      tamanho_bytes: buffer.length,
+    };
     await finalizeMediaStored(args.pool, {
       rowId,
       fileId: fileRow.id,
@@ -704,7 +752,7 @@ export async function ingestMetaInboundMedia(args: {
       displayDurationSeconds: block?.duration != null ? Number(block.duration) : null,
       width: block?.width != null ? Number(block.width) : null,
       height: block?.height != null ? Number(block.height) : null,
-      metadataPatch: { ingest: "meta_download_ok", transcode: mediaType === "audio" },
+      metadataPatch: { ingest: "meta_download_ok", transcode: mediaType === "audio", normalized: metaNormalized },
     });
     console.info("[crm-media] meta_stored", { messageId: args.messageId, fileId: fileRow.id, mediaType });
   } catch (e: any) {
@@ -760,11 +808,12 @@ export async function ingestEvolutionInboundMedia(args: {
     });
     const remappedToSticker = effProto === "stickerMessage";
     const effMediaType = remappedToSticker ? "sticker" : slot.mediaType;
-    const displayNameForRow =
-      remappedToSticker &&
-      (!slot.fileName || /\.(jpe?g|png)$/i.test(String(slot.fileName || "")))
-        ? "sticker.webp"
-        : slot.fileName;
+    let displayNameForRow: string | null = null;
+    if (remappedToSticker && (!slot.fileName || /\.(jpe?g|png)$/i.test(String(slot.fileName || "")))) {
+      displayNameForRow = "sticker.webp";
+    } else {
+      displayNameForRow = safeMediaString(slot.fileName);
+    }
 
     const rowId = await upsertMediaRowStart(args.pool, {
       messageId: args.messageId,
@@ -857,11 +906,22 @@ export async function ingestEvolutionInboundMedia(args: {
         mediaType: effMediaType,
       });
       let mime = mimeResolved.mime;
-      let fname =
-        remappedToSticker &&
-        (!slot.fileName || /\.(jpe?g|png)$/i.test(String(slot.fileName || "")))
-          ? "sticker.webp"
-          : slot.fileName || `evo_${slot.providerMediaKey}.${extFromMime(mime)}`;
+      let fname = buildSafeEvolutionUploadFileName({
+        safeOriginalFileName: displayNameForRow,
+        providerMediaKey: slot.providerMediaKey,
+        mime,
+        forcedDisplayName:
+          remappedToSticker &&
+          (!slot.fileName || /\.(jpe?g|png)$/i.test(String(slot.fileName || "")))
+            ? "sticker.webp"
+            : null,
+      });
+      if (slot.fileName && !safeMediaString(slot.fileName)) {
+        console.warn("[crm-media] evolution_invalid_filename_replaced", {
+          messageId: args.messageId,
+          providerMediaKey: String(slot.providerMediaKey).slice(0, 80),
+        });
+      }
 
       const maxB = maxUploadBytesForMediaType(settings, effMediaType);
       if (buffer.length > maxB) {
@@ -908,6 +968,17 @@ export async function ingestEvolutionInboundMedia(args: {
         },
       });
 
+      const normalized: CrmInboundMediaNormalized = {
+        tipo: effMediaType,
+        storage_provider: "sharepoint",
+        storage_path: fileRow.sharepoint_path ? String(fileRow.sharepoint_path) : null,
+        file_catalog_id: String(fileRow.id),
+        nome_arquivo: fname,
+        nome_original: safeMediaString(slot.fileName),
+        mime_type: mime,
+        extensao: mediaExtFromMime(mime),
+        tamanho_bytes: buffer.length,
+      };
       await finalizeMediaStored(args.pool, {
         rowId,
         fileId: fileRow.id,
@@ -920,6 +991,7 @@ export async function ingestEvolutionInboundMedia(args: {
         metadataPatch: {
           ingest: "evolution_base64_ok",
           mime_source: mimeResolved.source,
+          normalized,
           ...(effProto !== slot.protoKey ? { evolution_proto_remapped: { from: slot.protoKey, to: effProto } } : {}),
         },
       });
