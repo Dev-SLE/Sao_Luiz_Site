@@ -5,6 +5,7 @@ import * as XLSX from "xlsx";
 import { EvolutionInboxPairModal, type PairInboxInfo } from "./EvolutionInboxPairModal";
 import { AppMessageModal, type AppMessageVariant } from "./AppOverlays";
 import { useAuth } from "../context/AuthContext";
+import SofiaSettings from "./SofiaSettings";
 
 const CrmOpsAdmin: React.FC = () => {
   const { user } = useAuth();
@@ -89,6 +90,12 @@ const CrmOpsAdmin: React.FC = () => {
   });
   const [pendingIntakeCount, setPendingIntakeCount] = useState(0);
   const [intakeBufferItems, setIntakeBufferItems] = useState<any[]>([]);
+  const [activeTab, setActiveTab] = useState<
+    "overview" | "channels" | "triage" | "sla" | "teams" | "routing" | "ia" | "automations"
+  >("overview");
+  const [routingMode, setRoutingMode] = useState<"visual" | "advanced">("visual");
+  const [routingTestText, setRoutingTestText] = useState("");
+  const [routingTestResult, setRoutingTestResult] = useState<any | null>(null);
 
   const normalizeLast10 = (raw: unknown): string => {
     const digits = String(raw || "").replace(/\D/g, "");
@@ -308,6 +315,80 @@ const CrmOpsAdmin: React.FC = () => {
     <EvolutionInboxPairModal open={Boolean(pairInbox)} onClose={() => setPairInbox(null)} inbox={pairInbox} />
     <div className="space-y-4">
       <div className="surface-card-strong p-4 border border-sl-navy/25 bg-gradient-to-br from-slate-50 to-white">
+        <h2 className="text-lg font-black text-slate-900">Central de Configuração CRM</h2>
+        <p className="mt-1 text-[12px] text-slate-600">
+          Painel unificado para canais, triagem, SLA, times, roteamento, IA Sofia e automações.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {[
+            ["overview", "Visão Geral"],
+            ["channels", "Canais"],
+            ["triage", "Triagem de Contatos"],
+            ["sla", "SLA"],
+            ["teams", "Times e Atendentes"],
+            ["routing", "Regras de Roteamento"],
+            ["ia", "IA (Sofia)"],
+            ["automations", "Automações"],
+          ].map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              className={`rounded-full border px-3 py-1.5 text-[11px] font-semibold ${
+                activeTab === id
+                  ? "border-sl-navy bg-sl-navy/10 text-sl-navy"
+                  : "border-slate-200 bg-white text-slate-600 hover:text-slate-900"
+              }`}
+              onClick={() => setActiveTab(id as any)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {activeTab === "overview" && (
+        <div className="surface-card-strong p-4 border border-slate-200 bg-gradient-to-br from-white to-slate-50">
+          <h3 className="text-sm font-bold text-slate-900">Visão Geral</h3>
+          <p className="mt-1 text-[11px] text-slate-600">
+            Resumo operacional da configuração atual. Use os alertas para corrigir pendências rapidamente.
+          </p>
+          <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
+            <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+              <div className="text-[10px] text-slate-500">Caixas WhatsApp Web</div>
+              <div className="text-lg font-black text-slate-900">{waInboxes.length}</div>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+              <div className="text-[10px] text-slate-500">SLA ativos</div>
+              <div className="text-lg font-black text-slate-900">{slaRules.length}</div>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+              <div className="text-[10px] text-slate-500">Regras de roteamento</div>
+              <div className="text-lg font-black text-slate-900">{rules.length}</div>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+              <div className="text-[10px] text-slate-500">Times</div>
+              <div className="text-lg font-black text-slate-900">{teams.length}</div>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+              <div className="text-[10px] text-slate-500">Pendências triagem</div>
+              <div className="text-lg font-black text-slate-900">{pendingIntakeCount}</div>
+            </div>
+          </div>
+          <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] text-amber-950">
+            <strong>Alertas:</strong>{" "}
+            {[
+              !waInboxes.length ? "Sem caixas WhatsApp Web cadastradas" : null,
+              !slaRules.length ? "Sem regras de SLA configuradas" : null,
+              !rules.length ? "Sem regras de roteamento" : null,
+              !teams.length ? "Sem times de atendimento" : null,
+            ]
+              .filter(Boolean)
+              .join(" · ") || "Sem alertas críticos no momento."}
+          </div>
+        </div>
+      )}
+
+      {activeTab === "automations" && <div className="surface-card-strong p-4 border border-sl-navy/25 bg-gradient-to-br from-slate-50 to-white">
         <h3 className="text-sm font-black text-sl-navy">Multiatendimento (estilo Kommo)</h3>
         <ul className="mt-2 space-y-1.5 text-[11px] text-slate-700 list-disc pl-4 leading-relaxed">
           <li>
@@ -333,9 +414,9 @@ const CrmOpsAdmin: React.FC = () => {
             <strong>Devolver à fila</strong> para liberar para outro atendente.
           </li>
         </ul>
-      </div>
+      </div>}
 
-      <div className="surface-card-strong p-4 border border-amber-200/60 bg-gradient-to-br from-amber-50/50 to-white">
+      {activeTab === "automations" && <div className="surface-card-strong p-4 border border-amber-200/60 bg-gradient-to-br from-amber-50/50 to-white">
         <h3 className="text-sm font-bold text-slate-900">Cadências e campanhas (automação)</h3>
         <p className="mt-1 text-[11px] text-slate-600">
           Cadências disparam mensagem após tempo no estágio. Campanhas enfileiram template no WhatsApp para leads que
@@ -639,7 +720,7 @@ const CrmOpsAdmin: React.FC = () => {
             </div>
           </div>
         </div>
-      </div>
+      </div>}
 
       {errorText && (
         <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2">
@@ -655,7 +736,7 @@ const CrmOpsAdmin: React.FC = () => {
           </div>
         </div>
       )}
-      <div className="surface-card-strong p-4">
+      {activeTab === "teams" && <div className="surface-card-strong p-4">
         <h3 className="text-sm font-bold text-slate-900">Times de Atendimento</h3>
         <p className="mt-1 text-[11px] text-slate-500">Crie filas de trabalho para distribuir conversas entre atendentes por área.</p>
         <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-2">
@@ -696,9 +777,9 @@ const CrmOpsAdmin: React.FC = () => {
             </div>
           ))}
         </div>
-      </div>
+      </div>}
 
-      <div className="surface-card-strong p-4 border border-emerald-200/60 bg-gradient-to-br from-emerald-50/40 to-white">
+      {activeTab === "channels" && <div className="surface-card-strong p-4 border border-emerald-200/60 bg-gradient-to-br from-emerald-50/40 to-white">
         <h3 className="text-sm font-bold text-slate-900">Caixas WhatsApp Web (Evolution API)</h3>
         <p className="mt-1 text-[11px] text-slate-600 leading-relaxed">
           <a className="font-semibold text-sl-navy underline" href="https://github.com/EvolutionAPI/evolution-api" target="_blank" rel="noreferrer">
@@ -1014,9 +1095,9 @@ const CrmOpsAdmin: React.FC = () => {
               </div>
             ))}
         </div>
-      </div>
+      </div>}
 
-      <div className="surface-card-strong p-4 border border-violet-200/60 bg-gradient-to-br from-violet-50/40 to-white">
+      {activeTab === "triage" && <div className="surface-card-strong p-4 border border-violet-200/60 bg-gradient-to-br from-violet-50/40 to-white">
         <h3 className="text-sm font-bold text-slate-900">Triagem de novos contatos (anti-poluição)</h3>
         <p className="mt-1 text-[11px] text-slate-600">
           Evita criar lead para amigo/família/contato pessoal. Números de agência cadastrados continuam entrando.
@@ -1215,9 +1296,9 @@ const CrmOpsAdmin: React.FC = () => {
             ))}
           </div>
         </div>
-      </div>
+      </div>}
 
-      <div className="surface-card-strong p-4">
+      {activeTab === "sla" && <div className="surface-card-strong p-4">
         <h3 className="text-sm font-bold text-slate-900">SLA por fila</h3>
         <p className="mt-1 text-[11px] text-slate-500">Define o tempo máximo de resposta por tema/canal/time para medir estouro de SLA.</p>
         <div className="mt-3 grid grid-cols-1 md:grid-cols-5 gap-2">
@@ -1242,9 +1323,9 @@ const CrmOpsAdmin: React.FC = () => {
             </div>
           ))}
         </div>
-      </div>
+      </div>}
 
-      <div className="surface-card-strong p-4">
+      {activeTab === "teams" && <div className="surface-card-strong p-4">
         <h3 className="text-sm font-bold text-slate-900">Membros dos Times</h3>
         <p className="mt-1 text-[11px] text-slate-500">Vincula usuários aos times para roteamento automático e permissões por escopo.</p>
         <div className="mt-3 grid grid-cols-1 md:grid-cols-4 gap-2">
@@ -1262,18 +1343,37 @@ const CrmOpsAdmin: React.FC = () => {
           </select>
           <button className="pressable-3d rounded bg-gradient-to-r from-sl-navy to-sl-navy-light text-xs text-white font-bold" onClick={async () => { await authClient.saveCrmTeamMember(memberForm); setMemberForm({ teamId: "", username: "", memberRole: "ATENDENTE" }); await loadAll(); }}>Adicionar membro</button>
         </div>
-      </div>
+      </div>}
 
-      <div className="surface-card-strong p-4">
+      {activeTab === "routing" && <div className="surface-card-strong p-4">
         <h3 className="text-sm font-bold text-slate-900">Regras de Roteamento</h3>
         <p className="mt-1 text-[11px] text-slate-500">Automatiza para onde cada lead/conversa vai, com prioridade e critérios de tema/texto.</p>
+        <div className="mt-2 flex gap-2">
+          <button
+            type="button"
+            className={`rounded border px-2 py-1 text-[11px] ${routingMode === "visual" ? "border-sl-navy bg-sl-navy/10 text-sl-navy" : "border-slate-200 text-slate-600"}`}
+            onClick={() => {
+              setRoutingMode("visual");
+              if (ruleForm.matchType === "REGEX") setRuleForm((f) => ({ ...f, matchType: "CONTAINS" }));
+            }}
+          >
+            Modo visual
+          </button>
+          <button
+            type="button"
+            className={`rounded border px-2 py-1 text-[11px] ${routingMode === "advanced" ? "border-slate-700 bg-slate-100 text-slate-900" : "border-slate-200 text-slate-600"}`}
+            onClick={() => setRoutingMode("advanced")}
+          >
+            Modo avançado (regex)
+          </button>
+        </div>
         <div className="mt-3 grid grid-cols-1 md:grid-cols-6 gap-2">
           <input className="rounded bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800" placeholder="Nome da regra" value={ruleForm.name} onChange={(e) => setRuleForm((f) => ({ ...f, name: e.target.value }))} />
           <input className="rounded bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800" type="number" placeholder="Prioridade" value={ruleForm.priority} onChange={(e) => setRuleForm((f) => ({ ...f, priority: Number(e.target.value) || 100 }))} />
           <select className="rounded bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800" value={ruleForm.matchType} onChange={(e) => setRuleForm((f) => ({ ...f, matchType: e.target.value }))}>
             <option value="TOPIC">TOPIC</option>
             <option value="CONTAINS">CONTAINS</option>
-            <option value="REGEX">REGEX</option>
+            {routingMode === "advanced" ? <option value="REGEX">REGEX</option> : null}
           </select>
           <input className="rounded bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800" placeholder="Valor de match" value={ruleForm.matchValue} onChange={(e) => setRuleForm((f) => ({ ...f, matchValue: e.target.value }))} />
           <select className="rounded bg-slate-50 border border-slate-200 px-2 py-2 text-xs text-slate-800" value={ruleForm.targetType} onChange={(e) => setRuleForm((f) => ({ ...f, targetType: e.target.value }))}>
@@ -1293,6 +1393,41 @@ const CrmOpsAdmin: React.FC = () => {
             {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
         </div>
+        <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <h4 className="text-xs font-bold text-slate-900">Testador de regra (preview)</h4>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <input
+              className="flex-1 min-w-[240px] rounded border border-slate-200 bg-white px-2 py-2 text-xs"
+              placeholder="Digite uma mensagem para simular roteamento..."
+              value={routingTestText}
+              onChange={(e) => setRoutingTestText(e.target.value)}
+            />
+            <button
+              type="button"
+              className="rounded bg-sl-navy px-3 py-2 text-[11px] font-bold text-white"
+              onClick={async () => {
+                try {
+                  const r = await authClient.suggestCrmRouting({ text: routingTestText, title: "", cte: null });
+                  setRoutingTestResult(r);
+                } catch (e) {
+                  setOpsNotice({
+                    title: "Testador de roteamento",
+                    message: e instanceof Error ? e.message : "Falha ao simular.",
+                    variant: "error",
+                  });
+                }
+              }}
+            >
+              Simular
+            </button>
+          </div>
+          {routingTestResult ? (
+            <div className="mt-2 text-[11px] text-slate-700">
+              Resultado: tópico <strong>{String(routingTestResult?.topic || "—")}</strong> · destino{" "}
+              <strong>{String(routingTestResult?.routing?.targetUsername || routingTestResult?.routing?.targetTeamName || "fila")}</strong>
+            </div>
+          ) : null}
+        </div>
         <div className="mt-3 space-y-2">
           {rules.map((r) => (
             <div key={r.id} className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
@@ -1300,7 +1435,19 @@ const CrmOpsAdmin: React.FC = () => {
             </div>
           ))}
         </div>
-      </div>
+      </div>}
+
+      {activeTab === "ia" && (
+        <div className="space-y-3">
+          <div className="surface-card-strong p-4 border border-indigo-200 bg-gradient-to-br from-indigo-50/40 to-white">
+            <h3 className="text-sm font-bold text-slate-900">Inteligência Artificial (Sofia)</h3>
+            <p className="mt-1 text-[11px] text-slate-600">
+              Controle completo de modo de operação, ações permitidas, modelo, limites e segurança da Sofia.
+            </p>
+          </div>
+          <SofiaSettings />
+        </div>
+      )}
 
       {loading && (
         <div className="fixed bottom-4 right-4 z-40 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 shadow-md">
