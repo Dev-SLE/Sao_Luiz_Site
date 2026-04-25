@@ -1,3 +1,5 @@
+import { DEFAULT_AI_ACTIONS_ALLOWED, type FunnelSlaRule } from "./sofiaPolicyHelpers";
+
 export type SofiaTemplatePayload = {
   name: string;
   aiProvider: "OPENAI" | "GEMINI";
@@ -7,7 +9,7 @@ export type SofiaTemplatePayload = {
   autoReplyEnabled: boolean;
   escalationKeywords: string[];
   modelName: string;
-  autoMode: "ASSISTIDO" | "SEMI_AUTO" | "AUTO_TOTAL";
+  autoMode: "ASSISTIDO" | "SEMI_AUTO" | "AUTO_TOTAL" | "CLASSIFICACAO" | "DESLIGADA";
   minConfidence: number;
   maxAutoRepliesPerConversation: number;
   businessHoursStart: string;
@@ -22,6 +24,12 @@ export type SofiaTemplatePayload = {
   responseTone: "PROFISSIONAL" | "EMPATICO" | "DIRETO";
   maxResponseChars: number;
   welcomeEnabled: boolean;
+  generateSummaryEnabled: boolean;
+  defaultLanguage: string;
+  replyOutsideBusinessHours: boolean;
+  outsideHoursMessage: string;
+  aiActionsAllowed: typeof DEFAULT_AI_ACTIONS_ALLOWED;
+  funnelSlaRules: FunnelSlaRule[];
 };
 
 export function getSofiaManualTemplate(): SofiaTemplatePayload {
@@ -121,6 +129,12 @@ export function getSofiaManualTemplate(): SofiaTemplatePayload {
     responseTone: "PROFISSIONAL",
     maxResponseChars: 520,
     welcomeEnabled: true,
+    generateSummaryEnabled: true,
+    defaultLanguage: "pt-BR",
+    replyOutsideBusinessHours: false,
+    outsideHoursMessage: "",
+    aiActionsAllowed: { ...DEFAULT_AI_ACTIONS_ALLOWED },
+    funnelSlaRules: [],
   };
 }
 

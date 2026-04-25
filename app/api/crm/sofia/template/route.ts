@@ -26,10 +26,12 @@ export async function POST(req: Request) {
             business_hours_start, business_hours_end, blocked_topics, blocked_statuses,
             require_human_if_sla_breached, require_human_after_customer_messages,
             system_instructions, fallback_message, handoff_message,
-            response_tone, max_response_chars, welcome_enabled,
+            response_tone, max_response_chars, welcome_enabled, generate_summary_enabled,
+            default_language, reply_outside_business_hours, outside_hours_message,
+            ai_actions_allowed, funnel_sla_rules,
             updated_at
           )
-          VALUES ($1, $2, $3, $4::jsonb, $5, $6::jsonb, $7, $8, $9, $10, $11, $12, $13, $14::jsonb, $15::jsonb, $16, $17, $18, $19, $20, $21, $22, $23, NOW())
+          VALUES ($1, $2, $3, $4::jsonb, $5, $6::jsonb, $7, $8, $9, $10, $11, $12, $13, $14::jsonb, $15::jsonb, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28::jsonb, $29::jsonb, NOW())
           RETURNING id
         `,
         [
@@ -56,6 +58,12 @@ export async function POST(req: Request) {
           payload.responseTone,
           payload.maxResponseChars,
           payload.welcomeEnabled,
+          payload.generateSummaryEnabled,
+          payload.defaultLanguage,
+          payload.replyOutsideBusinessHours,
+          payload.outsideHoursMessage || null,
+          JSON.stringify(payload.aiActionsAllowed),
+          JSON.stringify(payload.funnelSlaRules),
         ]
       );
       return NextResponse.json({ id: created.rows?.[0]?.id, success: true });
@@ -88,6 +96,12 @@ export async function POST(req: Request) {
           response_tone = $22,
           max_response_chars = $23,
           welcome_enabled = $24,
+          generate_summary_enabled = $25,
+          default_language = $26,
+          reply_outside_business_hours = $27,
+          outside_hours_message = $28,
+          ai_actions_allowed = $29::jsonb,
+          funnel_sla_rules = $30::jsonb,
           updated_at = NOW()
         WHERE id = $1
       `,
@@ -116,6 +130,12 @@ export async function POST(req: Request) {
         payload.responseTone,
         payload.maxResponseChars,
         payload.welcomeEnabled,
+        payload.generateSummaryEnabled,
+        payload.defaultLanguage,
+        payload.replyOutsideBusinessHours,
+        payload.outsideHoursMessage || null,
+        JSON.stringify(payload.aiActionsAllowed),
+        JSON.stringify(payload.funnelSlaRules),
       ]
     );
 

@@ -1,3 +1,5 @@
+import { buildSofiaLanguageLine } from "./sofiaPolicyHelpers";
+
 export const SOFIA_DEFAULT_SYSTEM_BASE =
   "Você é Sofia, assistente de CRM logístico da São Luiz Express. Seja cordial, humana e objetiva. Não repita frases idênticas da última resposta. Sempre avance com uma pergunta útil quando faltar dado.";
 
@@ -16,7 +18,10 @@ export function buildSofiaOperationalPrompt(args: {
   knowledgeBase?: string | null;
   userText?: string | null;
   cteSummaryText?: string | null;
+  /** ex.: pt-BR, en, es — ver buildSofiaLanguageLine */
+  defaultLanguage?: string | null;
 }) {
+  const langLine = buildSofiaLanguageLine(args.defaultLanguage);
   return [
     `Nome cliente: ${String(args.customerName || "")}`,
     `CTE: ${String(args.cte || "")}`,
@@ -31,6 +36,6 @@ export function buildSofiaOperationalPrompt(args: {
       : "Se o cliente enviar CTE/NF e não houver resultado no banco, avise que não encontrou e peça confirmação do número.",
     `Conhecimento: ${String(args.knowledgeBase || "")}`,
     `Mensagem atual: ${String(args.userText || "")}`,
-    "Responda em pt-BR, curta e precisa.",
+    langLine,
   ].join("\n\n");
 }

@@ -17,6 +17,12 @@ import {
 } from "../../../../lib/server/crmMessageWaMirror";
 import { geminiGenerateContent, openAiChatCompletion } from "../../../../lib/server/aiChatProviders";
 import { insertSofiaAiAuditLog } from "../../../../lib/server/sofiaAiAuditLog";
+import {
+  funnelRuleBlocksAuto,
+  funnelRuleMaxMinutesBreached,
+  parseAiActionsAllowed,
+  parseFunnelSlaRules,
+} from "../../../../lib/server/sofiaPolicyHelpers";
 
 export const runtime = "nodejs";
 /** Download Meta + upload SharePoint precisa completar antes do fim da invocação (evita mídia presa em DOWNLOADING na Vercel). */
@@ -382,6 +388,27 @@ function isGenericReply(text: string) {
   return hasGenericPattern && !hasQuestion && !hasCollection;
 }
 
+function tryParseJsonObject(raw: string): Record<string, unknown> | null {
+  const t = String(raw || "").trim();
+  if (!t) return null;
+  try {
+    const direct = JSON.parse(t);
+    if (direct && typeof direct === "object" && !Array.isArray(direct)) return direct as Record<string, unknown>;
+  } catch {
+    // noop
+  }
+  const first = t.indexOf("{");
+  const last = t.lastIndexOf("}");
+  if (first < 0 || last <= first) return null;
+  try {
+    const sliced = JSON.parse(t.slice(first, last + 1));
+    if (sliced && typeof sliced === "object" && !Array.isArray(sliced)) return sliced as Record<string, unknown>;
+  } catch {
+    // noop
+  }
+  return null;
+}
+
 async function callOpenAiMetaAudited(
   pool: { query: (sql: string, params?: unknown[]) => Promise<unknown> },
   audit: { conversationId: string; leadId: string },
@@ -462,6 +489,55 @@ async function callAiProviderMetaAudited(
   return callGeminiMetaAudited(pool, audit, opts.prompt, process.env.GEMINI_MODEL || null);
 }
 
+async function runInboundClassification(
+  pool: any,
+  args: {
+    conversationId: string;
+    leadId: string;
+    text: string;
+    topic: string | null | undefined;
+    provider?: string | null;
+    modelName?: string | null;
+  }
+) {
+  const classifyPrompt = [
+    "Classifique a mensagem para operação de CRM logístico.",
+    "Responda APENAS JSON válido com chaves:",
+    '{ "topic": "RASTREIO|COTACAO|FINANCEIRO|OCORRENCIA|GERAL", "priority": "ALTA|MEDIA|BAIXA", "summary": "texto curto", "confidence": 0-100 }',
+    "Não inclua markdown, comentários ou texto fora do JSON.",
+    `Mensagem: ${args.text}`,
+    `Tema atual: ${String(args.topic || "GERAL")}`,
+  ].join("\n");
+  const aiRaw =
+    (await callAiProviderMetaAudited(
+      pool,
+      { conversationId: args.conversationId, leadId: args.leadId },
+      { provider: args.provider, prompt: classifyPrompt, modelOverride: args.modelName }
+    )) || "";
+  const parsed = tryParseJsonObject(aiRaw);
+  const classification = {
+    topic: String(parsed?.topic || args.topic || "GERAL").toUpperCase(),
+    priority: String(parsed?.priority || "MEDIA").toUpperCase(),
+    summary: String(parsed?.summary || "").trim(),
+    confidence: Number(parsed?.confidence ?? 0),
+  };
+  await pool.query(
+    `
+      UPDATE pendencias.crm_conversations
+      SET topic = $2::text, updated_at = NOW()
+      WHERE id = $1::uuid
+    `,
+    [args.conversationId, classification.topic]
+  );
+  await pool.query(
+    `
+      INSERT INTO pendencias.crm_activities (lead_id, user_username, type, description, data, created_at)
+      VALUES ($1::uuid, NULL, 'EVENT', 'Sofia classificou mensagem inbound (modo classificação).', $2::jsonb, NOW())
+    `,
+    [args.leadId, JSON.stringify({ conversationId: args.conversationId, classification })]
+  );
+}
+
 async function sendWhatsAppText(toE164: string, body: string) {
   const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
   const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
@@ -521,11 +597,12 @@ export async function runWebhookSofiaAutoReply(
         SELECT
           name, knowledge_base, auto_reply_enabled, auto_mode, min_confidence,
           max_auto_replies_per_conversation, active_days,
-          business_hours_start, business_hours_end,
+          business_hours_start, business_hours_end, reply_outside_business_hours,
           escalation_keywords, blocked_topics, blocked_statuses,
           require_human_if_sla_breached, require_human_after_customer_messages,
           model_name, ai_provider, system_instructions, fallback_message, welcome_enabled, welcome_message,
-          response_tone, max_response_chars
+          response_tone, max_response_chars, default_language,
+          funnel_sla_rules, ai_actions_allowed
         FROM pendencias.crm_sofia_settings
         ORDER BY updated_at DESC
         LIMIT 1
@@ -533,12 +610,15 @@ export async function runWebhookSofiaAutoReply(
     );
     const s = settingsRes.rows?.[0];
     if (!s || !s.auto_reply_enabled) return;
-    if (String(s.auto_mode || "ASSISTIDO").toUpperCase() !== "AUTO_TOTAL") return;
+    const acts = parseAiActionsAllowed(s.ai_actions_allowed);
+    const mode = String(s.auto_mode || "ASSISTIDO").toUpperCase();
+    if (mode !== "AUTO_TOTAL" && mode !== "CLASSIFICACAO") return;
 
     const convInfoRes = await pool.query(
       `
         SELECT c.status, c.topic, c.sla_breached_at, l.title, l.cte_number,
-               l.customer_status, l.agency_requested_at, l.agency_sla_minutes
+               l.customer_status, l.agency_requested_at, l.agency_sla_minutes,
+               c.status_entered_at
         FROM pendencias.crm_conversations c
         JOIN pendencias.crm_leads l ON l.id = c.lead_id
         WHERE c.id = $1
@@ -549,20 +629,61 @@ export async function runWebhookSofiaAutoReply(
     const convInfo = convInfoRes.rows?.[0];
     if (!convInfo) return;
 
+    if (mode === "CLASSIFICACAO") {
+      if (!acts.runInboundClassification || !acts.classifyTopic) return;
+      const classifyCooldownMin = 5;
+      const recentClassify = await pool.query(
+        `
+          SELECT 1
+          FROM pendencias.crm_activities
+          WHERE lead_id = $1::uuid
+            AND description = 'Sofia classificou mensagem inbound (modo classificação).'
+            AND created_at > NOW() - ($2::int * INTERVAL '1 minute')
+          LIMIT 1
+        `,
+        [leadId, classifyCooldownMin]
+      );
+      if (recentClassify.rows?.[0]) return;
+      await runInboundClassification(pool, {
+        conversationId,
+        leadId,
+        text,
+        topic: convInfo.topic,
+        provider: s.ai_provider,
+        modelName: s.model_name,
+      });
+      return;
+    }
+    if (!acts.autoReplyToCustomer) return;
+
     const activeDays = s.active_days && typeof s.active_days === "object" ? s.active_days : {};
     const todayKey = weekdayPt(new Date());
     if (!activeDays[todayKey]) return;
 
     const now = new Date();
     const nowMins = now.getHours() * 60 + now.getMinutes();
-    if (nowMins < hmToMinutes(String(s.business_hours_start || "08:00")) || nowMins > hmToMinutes(String(s.business_hours_end || "18:00")))
-      return;
+    const replyOutside = !!s.reply_outside_business_hours;
+    const inHours =
+      nowMins >= hmToMinutes(String(s.business_hours_start || "08:00")) &&
+      nowMins <= hmToMinutes(String(s.business_hours_end || "18:00"));
+    if (!inHours && !replyOutside) return;
 
     const blockedTopics = Array.isArray(s.blocked_topics) ? s.blocked_topics.map((x: any) => String(x).toUpperCase()) : [];
     if (blockedTopics.includes(String(convInfo.topic || "").toUpperCase())) return;
 
     const blockedStatuses = Array.isArray(s.blocked_statuses) ? s.blocked_statuses.map((x: any) => String(x).toUpperCase()) : [];
     if (blockedStatuses.includes(String(convInfo.status || "").toUpperCase())) return;
+    const funnelRules = parseFunnelSlaRules(s.funnel_sla_rules);
+    if (funnelRuleBlocksAuto(funnelRules, convInfo.status)) return;
+    if (
+      funnelRuleMaxMinutesBreached({
+        rules: funnelRules,
+        conversationStatus: convInfo.status,
+        statusEnteredAt: convInfo.status_entered_at,
+      })
+    ) {
+      return;
+    }
     if (String(convInfo.customer_status || "").toUpperCase() === "AGUARDANDO_RETORNO_AGENCIA") return;
 
     if (convInfo.agency_requested_at) {
@@ -616,6 +737,7 @@ export async function runWebhookSofiaAutoReply(
       supervisorInstructions: s.system_instructions,
       knowledgeBase: s.knowledge_base,
       userText: text,
+      defaultLanguage: s.default_language,
       cteSummaryText: cteSummary
         ? `CTE ${String(cteSummary.cte || "")} Série ${String(cteSummary.serie || "")} | Status ${String(cteSummary.status_calculado || cteSummary.status || "")} | Destino ${String(cteSummary.entrega || "")} | Destinatário ${String(cteSummary.destinatario || "")}.`
         : null,

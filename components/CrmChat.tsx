@@ -23,6 +23,7 @@ import {
   ExternalLink,
   ChevronUp,
   X,
+  Info,
 } from 'lucide-react';
 import clsx from 'clsx';
 import dynamic from 'next/dynamic';
@@ -33,6 +34,22 @@ import { AppConfirmModal, AppMessageModal, type AppMessageVariant } from './AppO
 import { CrmMessageAttachments, type CrmChatAttachment } from './crm/CrmMessageAttachments';
 
 type Channel = 'WHATSAPP' | 'IA' | 'INTERNO';
+
+const CRM_TOPIC_OPTIONS = [
+  'RASTREAMENTO',
+  'COLETA',
+  'ENTREGA',
+  'ATRASO',
+  'AVARIA',
+  'EXTRAVIO',
+  'FINANCEIRO',
+  'COMERCIAL',
+  'JURIDICO',
+  'INDENIZACAO',
+  'RECLAMACAO',
+  'SUPORTE',
+  'OUTROS',
+] as const;
 
 interface ConversationSummary {
   id: string;
@@ -401,6 +418,12 @@ function humanizeGovernanceReason(reason: string): string {
     agency_sla_breached: 'SLA de agência',
     sla_breached: 'SLA do atendimento',
     too_many_customer_messages_without_human: 'várias mensagens do cliente sem resposta humana',
+    classification_only_mode: 'modo só classificação (sem resposta automática em segundo plano)',
+    classification_mode_no_auto_send: 'modo classificação (sem envio automático ao cliente)',
+    disabled_mode_no_auto_send: 'modo desligado (sem envio automático ao cliente)',
+    funnel_sla_block: 'regra de funil/SLA bloqueou envio automático',
+    funnel_sla_minutes_breached: 'tempo máximo da etapa (funil/SLA) foi ultrapassado',
+    actions_disabled_auto_reply: 'ação automática desativada nas configurações',
     ok: 'ok',
   };
   return map[r] || r.replace(/_/g, ' ');
@@ -464,6 +487,8 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
   const [leadCurrentLocation, setLeadCurrentLocation] = useState('');
   const [sofiaSuggesting, setSofiaSuggesting] = useState(false);
   const [sofiaAutoRunning, setSofiaAutoRunning] = useState(false);
+  /** Pausa só o auto-disparo por nova mensagem neste cliente; não altera configuração no servidor. */
+  const [sofiaAutomationPaused, setSofiaAutomationPaused] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messageInputRef = useRef<HTMLTextAreaElement | null>(null);
   const [ultimoRastreio, setUltimoRastreio] = useState<string | null>(null);
@@ -980,6 +1005,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
       const suggestion = await authClient.getSofiaReplySuggestion({
         conversationId: selectedConversationId,
         text: input || (selectedConversation?.lastMessage || ''),
+        manualSofiaAction: true,
       });
       if (suggestion?.suggestion) {
         setInput(String(suggestion.suggestion));
@@ -991,18 +1017,40 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
     }
   };
 
-  const handleSofiaAutoReply = async () => {
+  const handleSofiaAutoReply = async (opts?: { skipConfirm?: boolean; manualSofiaAction?: boolean }) => {
     if (!selectedConversationId) return;
     if (sofiaAutoRunning) return;
+    if (!opts?.skipConfirm) {
+      const confirmAuto = window.confirm(
+        'Enquanto a governança permitir envio automático, a Sofia pode enviar a mensagem ao cliente sem revisão humana. Deseja continuar?'
+      );
+      if (!confirmAuto) return;
+    }
     setSofiaAutoRunning(true);
     try {
+      const manualSofiaAction = opts?.manualSofiaAction !== false;
       const resp = await authClient.getSofiaReplySuggestion({
         conversationId: selectedConversationId,
         text: input || (selectedConversation?.lastMessage || ''),
+        manualSofiaAction,
       });
 
       const suggestionText = String(resp?.suggestion || '').trim();
       if (!suggestionText) {
+        if (resp?.skipped === 'classification_only_mode' && !manualSofiaAction) {
+          const c = resp?.classification || {};
+          const topic = String(c?.topic || 'GERAL');
+          const priority = String(c?.priority || 'MEDIA');
+          const summary = String(c?.summary || '').trim();
+          setAppNotice({
+            title: 'Classificação da Sofia',
+            message: summary
+              ? `Tema: ${topic} · Prioridade: ${priority}. Resumo: ${summary}`
+              : `Tema: ${topic} · Prioridade: ${priority}.`,
+            variant: 'success',
+          });
+          return;
+        }
         setAppNotice({
           title: 'Sofia',
           message: 'Não foi possível gerar uma resposta para este contexto. Tente ajustar a mensagem ou o resumo.',
@@ -1013,7 +1061,11 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
 
       const allowAuto = !!resp?.governance?.allowAutoSend;
       if (!allowAuto) {
-        if (resp?.governance?.reason === 'keyword_detected' && suggestionText) {
+        if (
+          resp?.governance?.reason === 'keyword_detected' &&
+          suggestionText &&
+          resp?.governance?.handoffShouldAutoSend !== false
+        ) {
           const leadForSend = leadId ?? selectedConversation?.leadId ?? null;
           await authClient.sendCrmMessage({
             conversationId: selectedConversationId,
@@ -1031,6 +1083,16 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
             message:
               'Palavra-chave de handoff detectada. A mensagem foi enviada e a Sofia deixa de responder automaticamente neste fluxo; continue o atendimento manualmente.',
             variant: 'success',
+          });
+          return;
+        }
+        if (resp?.governance?.reason === 'keyword_detected' && resp?.governance?.handoffShouldAutoSend === false) {
+          setInput(suggestionText);
+          setAppNotice({
+            title: 'Handoff por palavra-chave',
+            message:
+              'O envio automático da mensagem de handoff está desativado nas configurações da Sofia. O texto foi colocado no campo para envio manual.',
+            variant: 'warning',
           });
           return;
         }
@@ -1071,6 +1133,53 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
       });
     } finally {
       setSofiaAutoRunning(false);
+    }
+  };
+
+  const handleEscalarHumano = async () => {
+    if (!selectedConversation?.leadId) {
+      setAppNotice({
+        title: 'Escalonamento',
+        message: 'Esta conversa não tem lead associado.',
+        variant: 'warning',
+      });
+      return;
+    }
+    try {
+      await authClient.updateCrmLead({
+        leadId: selectedConversation.leadId,
+        title: selectedConversation.leadName || 'Lead',
+        phone: clientePhone || null,
+        email: clienteEmail || null,
+        protocolNumber: leadProtocol || null,
+        routeOrigin: leadRouteOrigin || null,
+        routeDestination: clienteDestino || null,
+        requestedAt: leadRequestedAt || null,
+        serviceType: leadServiceType || null,
+        cargoStatus: leadCargoStatus || null,
+        customerStatus: 'HUMANO_SOLICITADO',
+        source: leadSource,
+        priority: leadPriority,
+        currentLocation: leadCurrentLocation || null,
+        observations: observacoes,
+        isRecurringFreight: freteRecorrente,
+        trackingActive: rastreioAtivo,
+        updatedByUsername: user?.username ?? null,
+      });
+      setLeadCustomerStatus('HUMANO_SOLICITADO');
+      await applyConversationUpdate({ status: 'PENDENTE' });
+      setAppNotice({
+        title: 'Escalonamento',
+        message: 'Pedido de atendimento humano registado no lead e conversa reposta em pendente.',
+        variant: 'success',
+      });
+    } catch (e) {
+      console.error('Erro ao escalar para humano:', e);
+      setAppNotice({
+        title: 'Escalonamento',
+        message: 'Não foi possível concluir o escalonamento. Tente novamente.',
+        variant: 'error',
+      });
     }
   };
 
@@ -1427,6 +1536,10 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
   }, []);
 
   useEffect(() => {
+    setSofiaAutomationPaused(false);
+  }, [selectedConversationId]);
+
+  useEffect(() => {
     const run = async () => {
       try {
         const resp = await authClient.getSofiaSettings();
@@ -1466,6 +1579,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
           conversationId: selectedConversationId,
           text: messages[messages.length - 1]?.text || selectedConversation?.lastMessage || "",
           mode: "SUMMARY",
+          manualSofiaAction: false,
         });
         const nextSummary = String(resp?.summary || "").trim();
         if (nextSummary) {
@@ -1481,6 +1595,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
 
   useEffect(() => {
     if (!selectedConversationId || !sofiaActiveToday) return;
+    if (sofiaAutomationPaused) return;
     if (!messages.length) return;
     const last = messages[messages.length - 1];
     if (!last || last.from !== "CLIENTE") return;
@@ -1488,11 +1603,11 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
     if (autoReplyGuardRef.current === guardKey) return;
     autoReplyGuardRef.current = guardKey;
     window.setTimeout(() => {
-      handleSofiaAutoReply().catch(() => {
+      handleSofiaAutoReply({ skipConfirm: true, manualSofiaAction: false }).catch(() => {
         // noop
       });
     }, 200);
-  }, [messages, selectedConversationId, sofiaActiveToday]);
+  }, [messages, selectedConversationId, sofiaActiveToday, sofiaAutomationPaused]);
 
   useEffect(() => {
     const run = async () => {
@@ -2065,7 +2180,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                 disabled={!selectedConversation?.assignedUsername}
                 className="flex-1 rounded-xl border border-amber-200 bg-amber-50 px-2 py-2 text-[11px] font-semibold text-amber-900 shadow-sm hover:bg-amber-100 disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                Devolver à fila
+                Devolver para fila
               </button>
             </div>
           </div>
@@ -2077,12 +2192,18 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
             <span
               className={clsx(
                 'px-2 py-0.5 rounded-full border text-[9px] font-semibold',
-                sofiaActiveToday
-                  ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
-                  : 'border-slate-300 bg-slate-100 text-slate-600'
+                sofiaAutomationPaused
+                  ? 'border-amber-300 bg-amber-50 text-amber-900'
+                  : sofiaActiveToday
+                    ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
+                    : 'border-slate-300 bg-slate-100 text-slate-600'
               )}
             >
-              {sofiaActiveToday ? `${sofiaName} ativa hoje` : `${sofiaName} apenas suporte`}
+              {sofiaAutomationPaused
+                ? `${sofiaName} pausada (esta conversa)`
+                : sofiaActiveToday
+                  ? `${sofiaName} ativa hoje`
+                  : `${sofiaName} apenas suporte`}
             </span>
           </div>
           <div className="flex flex-col gap-2">
@@ -2204,19 +2325,80 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
               </button>
               <button
                 type="button"
-                className="rounded-lg bg-slate-50 px-2.5 py-1.5 text-[10px] font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50"
-                onClick={handleSofiaSuggest}
-                disabled={sofiaSuggesting}
+                className={`rounded-lg px-2 py-1.5 text-[10px] font-semibold border ${
+                  sofiaAutomationPaused
+                    ? 'border-amber-300 bg-amber-50 text-amber-900'
+                    : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                }`}
+                title={
+                  sofiaAutomationPaused
+                    ? 'Retomar: a Sofia volta a poder responder automaticamente a novas mensagens do cliente (se as regras globais permitirem).'
+                    : 'Pausar: impede o envio automático disparado por novas mensagens nesta conversa; não altera as configurações no servidor.'
+                }
+                onClick={() => setSofiaAutomationPaused((p) => !p)}
               >
-                {sofiaSuggesting ? 'Sofia…' : 'Sofia'}
+                {sofiaAutomationPaused ? 'Retomar Sofia' : 'Pausar Sofia'}
+              </button>
+              <select
+                className="max-w-[140px] rounded-lg border border-slate-200 bg-white px-1.5 py-1 text-[10px] text-slate-800"
+                title="Reclassificar conversa: define o tema no CRM (não envia mensagem ao cliente)."
+                value={selectedConversation?.topic || ''}
+                onChange={async (e) => {
+                  const v = e.target.value;
+                  if (!selectedConversationId) return;
+                  if (!v || v === (selectedConversation?.topic || '')) return;
+                  try {
+                    await applyConversationUpdate({ topic: v });
+                    setAppNotice({
+                      title: 'Tema',
+                      message: `Tema da conversa atualizado para ${v}.`,
+                      variant: 'success',
+                    });
+                  } catch {
+                    setAppNotice({
+                      title: 'Tema',
+                      message: 'Não foi possível atualizar o tema.',
+                      variant: 'error',
+                    });
+                  }
+                }}
+              >
+                <option value="">Reclassificar…</option>
+                {CRM_TOPIC_OPTIONS.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="rounded-lg border border-rose-200 bg-rose-50 px-2 py-1.5 text-[10px] font-semibold text-rose-900 hover:bg-rose-100"
+                title="Marca o lead como humano solicitado e repõe a conversa em pendente; não envia mensagem ao cliente sozinho."
+                onClick={() => void handleEscalarHumano()}
+              >
+                Escalar humano
               </button>
               <button
                 type="button"
-                className="rounded-lg bg-sl-navy px-2.5 py-1.5 text-[10px] font-semibold text-white hover:bg-sl-red disabled:opacity-50"
-                onClick={handleSofiaAutoReply}
+                className="rounded-lg bg-slate-50 px-2.5 py-1.5 text-[10px] font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50 inline-flex items-center gap-0.5"
+                title="Só preenche o campo de mensagem com uma sugestão; não envia nada ao cliente."
+                aria-label="Sugerir resposta"
+                onClick={handleSofiaSuggest}
+                disabled={sofiaSuggesting}
+              >
+                <Info size={12} className="shrink-0 opacity-60" aria-hidden />
+                {sofiaSuggesting ? 'A gerar…' : 'Sugerir resposta'}
+              </button>
+              <button
+                type="button"
+                className="rounded-lg bg-sl-navy px-2.5 py-1.5 text-[10px] font-semibold text-white hover:bg-sl-red disabled:opacity-50 inline-flex items-center gap-0.5"
+                title="Gera resposta e, se a governança permitir, envia ao cliente; caso contrário cola no campo para revisão."
+                aria-label="Ativar automático"
+                onClick={() => void handleSofiaAutoReply()}
                 disabled={sofiaAutoRunning}
               >
-                {sofiaAutoRunning ? 'Auto…' : 'Sofia Auto'}
+                <Info size={12} className="shrink-0 text-white/80" aria-hidden />
+                {sofiaAutoRunning ? 'A processar…' : 'Ativar automático'}
               </button>
               <button
                 type="button"

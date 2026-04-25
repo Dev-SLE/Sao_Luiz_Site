@@ -1107,8 +1107,30 @@ export class NeonDataClient {
     return this.postJson("/crm/sofia", payload);
   }
 
-  async getSofiaReplySuggestion(payload: { conversationId: string; text: string; mode?: "REPLY" | "SUMMARY" }): Promise<any> {
+  async getSofiaReplySuggestion(payload: {
+    conversationId: string;
+    text: string;
+    mode?: "REPLY" | "SUMMARY";
+    manualSofiaAction?: boolean;
+    dryRun?: boolean;
+  }): Promise<any> {
     return this.postJson("/crm/sofia/respond", payload);
+  }
+
+  async getSofiaAiActions(params?: { limit?: number; offset?: number }): Promise<{
+    rows: Array<Record<string, unknown>>;
+    limit: number;
+    offset: number;
+    hasMore: boolean;
+  }> {
+    const usp = new URLSearchParams();
+    if (params?.limit != null) usp.set("limit", String(params.limit));
+    if (params?.offset != null) usp.set("offset", String(params.offset));
+    const qs = usp.toString();
+    const url = this.makeApiUrl(`/crm/sofia/ai-actions${qs ? `?${qs}` : ""}`);
+    const resp = await fetch(url, { credentials: "include" });
+    if (!resp.ok) throw await this.buildHttpError("Erro ao buscar logs de IA da Sofia", resp);
+    return resp.json();
   }
 
   async getComercialAuditorias(params?: { status?: string; limit?: number }): Promise<any> {

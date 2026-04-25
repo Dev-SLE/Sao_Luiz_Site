@@ -378,14 +378,14 @@ export async function POST(req: Request) {
         INSERT INTO pendencias.crm_conversations (
           lead_id, channel, is_active, created_at, last_message_at,
           status, assigned_team_id, assigned_username, assignment_mode,
-          locked_by, locked_at, lock_expires_at, topic, routing_source
+          locked_by, locked_at, lock_expires_at, topic, routing_source, status_entered_at
         )
         VALUES (
           $1, $2, true, NOW(), NULL,
           $3, $4, $5, $6,
           $7, CASE WHEN $7 IS NULL THEN NULL ELSE NOW() END,
           CASE WHEN $7 IS NULL THEN NULL ELSE NOW() + ($8::int * INTERVAL '1 minute') END,
-          $9, $10
+          $9, $10, NOW()
         )
         RETURNING id
       `,
@@ -463,6 +463,10 @@ export async function PATCH(req: Request) {
         UPDATE pendencias.crm_conversations
         SET
           status = COALESCE($2, status),
+          status_entered_at = CASE
+            WHEN $2 IS NOT NULL AND $2 <> status THEN NOW()
+            ELSE status_entered_at
+          END,
           assigned_username = CASE
             WHEN NOT $9::boolean THEN assigned_username
             WHEN $10::text IS NULL OR TRIM(BOTH FROM COALESCE($10::text, '')) = '' THEN NULL

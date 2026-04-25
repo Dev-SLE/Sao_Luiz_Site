@@ -13,6 +13,13 @@ import {
   type AiChatHttpResult,
 } from "../../../../../lib/server/aiChatProviders";
 import { insertSofiaAiAuditLog } from "../../../../../lib/server/sofiaAiAuditLog";
+import {
+  funnelRuleBlocksAuto,
+  funnelRuleMaxMinutesBreached,
+  normalizeSofiaAutoMode,
+  parseAiActionsAllowed,
+  parseFunnelSlaRules,
+} from "../../../../../lib/server/sofiaPolicyHelpers";
 
 export const runtime = "nodejs";
 
@@ -175,8 +182,30 @@ type SofiaRespondAuditCtx = {
   pool: { query: (sql: string, params?: unknown[]) => Promise<unknown> };
   conversationId: string;
   leadId: string | null;
-  taskType: "reply_suggestion" | "conversation_summary";
+  taskType: "reply_suggestion" | "conversation_summary" | "conversation_classification";
+  meta?: Record<string, unknown> | null;
 };
+
+function tryParseJsonObject(raw: string): Record<string, unknown> | null {
+  const t = String(raw || "").trim();
+  if (!t) return null;
+  try {
+    const direct = JSON.parse(t);
+    if (direct && typeof direct === "object" && !Array.isArray(direct)) return direct as Record<string, unknown>;
+  } catch {
+    // noop
+  }
+  const first = t.indexOf("{");
+  const last = t.lastIndexOf("}");
+  if (first < 0 || last <= first) return null;
+  try {
+    const sliced = JSON.parse(t.slice(first, last + 1));
+    if (sliced && typeof sliced === "object" && !Array.isArray(sliced)) return sliced as Record<string, unknown>;
+  } catch {
+    // noop
+  }
+  return null;
+}
 
 async function auditIfAttempted(ctx: SofiaRespondAuditCtx, provider: "OPENAI" | "GEMINI", model: string, result: AiChatHttpResult) {
   if (result.errorLabel === "missing_key") return;
@@ -188,6 +217,7 @@ async function auditIfAttempted(ctx: SofiaRespondAuditCtx, provider: "OPENAI" | 
     provider,
     modelName: model,
     result,
+    meta: ctx.meta || null,
   });
 }
 
@@ -318,6 +348,8 @@ export async function POST(req: Request) {
     const conversationId = body?.conversationId ? String(body.conversationId) : null;
     const text = body?.text ? String(body.text) : "";
     const mode = body?.mode ? String(body.mode).toUpperCase() : "REPLY";
+    const manualSofiaAction = !!body?.manualSofiaAction;
+    const dryRun = !!body?.dryRun;
     if (!conversationId) return NextResponse.json({ error: "conversationId obrigatório" }, { status: 400 });
 
     const [convRes, settingsRes, lastMsgsRes] = await Promise.all([
@@ -325,7 +357,7 @@ export async function POST(req: Request) {
         `
           SELECT c.id, c.channel, c.topic, l.id AS lead_id, l.title, l.cte_number, l.contact_phone
                , l.customer_status, l.agency_requested_at, l.agency_sla_minutes
-               , c.status, c.sla_breached_at
+               , c.status, c.sla_breached_at, c.status_entered_at
           FROM pendencias.crm_conversations c
           JOIN pendencias.crm_leads l ON l.id = c.lead_id
           WHERE c.id = $1
@@ -341,7 +373,9 @@ export async function POST(req: Request) {
             business_hours_start, business_hours_end, blocked_topics, blocked_statuses,
             require_human_if_sla_breached, require_human_after_customer_messages,
             model_name, system_instructions, fallback_message, handoff_message,
-          response_tone, max_response_chars, generate_summary_enabled
+            response_tone, max_response_chars, generate_summary_enabled,
+            default_language, reply_outside_business_hours, outside_hours_message,
+            ai_actions_allowed, funnel_sla_rules
           FROM pendencias.crm_sofia_settings
           ORDER BY updated_at DESC
           LIMIT 1
@@ -363,6 +397,31 @@ export async function POST(req: Request) {
     if (!conv) return NextResponse.json({ error: "conversa não encontrada" }, { status: 404 });
     const leadIdForAudit = conv.lead_id != null ? String(conv.lead_id) : null;
     const settings = settingsRes.rows?.[0] || {};
+    const actionsAllowed = parseAiActionsAllowed(settings.ai_actions_allowed);
+    const funnelRules = parseFunnelSlaRules(settings.funnel_sla_rules);
+    const autoModeNorm = normalizeSofiaAutoMode(settings.auto_mode);
+    const defaultLanguage = settings.default_language ? String(settings.default_language) : "pt-BR";
+    const replyOutsideBusinessHours = !!settings.reply_outside_business_hours;
+    const outsideHoursMessage =
+      settings.outside_hours_message != null ? String(settings.outside_hours_message).trim() : "";
+
+    if (autoModeNorm === "DESLIGADA" && !manualSofiaAction) {
+      return NextResponse.json(
+        {
+          error: "sofia_desligada",
+          message:
+            "Modo desligado: não executa resumo automático nem resposta automática em segundo plano; use as ações manuais no chat.",
+        },
+        { status: 403 }
+      );
+    }
+
+    if (mode === "REPLY" && manualSofiaAction && !actionsAllowed.manualSuggestReply) {
+      return NextResponse.json(
+        { error: "action_disabled", message: "Sugestão manual da Sofia está desativada nas configurações." },
+        { status: 403 }
+      );
+    }
     const transcript = (lastMsgsRes.rows || [])
       .reverse()
       .map((m: any) => `${String(m.sender_type)}: ${String(m.body)}`)
@@ -393,7 +452,7 @@ export async function POST(req: Request) {
     const maxAutoReplies = Number(settings.max_auto_replies_per_conversation || 2);
     const requireHumanIfSlaBreached = settings.require_human_if_sla_breached === undefined ? true : !!settings.require_human_if_sla_breached;
     const requireHumanAfterCustomerMessages = Number(settings.require_human_after_customer_messages || 4);
-    const autoMode = String(settings.auto_mode || "ASSISTIDO").toUpperCase(); // ASSISTIDO | SEMI_AUTO | AUTO_TOTAL
+    const autoMode = autoModeNorm;
     const responseTone = String(settings.response_tone || "PROFISSIONAL");
     const maxResponseChars = Number(settings.max_response_chars || 480);
     const contextText = `${transcript}\nCLIENT: ${text}`;
@@ -404,8 +463,14 @@ export async function POST(req: Request) {
       if (!settings.generate_summary_enabled) {
         return NextResponse.json({ summary: "", skipped: "generate_summary_disabled" });
       }
+      if (!actionsAllowed.conversationSummary) {
+        return NextResponse.json({ summary: "", skipped: "action_disabled" });
+      }
+      const dl = String(defaultLanguage || "pt-BR").toLowerCase();
+      const summaryLang =
+        dl.startsWith("en") ? "in English" : dl.startsWith("es") ? "in Spanish" : "em português do Brasil";
       const summaryPrompt = [
-        "Resuma a conversa em pt-BR para handoff humano.",
+        `Resuma a conversa para handoff humano (${summaryLang}).`,
         "Formato: 3 bullets curtos com contexto, pendências e próximo passo.",
         "Evite repetição e não invente dados.",
       ].join("\n");
@@ -435,26 +500,27 @@ export async function POST(req: Request) {
         String(settings.handoff_message || "Entendi. Vou transferir agora seu atendimento para um atendente humano."),
         Number(settings.max_response_chars || 480)
       );
-      await pool.query(
-        `
+      if (!dryRun) {
+        await pool.query(
+          `
           UPDATE pendencias.crm_conversations
-          SET status = 'PENDENTE', updated_at = NOW()
+          SET status = 'PENDENTE', status_entered_at = NOW(), updated_at = NOW()
           WHERE id = $1
         `,
-        [conversationId]
-      );
-      await pool.query(
-        `
+          [conversationId]
+        );
+        await pool.query(
+          `
           UPDATE pendencias.crm_leads l
           SET customer_status = 'HUMANO_SOLICITADO', updated_at = NOW()
           FROM pendencias.crm_conversations c
           WHERE c.id = $1
             AND l.id = c.lead_id
         `,
-        [conversationId]
-      );
-      await pool.query(
-        `
+          [conversationId]
+        );
+        await pool.query(
+          `
           INSERT INTO pendencias.crm_activities (lead_id, user_username, type, description, data, created_at)
           SELECT
             c.lead_id,
@@ -466,10 +532,12 @@ export async function POST(req: Request) {
           FROM pendencias.crm_conversations c
           WHERE c.id = $1
         `,
-        [conversationId, JSON.stringify({ reason: "keyword_detected", text })]
-      );
+          [conversationId, JSON.stringify({ reason: "keyword_detected", text })]
+        );
+      }
       return NextResponse.json({
         suggestion: handoffText,
+        dryRun,
         autoReplyEnabled: !!settings.auto_reply_enabled,
         shouldEscalate: true,
         escalateReason: "keyword_detected",
@@ -484,7 +552,7 @@ export async function POST(req: Request) {
           }),
         },
         governance: {
-          autoMode: String(settings.auto_mode || "ASSISTIDO").toUpperCase(),
+          autoMode: autoModeNorm,
           allowAutoSend: false,
           reason: "keyword_detected",
           confidence: 15,
@@ -493,7 +561,112 @@ export async function POST(req: Request) {
           maxAutoReplies: Number(settings.max_auto_replies_per_conversation || 2),
           trailingClientStreak,
           requireHumanAfterCustomerMessages: Number(settings.require_human_after_customer_messages || 4),
-          handoffShouldAutoSend: true,
+          handoffShouldAutoSend: !!actionsAllowed.keywordHandoffAutoSend && !dryRun,
+        },
+        context: {
+          topic: conv.topic || null,
+          channel: conv.channel || "WHATSAPP",
+        },
+      });
+    }
+
+    if (autoModeNorm === "CLASSIFICACAO" && !manualSofiaAction && mode === "REPLY") {
+      if (!actionsAllowed.classifyTopic) {
+        return NextResponse.json({
+          suggestion: "",
+          skipped: "classification_action_disabled",
+          dryRun,
+          autoReplyEnabled: !!settings.auto_reply_enabled,
+          shouldEscalate: false,
+          escalateReason: null,
+        });
+      }
+      const classifyPrompt = [
+        "Classifique a mensagem para operação de CRM logístico.",
+        "Responda APENAS JSON válido com chaves:",
+        '{ "topic": "RASTREIO|COTACAO|FINANCEIRO|OCORRENCIA|GERAL", "priority": "ALTA|MEDIA|BAIXA", "summary": "texto curto", "confidence": 0-100, "suggestedStage": "opcional" }',
+        "Não inclua markdown, comentários ou texto fora do JSON.",
+        `Mensagem: ${text}`,
+        `Histórico resumido: ${buildCopilotSummary(transcript, 600)}`,
+      ].join("\n");
+      const classifyRaw =
+        (await callAiProviderAudited(
+          {
+            pool,
+            conversationId,
+            leadId: leadIdForAudit,
+            taskType: "conversation_classification",
+            meta: {
+              autoMode: autoModeNorm,
+              manualSofiaAction,
+              source: "crm_respond",
+              inputChars: text.length,
+            },
+          },
+          {
+            provider: settings.ai_provider,
+            prompt: classifyPrompt,
+            turns: aiTurns,
+            modelOverride: settings.model_name,
+            systemInstructions: settings.system_instructions,
+          }
+        )) || "";
+      const parsed = tryParseJsonObject(classifyRaw);
+      const classification = {
+        topic: String(parsed?.topic || conv.topic || "GERAL").toUpperCase(),
+        priority: actionsAllowed.definePriority ? String(parsed?.priority || "MEDIA").toUpperCase() : "MEDIA",
+        summary: String(parsed?.summary || buildCopilotSummary(transcript, 180)).trim(),
+        confidence: Number(parsed?.confidence ?? 0),
+        suggestedStage:
+          actionsAllowed.suggestFunnelMove && parsed?.suggestedStage != null && String(parsed.suggestedStage).trim()
+            ? String(parsed.suggestedStage).trim()
+            : null,
+      };
+      if (!dryRun && actionsAllowed.autoUpdateTopic && classification.topic) {
+        await pool.query(
+          `
+            UPDATE pendencias.crm_conversations
+            SET topic = $2::text, updated_at = NOW()
+            WHERE id = $1::uuid
+          `,
+          [conversationId, classification.topic]
+        );
+        await pool.query(
+          `
+            INSERT INTO pendencias.crm_activities (lead_id, user_username, type, description, data, created_at)
+            VALUES ($1::uuid, NULL, 'EVENT', 'Sofia atualizou tema automaticamente (classificação).', $2::jsonb, NOW())
+          `,
+          [String(conv.lead_id), JSON.stringify({ conversationId, classification })]
+        );
+      }
+      return NextResponse.json({
+        suggestion: "",
+        skipped: "classification_only_mode",
+        classification,
+        dryRun,
+        autoReplyEnabled: !!settings.auto_reply_enabled,
+        shouldEscalate: false,
+        escalateReason: null,
+        copilot: {
+          summary: buildCopilotSummary(transcript),
+          nextBestAction: suggestNextBestAction({
+            topic: conv.topic || null,
+            shouldEscalate: false,
+            allowAutoSend: false,
+            governanceReason: "classification_only_mode",
+            hasCte: !!String(conv.cte_number || extractCteFromText(text) || "").trim(),
+          }),
+        },
+        governance: {
+          autoMode: autoModeNorm,
+          allowAutoSend: false,
+          reason: "classification_only_mode",
+          confidence: 0,
+          minConfidence: Number(settings.min_confidence || 70),
+          iaMsgCount,
+          maxAutoReplies: Number(settings.max_auto_replies_per_conversation || 2),
+          trailingClientStreak,
+          requireHumanAfterCustomerMessages: Number(settings.require_human_after_customer_messages || 4),
         },
         context: {
           topic: conv.topic || null,
@@ -510,6 +683,7 @@ export async function POST(req: Request) {
       supervisorInstructions: settings.system_instructions,
       knowledgeBase: settings.knowledge_base,
       userText: text,
+      defaultLanguage,
       cteSummaryText: cteSummary
         ? `CTE ${String(cteSummary.cte || "")} Série ${String(cteSummary.serie || "")} | Status ${String(cteSummary.status_calculado || cteSummary.status || "")} | Destino ${String(cteSummary.entrega || "")} | Destinatário ${String(cteSummary.destinatario || "")}.`
         : null,
@@ -565,9 +739,14 @@ export async function POST(req: Request) {
     let allowAutoSend = !!settings.auto_reply_enabled;
     let governanceReason = "ok";
 
-    if (autoMode === "ASSISTIDO") {
+    if (autoMode === "ASSISTIDO" || autoMode === "CLASSIFICACAO" || autoMode === "DESLIGADA") {
       allowAutoSend = false;
-      governanceReason = "assistido_mode";
+      governanceReason =
+        autoMode === "CLASSIFICACAO"
+          ? "classification_mode_no_auto_send"
+          : autoMode === "DESLIGADA"
+            ? "disabled_mode_no_auto_send"
+            : "assistido_mode";
     } else if (autoMode === "SEMI_AUTO") {
       allowAutoSend = false;
       governanceReason = "semi_auto_requires_human_confirm";
@@ -576,7 +755,7 @@ export async function POST(req: Request) {
       allowAutoSend = false;
       governanceReason = "outside_active_day";
     }
-    if (!isInBusinessHours) {
+    if (!isInBusinessHours && !replyOutsideBusinessHours) {
       allowAutoSend = false;
       governanceReason = "outside_business_hours";
     }
@@ -619,13 +798,37 @@ export async function POST(req: Request) {
       allowAutoSend = false;
       governanceReason = "too_many_customer_messages_without_human";
     }
-    if (!allowAutoSend && String(settings.handoff_message || "").trim()) {
-      suggestion = String(settings.handoff_message).trim();
-      suggestion = normalizeAiText(suggestion, maxResponseChars);
+    if (funnelRuleBlocksAuto(funnelRules, conv.status)) {
+      allowAutoSend = false;
+      governanceReason = "funnel_sla_block";
+    }
+    if (
+      funnelRuleMaxMinutesBreached({
+        rules: funnelRules,
+        conversationStatus: conv.status,
+        statusEnteredAt: conv.status_entered_at,
+      })
+    ) {
+      allowAutoSend = false;
+      governanceReason = "funnel_sla_minutes_breached";
+    }
+    if (!actionsAllowed.autoReplyToCustomer) {
+      allowAutoSend = false;
+      if (governanceReason === "ok") governanceReason = "actions_disabled_auto_reply";
+    }
+    if (!allowAutoSend) {
+      const hoMsg =
+        governanceReason === "outside_business_hours" && outsideHoursMessage.length > 0
+          ? outsideHoursMessage
+          : String(settings.handoff_message || "").trim();
+      if (hoMsg) {
+        suggestion = normalizeAiText(hoMsg, maxResponseChars);
+      }
     }
 
     return NextResponse.json({
       suggestion,
+      dryRun,
       autoReplyEnabled: !!settings.auto_reply_enabled,
       shouldEscalate,
       escalateReason: shouldEscalate ? "keyword_detected" : null,

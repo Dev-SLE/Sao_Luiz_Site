@@ -2,6 +2,11 @@ import { NextResponse } from "next/server";
 import { getPool } from "../../../../lib/server/db";
 import { ensureCrmSchemaTables } from "../../../../lib/server/ensureSchema";
 import { requireApiPermissions } from "../../../../lib/server/apiAuth";
+import {
+  normalizeSofiaAutoMode,
+  parseAiActionsAllowed,
+  parseFunnelSlaRules,
+} from "../../../../lib/server/sofiaPolicyHelpers";
 
 export const runtime = "nodejs";
 
@@ -22,6 +27,8 @@ export async function GET(req: Request) {
           require_human_if_sla_breached, require_human_after_customer_messages,
           system_instructions, fallback_message, handoff_message,
           response_tone, max_response_chars, welcome_enabled, generate_summary_enabled,
+          default_language, reply_outside_business_hours, outside_hours_message,
+          ai_actions_allowed, funnel_sla_rules,
           updated_at
         FROM pendencias.crm_sofia_settings
         ORDER BY updated_at DESC
@@ -47,7 +54,7 @@ export async function GET(req: Request) {
             autoReplyEnabled: !!row.auto_reply_enabled,
             escalationKeywords: Array.isArray(row.escalation_keywords) ? row.escalation_keywords : [],
             modelName: row.model_name ? String(row.model_name) : null,
-            autoMode: String(row.auto_mode || "ASSISTIDO"),
+            autoMode: normalizeSofiaAutoMode(row.auto_mode),
             minConfidence: Number(row.min_confidence || 70),
             maxAutoRepliesPerConversation: Number(row.max_auto_replies_per_conversation || 2),
             businessHoursStart: String(row.business_hours_start || "08:00"),
@@ -64,6 +71,11 @@ export async function GET(req: Request) {
             welcomeEnabled: row.welcome_enabled === undefined ? true : !!row.welcome_enabled,
             generateSummaryEnabled:
               row.generate_summary_enabled === undefined ? true : !!row.generate_summary_enabled,
+            defaultLanguage: row.default_language ? String(row.default_language) : "pt-BR",
+            replyOutsideBusinessHours: !!row.reply_outside_business_hours,
+            outsideHoursMessage: row.outside_hours_message != null ? String(row.outside_hours_message) : "",
+            aiActionsAllowed: parseAiActionsAllowed(row.ai_actions_allowed),
+            funnelSlaRules: parseFunnelSlaRules(row.funnel_sla_rules),
           }
         : null,
     });
@@ -89,7 +101,7 @@ export async function POST(req: Request) {
       autoReplyEnabled: !!body?.autoReplyEnabled,
       escalationKeywords: Array.isArray(body?.escalationKeywords) ? body.escalationKeywords : [],
       modelName: body?.modelName ? String(body.modelName) : null,
-      autoMode: body?.autoMode ? String(body.autoMode).toUpperCase() : "ASSISTIDO",
+      autoMode: normalizeSofiaAutoMode(body?.autoMode ? String(body.autoMode) : "ASSISTIDO"),
       minConfidence: Number(body?.minConfidence ?? 70),
       maxAutoRepliesPerConversation: Number(body?.maxAutoRepliesPerConversation ?? 2),
       businessHoursStart: body?.businessHoursStart ? String(body.businessHoursStart) : "08:00",
@@ -106,6 +118,11 @@ export async function POST(req: Request) {
       welcomeEnabled: body?.welcomeEnabled === undefined ? true : !!body.welcomeEnabled,
       generateSummaryEnabled:
         body?.generateSummaryEnabled === undefined ? true : !!body.generateSummaryEnabled,
+      defaultLanguage: body?.defaultLanguage != null ? String(body.defaultLanguage).trim().slice(0, 16) || "pt-BR" : "pt-BR",
+      replyOutsideBusinessHours: !!body?.replyOutsideBusinessHours,
+      outsideHoursMessage: body?.outsideHoursMessage != null ? String(body.outsideHoursMessage).slice(0, 2000) : "",
+      aiActionsAllowed: parseAiActionsAllowed(body?.aiActionsAllowed),
+      funnelSlaRules: parseFunnelSlaRules(body?.funnelSlaRules),
     };
 
     const existing = await pool.query("SELECT id FROM pendencias.crm_sofia_settings ORDER BY updated_at DESC LIMIT 1");
@@ -121,9 +138,11 @@ export async function POST(req: Request) {
             require_human_if_sla_breached, require_human_after_customer_messages,
             system_instructions, fallback_message, handoff_message,
             response_tone, max_response_chars, welcome_enabled, generate_summary_enabled,
+            default_language, reply_outside_business_hours, outside_hours_message,
+            ai_actions_allowed, funnel_sla_rules,
             updated_at
           )
-          VALUES ($1, $2, $3, $4::jsonb, $5, $6::jsonb, $7, $8, $9, $10, $11, $12, $13, $14::jsonb, $15::jsonb, $16, $17, $18, $19, $20, $21, $22, $23, $24, NOW())
+          VALUES ($1, $2, $3, $4::jsonb, $5, $6::jsonb, $7, $8, $9, $10, $11, $12, $13, $14::jsonb, $15::jsonb, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28::jsonb, $29::jsonb, NOW())
           RETURNING id
         `,
         [
@@ -151,6 +170,11 @@ export async function POST(req: Request) {
           payload.maxResponseChars,
           payload.welcomeEnabled,
           payload.generateSummaryEnabled,
+          payload.defaultLanguage,
+          payload.replyOutsideBusinessHours,
+          payload.outsideHoursMessage || null,
+          JSON.stringify(payload.aiActionsAllowed),
+          JSON.stringify(payload.funnelSlaRules),
         ]
       );
       return NextResponse.json({ id: created.rows?.[0]?.id, success: true });
@@ -184,6 +208,11 @@ export async function POST(req: Request) {
           max_response_chars = $23,
           welcome_enabled = $24,
           generate_summary_enabled = $25,
+          default_language = $26,
+          reply_outside_business_hours = $27,
+          outside_hours_message = $28,
+          ai_actions_allowed = $29::jsonb,
+          funnel_sla_rules = $30::jsonb,
           updated_at = NOW()
         WHERE id = $1
       `,
@@ -213,6 +242,11 @@ export async function POST(req: Request) {
         payload.maxResponseChars,
         payload.welcomeEnabled,
         payload.generateSummaryEnabled,
+        payload.defaultLanguage,
+        payload.replyOutsideBusinessHours,
+        payload.outsideHoursMessage || null,
+        JSON.stringify(payload.aiActionsAllowed),
+        JSON.stringify(payload.funnelSlaRules),
       ]
     );
 

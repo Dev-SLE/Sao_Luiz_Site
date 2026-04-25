@@ -209,6 +209,7 @@ export async function ensureCrmSchemaTables() {
   await pool.query(`ALTER TABLE pendencias.crm_conversations ADD COLUMN IF NOT EXISTS sla_minutes int`);
   await pool.query(`ALTER TABLE pendencias.crm_conversations ADD COLUMN IF NOT EXISTS sla_due_at timestamptz`);
   await pool.query(`ALTER TABLE pendencias.crm_conversations ADD COLUMN IF NOT EXISTS sla_breached_at timestamptz`);
+  await pool.query(`ALTER TABLE pendencias.crm_conversations ADD COLUMN IF NOT EXISTS status_entered_at timestamptz NOT NULL DEFAULT now()`);
   await pool.query(`ALTER TABLE pendencias.crm_conversations ADD COLUMN IF NOT EXISTS ai_summary text`);
   await pool.query(`ALTER TABLE pendencias.crm_conversations ADD COLUMN IF NOT EXISTS ai_summary_updated_at timestamptz`);
   await pool.query(
@@ -515,6 +516,19 @@ export async function ensureCrmSchemaTables() {
   await pool.query(`ALTER TABLE pendencias.crm_sofia_settings ADD COLUMN IF NOT EXISTS max_response_chars int NOT NULL DEFAULT 480`);
   await pool.query(`ALTER TABLE pendencias.crm_sofia_settings ADD COLUMN IF NOT EXISTS welcome_enabled boolean NOT NULL DEFAULT true`);
   await pool.query(`ALTER TABLE pendencias.crm_sofia_settings ADD COLUMN IF NOT EXISTS generate_summary_enabled boolean NOT NULL DEFAULT true`);
+  await pool.query(
+    `ALTER TABLE pendencias.crm_sofia_settings ADD COLUMN IF NOT EXISTS default_language text NOT NULL DEFAULT 'pt-BR'`
+  );
+  await pool.query(
+    `ALTER TABLE pendencias.crm_sofia_settings ADD COLUMN IF NOT EXISTS reply_outside_business_hours boolean NOT NULL DEFAULT false`
+  );
+  await pool.query(`ALTER TABLE pendencias.crm_sofia_settings ADD COLUMN IF NOT EXISTS outside_hours_message text`);
+  await pool.query(
+    `ALTER TABLE pendencias.crm_sofia_settings ADD COLUMN IF NOT EXISTS ai_actions_allowed jsonb NOT NULL DEFAULT '{}'::jsonb`
+  );
+  await pool.query(
+    `ALTER TABLE pendencias.crm_sofia_settings ADD COLUMN IF NOT EXISTS funnel_sla_rules jsonb NOT NULL DEFAULT '[]'::jsonb`
+  );
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS pendencias.crm_sofia_ai_actions_log (
