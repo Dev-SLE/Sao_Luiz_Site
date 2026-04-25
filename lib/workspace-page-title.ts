@@ -8,6 +8,7 @@ import {
   isGerencialSectorSlug,
 } from '@/modules/gerencial/routes';
 import { OPERACIONAL_TABS, OPERACIONAL_UTILITY_TABS } from '@/modules/operacional/routes';
+import { PATRIMONIO_TABS } from '@/modules/patrimonio/routes';
 
 /** Título curto só da vista atual (barra superior embutida). */
 export function getWorkspacePageTitle(pathname: string): string {
@@ -46,6 +47,13 @@ export function getWorkspacePageTitle(pathname: string): string {
 
   if (m === 'financeiro') {
     return 'Financeiro';
+  }
+
+  if (m === 'patrimonio') {
+    const slug = !r0 ? 'ativos' : r0;
+    const hit = PATRIMONIO_TABS.find((t) => t.slug === slug);
+    if (hit) return hit.label;
+    return 'Patrimônio';
   }
 
   if (m === 'gerencial') {

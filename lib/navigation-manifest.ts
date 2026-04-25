@@ -211,10 +211,14 @@ function plannedManifestosChildren(): WorkspaceNavChild[] {
   ];
 }
 
-function plannedPatrimonioChildren(): WorkspaceNavChild[] {
+function buildPatrimonioChildren(): WorkspaceNavChild[] {
   return [
-    { label: 'Frota detalhada', status: 'planned' },
-    { label: 'Manutenção', status: 'planned' },
+    { label: 'Ativos', href: '/app/patrimonio/ativos', status: 'implemented' as const },
+    { label: 'Movimentações', href: '/app/patrimonio/movimentacoes', status: 'implemented' as const },
+    { label: 'Manutenções', href: '/app/patrimonio/manutencoes', status: 'implemented' as const },
+    { label: 'Baixas', href: '/app/patrimonio/baixas', status: 'implemented' as const },
+    { label: 'Conferência', href: '/app/patrimonio/conferencia', status: 'implemented' as const },
+    { label: 'Configurações', href: '/app/patrimonio/configuracoes', status: 'implemented' as const },
   ];
 }
 
@@ -331,14 +335,17 @@ export function buildWorkspaceNavSections(input: {
   const patrimonioMod: WorkspaceNavItem | false =
     hub('module.patrimonio.view') &&
     attachChildren(
-      withHubHref(Page.MODULE_PATRIMONIO, {
-        id: Page.MODULE_PATRIMONIO,
-        label: 'Patrimônio',
-        icon: Warehouse,
-        count: 0,
-        permission: 'module.patrimonio.view',
-      }),
-      plannedPatrimonioChildren(),
+      {
+        ...withHubHref(Page.MODULE_PATRIMONIO, {
+          id: Page.MODULE_PATRIMONIO,
+          label: 'Patrimônio',
+          icon: Warehouse,
+          count: 0,
+          permission: 'module.patrimonio.view',
+        }),
+        matchPrefix: '/app/patrimonio',
+      },
+      buildPatrimonioChildren(),
     );
 
   const financeiroMod: WorkspaceNavItem | false =

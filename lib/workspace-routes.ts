@@ -163,7 +163,7 @@ export function pageToWorkspacePath(page: Page): string {
     case Page.MODULE_CLIENTES:
       return '/app/clientes';
     case Page.MODULE_PATRIMONIO:
-      return '/app/patrimonio';
+      return '/app/patrimonio/ativos';
     case Page.MODULE_FINANCEIRO:
       return '/app/gerencial/financeiro/bi-inicial';
     case Page.MODULE_FISCAL:

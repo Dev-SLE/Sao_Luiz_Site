@@ -36,6 +36,12 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  if (pathname === '/app/patrimonio' || pathname === '/app/patrimonio/') {
+    const url = request.nextUrl.clone();
+    url.pathname = '/app/patrimonio/ativos';
+    return NextResponse.redirect(url);
+  }
+
   /** BI financeiro: rota canônica no Gerencial (compat com bookmarks `/app/financeiro/...`). */
   if (pathname === '/app/financeiro' || pathname.startsWith('/app/financeiro/')) {
     const url = request.nextUrl.clone();
