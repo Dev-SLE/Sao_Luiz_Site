@@ -8,7 +8,6 @@ import { crmEvolutionMediaDebugEnabled } from "@/lib/server/crmEvolutionDebug";
 import {
   getCrmMediaSettings,
   isMimeAllowedForMediaType,
-  maxUploadBytesForMediaType,
 } from "@/lib/server/crmMediaSettings";
 import { maybeTranscodeInboundAudio } from "@/lib/server/crmMediaTranscode";
 import {
@@ -23,6 +22,13 @@ const META_GRAPH = "https://graph.facebook.com/v23.0";
 
 function pad2(n: number) {
   return String(n).padStart(2, "0");
+}
+
+function hardInboundMediaSafetyLimitBytes(): number {
+  const raw = String(process.env.CRM_HARD_MAX_INBOUND_MEDIA_MB || "512").trim();
+  const n = Number.parseInt(raw, 10);
+  const mb = Number.isFinite(n) && n > 0 ? n : 512;
+  return mb * 1024 * 1024;
 }
 
 function isRetryableIoError(err: unknown): boolean {
@@ -736,9 +742,9 @@ export async function ingestMetaInboundMedia(args: {
       fname = tr.fileName;
     }
 
-    const maxB = maxUploadBytesForMediaType(settings, mediaType);
-    if (buffer.length > maxB) {
-      await finalizeMediaFailed(args.pool, rowId, `arquivo_acima_do_limite_${maxB}`);
+    const hardLimit = hardInboundMediaSafetyLimitBytes();
+    if (buffer.length > hardLimit) {
+      await finalizeMediaFailed(args.pool, rowId, `size:hard_limit_${hardLimit}`);
       return;
     }
 
@@ -906,6 +912,7 @@ export async function ingestEvolutionInboundMedia(args: {
         apiKey: args.apiKey,
         instanceName: args.instanceName,
         message: messageForApi,
+        convertToMp4: effMediaType === "video",
       });
       if (!b64?.buffer?.length) {
         const errShort = String(b64?.error || "evolution_sem_base64").slice(0, 400);
@@ -973,9 +980,9 @@ export async function ingestEvolutionInboundMedia(args: {
         fname = tr.fileName;
       }
 
-      const maxB = maxUploadBytesForMediaType(settings, effMediaType);
-      if (buffer.length > maxB) {
-        await finalizeMediaFailed(args.pool, rowId, `size:arquivo_acima_do_limite_${maxB}`);
+      const hardLimit = hardInboundMediaSafetyLimitBytes();
+      if (buffer.length > hardLimit) {
+        await finalizeMediaFailed(args.pool, rowId, `size:hard_limit_${hardLimit}`);
         continue;
       }
 
