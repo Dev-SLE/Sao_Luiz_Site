@@ -206,9 +206,9 @@ export function BiSprintVendasDashboard() {
           <div className="pointer-events-none absolute -right-16 -top-16 size-48 rounded-full bg-amber-400/15 blur-2xl" />
           <div className="pointer-events-none absolute -bottom-12 left-1/3 size-40 rounded-full bg-teal-400/15 blur-2xl" />
           <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-amber-800/90">Gerencial</p>
-          <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900 md:text-3xl">Sprint de Vendas & Incentivos</h1>
+          <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900 md:text-3xl">Campanhas & Incentivos</h1>
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-600">
-            Acompanhamento mensal da campanha comercial com metas, premiações e evolução semanal.
+            Acompanhamento mensal de campanhas comerciais com metas, premiações e evolução semanal.
           </p>
           <p className="mt-3 text-xs font-medium text-slate-500">
             Mês: <span className="font-semibold capitalize text-slate-800">{mesLabel}</span>

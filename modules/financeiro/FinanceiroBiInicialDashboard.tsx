@@ -294,7 +294,7 @@ export function FinanceiroBiInicialDashboard() {
         <div className="mx-auto flex max-w-[1600px] flex-col gap-3">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-sl-red">Financeiro · BI</p>
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-sl-red">Financeiro · Gerencial</p>
               <h1 className="text-lg font-black text-slate-900 md:text-xl">Financeiro Inicial</h1>
               <p className="mt-1 max-w-3xl text-xs text-slate-600">
                 Visão executiva de obrigações e faturamento. Ajuste o período e os filtros; todos os blocos usam os

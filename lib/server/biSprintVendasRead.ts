@@ -1,5 +1,5 @@
 /**
- * BI Sprint de Vendas — leitura no Neon (COMERCIAL_DATABASE_URL, schema `bi`).
+ * BI Campanhas & Incentivos — leitura no Neon (COMERCIAL_DATABASE_URL, schema `bi`).
  * Mês efetivo = primeiro dia do mês de `to` (ou `from`, ou hoje). Só vendedoras em `meta_campanha_vendedor` no mês.
  */
 import type { Pool } from "pg";

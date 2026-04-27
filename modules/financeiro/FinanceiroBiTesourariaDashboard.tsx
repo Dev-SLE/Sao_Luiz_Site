@@ -302,7 +302,7 @@ export function FinanceiroBiTesourariaDashboard() {
         <div className="mx-auto flex max-w-[1600px] flex-col gap-3">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-sl-red">Financeiro · BI</p>
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-sl-red">Financeiro · Gerencial</p>
               <h1 className="text-lg font-black text-slate-900 md:text-xl">Tesouraria e Fluxo de Caixa</h1>
               <p className="mt-1 max-w-3xl text-xs text-slate-600">
                 Transferências, circulação entre contas e conciliação. Período padrão: últimos 12 meses. Todos os

@@ -91,11 +91,6 @@ function operacaoTabKeyFromPanelSlug(slug: string): keyof typeof GERENCIAL_BI_TA
   return null;
 }
 
-function financeiroTabKeyFromPanelSlug(slug: string): keyof typeof GERENCIAL_BI_TAB | null {
-  if (slug === 'bi-inicial' || slug === 'tesouraria-fluxo') return 'setorFinanceiro';
-  return null;
-}
-
 export function GerencialHubContent({ pathname }: { pathname: string }) {
   const livePath = usePathname();
   const router = useRouter();
@@ -106,7 +101,9 @@ export function GerencialHubContent({ pathname }: { pathname: string }) {
 
   const sectorTabs = useMemo(() => {
     return GERENCIAL_SECTORS.filter((s) => {
-      if (s.slug === 'financeiro') return has(s.permission) || has('module.financeiro.view');
+      if (s.slug === 'financeiro') {
+        return has(s.permission) || has(GERENCIAL_BI_TAB.setorFinanceiro);
+      }
       return has(s.permission);
     }).map((s) => ({
       href: gerencialHubPath(s.slug),
@@ -136,7 +133,9 @@ export function GerencialHubContent({ pathname }: { pathname: string }) {
   }, [has]);
 
   const allowedFinanceiroPanels = useMemo(() => {
-    return GERENCIAL_FINANCEIRO_PANELS.filter((p) => has(p.permission) || has('module.financeiro.view'));
+    return GERENCIAL_FINANCEIRO_PANELS.filter(
+      (p) => has(p.permission) || has(GERENCIAL_BI_TAB.setorFinanceiro)
+    );
   }, [has]);
 
   const financeiroSubTabs = useMemo(() => {
@@ -175,7 +174,7 @@ export function GerencialHubContent({ pathname }: { pathname: string }) {
     if (parts[0] !== 'app' || parts[1] !== 'gerencial') return;
     if (parts.length > 2) return;
     const firstSector = GERENCIAL_SECTORS.find((s) => {
-      if (s.slug === 'financeiro') return has(s.permission) || has('module.financeiro.view');
+      if (s.slug === 'financeiro') return has(s.permission) || has(GERENCIAL_BI_TAB.setorFinanceiro);
       return has(s.permission);
     })?.slug;
     if (firstSector) router.replace(gerencialHubPath(firstSector));
@@ -217,8 +216,8 @@ export function GerencialHubContent({ pathname }: { pathname: string }) {
   const sectorDenied =
     (parsed.sector === 'comercial' && !canCommercial) ||
     (parsed.sector === 'financeiro' &&
-      !has(GERENCIAL_BI_TAB.setorFinanceiro) &&
-      !has('module.financeiro.view')) ||
+      !has('module.financeiro.view') &&
+      !has(GERENCIAL_BI_TAB.setorFinanceiro)) ||
     (parsed.sector === 'operacao' && !has(GERENCIAL_BI_TAB.setorOperacao));
 
   const panelKey = parsed.panel ? commercialTabKeyFromPanelSlug(parsed.panel) : null;
@@ -234,16 +233,10 @@ export function GerencialHubContent({ pathname }: { pathname: string }) {
     !!parsed.panel &&
     (!operacaoPanelKey || !has(GERENCIAL_BI_TAB[operacaoPanelKey]));
 
-  const financeiroPanelKey = parsed.panel ? financeiroTabKeyFromPanelSlug(parsed.panel) : null;
   const financeiroPanelDenied =
     parsed.sector === 'financeiro' &&
     !!parsed.panel &&
-    (() => {
-      if (!financeiroPanelKey) return true;
-      const okTab = has(GERENCIAL_BI_TAB[financeiroPanelKey]);
-      if (financeiroPanelKey === 'setorFinanceiro') return !okTab && !has('module.financeiro.view');
-      return !okTab;
-    })();
+    !allowedFinanceiroPanels.some((p) => p.slug === parsed.panel);
 
   const holeriteDenied =
     parsed.holerite &&

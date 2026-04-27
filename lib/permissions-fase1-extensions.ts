@@ -41,7 +41,7 @@ export const FASE1_EXTRA_PERMISSIONS = [
   {
     key: 'module.financeiro.view',
     label: 'Módulo Financeiro',
-    description: 'Acessar rotas /app/financeiro.',
+    description: 'Acessar /app/financeiro e o setor Financeiro no hub Gerencial (painéis próprios).',
     group: 'MODULO',
     section: 'administracao',
   },
@@ -91,14 +91,15 @@ export const FASE1_EXTRA_PERMISSIONS = [
   {
     key: 'tab.gerencial.setor.comercial.view',
     label: 'Gerencial: setor Comercial (BI)',
-    description: 'Acessar o setor Comercial em Metas & performance / comissões / funil / sprint.',
+    description: 'Acessar o setor Comercial em Metas & performance / comissões / funil / campanhas & incentivos.',
     group: 'ABA',
     section: 'administracao',
   },
   {
     key: 'tab.gerencial.setor.financeiro.view',
-    label: 'Gerencial: setor Financeiro',
-    description: 'Acessar o setor Financeiro no hub gerencial (conteúdo em evolução).',
+    label: 'Gerencial: setor Financeiro (legado)',
+    description:
+      'Compatibilidade com perfis antigos: concede o mesmo acesso ao setor Financeiro no hub que module.financeiro.view.',
     group: 'ABA',
     section: 'administracao',
   },
@@ -125,8 +126,8 @@ export const FASE1_EXTRA_PERMISSIONS = [
   },
   {
     key: 'tab.gerencial.sprint.view',
-    label: 'Gerencial: Sprint & incentivos',
-    description: 'Campanha mensal de metas e incentivos por vendedora.',
+    label: 'Gerencial: Campanhas & incentivos',
+    description: 'Campanhas mensais de metas e incentivos por vendedora.',
     group: 'ABA',
     section: 'administracao',
   },

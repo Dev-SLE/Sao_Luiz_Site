@@ -10,7 +10,8 @@ export type GerencialSectorDef = {
 
 export const GERENCIAL_SECTORS: GerencialSectorDef[] = [
   { slug: 'comercial', label: 'Comercial', permission: GERENCIAL_BI_TAB.setorComercial },
-  { slug: 'financeiro', label: 'Financeiro', permission: GERENCIAL_BI_TAB.setorFinanceiro },
+  /** Setor próprio do módulo Financeiro (não depende só da permissão de “BI gerencial”). */
+  { slug: 'financeiro', label: 'Financeiro', permission: 'module.financeiro.view' },
   { slug: 'operacao', label: 'Operação', permission: GERENCIAL_BI_TAB.setorOperacao },
 ];
 
@@ -20,13 +21,13 @@ export type GerencialComercialPanelDef = {
   permission: string;
 };
 
-/** Abas do setor Financeiro (BI). */
+/** Abas do setor Financeiro no hub Gerencial (telas do módulo financeiro). */
 export const GERENCIAL_FINANCEIRO_PANELS: GerencialComercialPanelDef[] = [
-  { slug: 'bi-inicial', label: 'Financeiro Inicial', permission: GERENCIAL_BI_TAB.setorFinanceiro },
+  { slug: 'bi-inicial', label: 'Financeiro Inicial', permission: 'module.financeiro.view' },
   {
     slug: 'tesouraria-fluxo',
     label: 'Tesouraria e Fluxo de Caixa',
-    permission: GERENCIAL_BI_TAB.setorFinanceiro,
+    permission: 'module.financeiro.view',
   },
 ];
 
@@ -61,7 +62,7 @@ export const GERENCIAL_COMERCIAL_PANELS: GerencialComercialPanelDef[] = [
     permission: GERENCIAL_BI_TAB.carteiraRenovacao,
   },
   { slug: 'performance-vendas', label: 'Performance de vendas', permission: GERENCIAL_BI_TAB.funil },
-  { slug: 'sprint-incentivos', label: 'Sprint & incentivos', permission: GERENCIAL_BI_TAB.sprint },
+  { slug: 'sprint-incentivos', label: 'Campanhas & Incentivos', permission: GERENCIAL_BI_TAB.sprint },
   { slug: 'metas-performance', label: 'Metas & performance', permission: GERENCIAL_BI_TAB.metas },
   {
     slug: 'simulador-metas-vendedoras',

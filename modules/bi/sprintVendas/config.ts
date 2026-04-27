@@ -1,5 +1,5 @@
 /**
- * BI Sprint de Vendas & Incentivos (schema `bi`, Neon).
+ * BI Campanhas & Incentivos (schema `bi`, Neon).
  * Nomes de views ficam só aqui; a UI usa rótulos executivos.
  */
 
@@ -26,7 +26,7 @@ export const SPRINT_KPI_SLOTS = [
   { key: "premios_ja_garantidos", label: "Prêmios já garantidos", format: "currency" as const },
   { key: "percentual_conclusao_meta", label: "% conclusão da meta", format: "percent" as const },
   { key: "meta_diaria_padrao", label: "Meta diária (padrão)", format: "currency" as const },
-  { key: "alvo_diario_recuperacao", label: "Alvo diário (recuperação)", format: "currency" as const },
+  { key: "alvo_diario_recuperacao", label: "Meta Diária (recuperação)", format: "currency" as const },
   { key: "meta_semana_alvo", label: "Meta da semana (alvo)", format: "currency" as const },
   { key: "gap_diario", label: "Gap diário (déficit)", format: "currency" as const },
 ] as const;

@@ -608,7 +608,7 @@ const Settings: React.FC = () => {
                                 ))}
                               </select>
                               <p className="text-[11px] text-slate-500">
-                                Se definida, o usuário só enxerga dados dessa vendedora nos painéis de comissões, funil e sprint.
+                                Se definida, o usuário só enxerga dados dessa vendedora nos painéis de comissões, funil e campanhas & incentivos.
                               </p>
                           </div>
                           <div className="md:col-span-2 lg:col-span-1 flex items-end">

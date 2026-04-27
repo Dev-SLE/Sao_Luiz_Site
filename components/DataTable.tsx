@@ -702,36 +702,59 @@ const DataTable: React.FC<Props> = ({ data, onNoteClick, title, isPendencyView =
   };
 
   const availableUnits = useMemo(() => {
-    // During global search, allow searching any unit found in fullData
-    const sourceForUnits = shouldUseLocalPagination
-      ? (allViewData ?? [])
-      : globalSearch.trim().length > 0
-        ? fullData
-        : data;
-    const units = new Set(sourceForUnits.map(d => d.ENTREGA).filter(Boolean));
-    return Array.from(units).sort();
+    const units = new Set<string>();
+    const addFrom = (rows: CteData[]) => {
+      for (const d of rows) {
+        const e = String(d.ENTREGA || '').trim();
+        if (e) units.add(e);
+      }
+    };
+    if (shouldUseLocalPagination) {
+      addFrom(allViewData ?? []);
+    } else if (globalSearch.trim().length > 0) {
+      addFrom(fullData);
+    } else {
+      addFrom(data);
+      // Com paginação no servidor, o dropdown deve listar unidades do universo do dashboard (fullData), não só da página atual.
+      if (fullData.length > 0) addFrom(fullData);
+    }
+    return Array.from(units).sort((a, b) => a.localeCompare(b, 'pt-BR'));
   }, [data, fullData, allViewData, shouldUseLocalPagination, globalSearch]);
 
   const availableAssignmentUnits = useMemo(() => {
-    const source = (shouldUseLocalPagination ? (allViewData ?? []) : data).map(withAssignmentOverride);
     const set = new Set<string>();
-    source.forEach((d) => {
-      if (d.ASSIGNMENT_AGENCY_UNIT) set.add(d.ASSIGNMENT_AGENCY_UNIT);
-      if (d.ENTREGA) set.add(d.ENTREGA);
-    });
-    return Array.from(set).sort();
-  }, [data, allViewData, shouldUseLocalPagination, assignmentOverrides]);
+    const addFrom = (rows: CteData[]) => {
+      rows.map(withAssignmentOverride).forEach((d) => {
+        const au = String(d.ASSIGNMENT_AGENCY_UNIT || '').trim();
+        const en = String(d.ENTREGA || '').trim();
+        if (au) set.add(au);
+        if (en) set.add(en);
+      });
+    };
+    addFrom(shouldUseLocalPagination ? (allViewData ?? []) : data);
+    if (!shouldUseLocalPagination && globalSearch.trim().length === 0 && fullData.length > 0) {
+      addFrom(fullData);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [data, fullData, allViewData, shouldUseLocalPagination, globalSearch, assignmentOverrides]);
 
   const availableAssignmentUsers = useMemo(() => {
     const set = new Set<string>();
     users.forEach((u) => {
       if (u.username) set.add(u.username);
     });
-    (shouldUseLocalPagination ? (allViewData ?? []) : data).map(withAssignmentOverride).forEach((d) => {
-      if (d.ASSIGNED_USERNAME) set.add(d.ASSIGNED_USERNAME);
-    });
-    return Array.from(set).sort();
-  }, [users, data, allViewData, shouldUseLocalPagination, assignmentOverrides]);
+    const addAssignees = (rows: CteData[]) => {
+      rows.map(withAssignmentOverride).forEach((d) => {
+        const u = String(d.ASSIGNED_USERNAME || '').trim();
+        if (u) set.add(u);
+      });
+    };
+    addAssignees(shouldUseLocalPagination ? (allViewData ?? []) : data);
+    if (!shouldUseLocalPagination && globalSearch.trim().length === 0 && fullData.length > 0) {
+      addAssignees(fullData);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [users, data, fullData, allViewData, shouldUseLocalPagination, globalSearch, assignmentOverrides]);
 
   const applyBulkAssignment = async () => {
     if (bulkSelectedItems.length === 0) return;

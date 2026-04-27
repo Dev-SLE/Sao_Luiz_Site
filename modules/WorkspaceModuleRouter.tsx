@@ -15,6 +15,7 @@ import { FinanceiroLayout } from '@/modules/financeiro/FinanceiroLayout';
 import { FinanceiroModule } from '@/modules/financeiro/FinanceiroModule';
 import { PatrimonioLayout } from '@/modules/patrimonio/PatrimonioLayout';
 import { PatrimonioModule } from '@/modules/patrimonio/PatrimonioModule';
+import { WorkspacePermissionsBootstrap } from '@/components/workspace/WorkspacePermissionsBootstrap';
 
 const HUB_MODULES = new Set([
   'manifestos',
@@ -52,55 +53,73 @@ export function WorkspaceModuleRouter({
   if (m === 'operacional') {
     return (
       <OperacionalLayout pathname={pathname}>
-        <OperacionalModule pathname={pathname} onNoteClick={onNoteClick} tracking={tracking} />
+        <WorkspacePermissionsBootstrap>
+          <OperacionalModule pathname={pathname} onNoteClick={onNoteClick} tracking={tracking} />
+        </WorkspacePermissionsBootstrap>
       </OperacionalLayout>
     );
   }
   if (m === 'crm') {
     return (
       <CrmLayout pathname={pathname}>
-        <CrmModule
-          pathname={pathname}
-          selectedCrmLeadId={selectedCrmLeadId}
-          setSelectedCrmLeadId={setSelectedCrmLeadId}
-          navigateToPage={navigateToPage}
-          onOpenTracking={onOpenTracking}
-        />
+        <WorkspacePermissionsBootstrap>
+          <CrmModule
+            pathname={pathname}
+            selectedCrmLeadId={selectedCrmLeadId}
+            setSelectedCrmLeadId={setSelectedCrmLeadId}
+            navigateToPage={navigateToPage}
+            onOpenTracking={onOpenTracking}
+          />
+        </WorkspacePermissionsBootstrap>
       </CrmLayout>
     );
   }
   if (m === 'comercial') {
     return (
       <ComercialLayout pathname={pathname}>
-        <ComercialModule pathname={pathname} />
+        <WorkspacePermissionsBootstrap>
+          <ComercialModule pathname={pathname} />
+        </WorkspacePermissionsBootstrap>
       </ComercialLayout>
     );
   }
   if (m === 'financeiro') {
     return (
       <FinanceiroLayout pathname={pathname}>
-        <FinanceiroModule pathname={pathname} />
+        <WorkspacePermissionsBootstrap>
+          <FinanceiroModule pathname={pathname} />
+        </WorkspacePermissionsBootstrap>
       </FinanceiroLayout>
     );
   }
   if (m === 'patrimonio') {
     return (
       <PatrimonioLayout pathname={pathname}>
-        <PatrimonioModule pathname={pathname} />
+        <WorkspacePermissionsBootstrap>
+          <PatrimonioModule pathname={pathname} />
+        </WorkspacePermissionsBootstrap>
       </PatrimonioLayout>
     );
   }
   if (HUB_MODULES.has(m)) {
     return (
       <HubLayout moduleKey={m} pathname={pathname}>
-        <WorkspaceHubModule pathname={pathname} moduleKey={m} />
+        {m === 'gerencial' ? (
+          <WorkspacePermissionsBootstrap>
+            <WorkspaceHubModule pathname={pathname} moduleKey={m} />
+          </WorkspacePermissionsBootstrap>
+        ) : (
+          <WorkspaceHubModule pathname={pathname} moduleKey={m} />
+        )}
       </HubLayout>
     );
   }
 
   return (
     <OperacionalLayout pathname={pathname}>
-      <OperacionalModule pathname={pathname} onNoteClick={onNoteClick} tracking={tracking} />
+      <WorkspacePermissionsBootstrap>
+        <OperacionalModule pathname={pathname} onNoteClick={onNoteClick} tracking={tracking} />
+      </WorkspacePermissionsBootstrap>
     </OperacionalLayout>
   );
 }

@@ -3,7 +3,7 @@ import { can, getSessionContext, type SessionContext } from "@/lib/server/author
 import { isAdminSuperRole } from "@/lib/adminSuperRoles";
 import { GERENCIAL_BI_TAB } from "@/modules/gerencial/permissions";
 
-/** Setor Financeiro no Gerencial ou módulo hub legado `module.financeiro.view`. */
+/** Painéis financeiros no hub Gerencial: `module.financeiro.view` ou compat `tab.gerencial.setor.financeiro.view`. */
 function canReadFinanceiroBi(session: SessionContext): boolean {
   return can(session, GERENCIAL_BI_TAB.setorFinanceiro) || can(session, "module.financeiro.view");
 }
