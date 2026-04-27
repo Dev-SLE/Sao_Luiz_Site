@@ -25,6 +25,34 @@ function pad2(n: number) {
   return String(n).padStart(2, "0");
 }
 
+function isRetryableIoError(err: unknown): boolean {
+  const m = String((err as any)?.message || err || "").toLowerCase();
+  return (
+    m.includes("timeout") ||
+    m.includes("timed out") ||
+    m.includes("terminated") ||
+    m.includes("aborted") ||
+    m.includes("socket hang") ||
+    m.includes("econnreset") ||
+    m.includes("etimedout") ||
+    m.includes("eai_again")
+  );
+}
+
+async function uploadFileToSharePointWithRetry(args: Parameters<typeof uploadFileToSharePoint>[0]) {
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      return await uploadFileToSharePoint(args);
+    } catch (e) {
+      lastErr = e;
+      if (attempt >= 3 || !isRetryableIoError(e)) throw e;
+      await new Promise((r) => setTimeout(r, 450 * attempt));
+    }
+  }
+  throw lastErr;
+}
+
 function mapWaTypeToMediaType(waType: string): string {
   const t = String(waType || "").toLowerCase();
   if (["image", "audio", "video", "document", "sticker"].includes(t)) return t;
@@ -687,11 +715,6 @@ export async function ingestMetaInboundMedia(args: {
     let mime = downloaded.mimeType;
     let fname = safeMediaString(block?.filename) || downloaded.suggestedName;
 
-    const maxB = maxUploadBytesForMediaType(settings, mediaType);
-    if (buffer.length > maxB) {
-      await finalizeMediaFailed(args.pool, rowId, `arquivo_acima_do_limite_${maxB}`);
-      return;
-    }
     if (!isMimeAllowedForMediaType(settings, mediaType, mime)) {
       await finalizeMediaFailed(args.pool, rowId, `mime_nao_permitido_${mime}`);
       return;
@@ -713,8 +736,14 @@ export async function ingestMetaInboundMedia(args: {
       fname = tr.fileName;
     }
 
+    const maxB = maxUploadBytesForMediaType(settings, mediaType);
+    if (buffer.length > maxB) {
+      await finalizeMediaFailed(args.pool, rowId, `arquivo_acima_do_limite_${maxB}`);
+      return;
+    }
+
     const now = new Date();
-    const fileRow = await uploadFileToSharePoint({
+    const fileRow = await uploadFileToSharePointWithRetry({
       pool: args.pool,
       module: "crm",
       entity: "whatsapp_media",
@@ -923,11 +952,6 @@ export async function ingestEvolutionInboundMedia(args: {
         });
       }
 
-      const maxB = maxUploadBytesForMediaType(settings, effMediaType);
-      if (buffer.length > maxB) {
-        await finalizeMediaFailed(args.pool, rowId, `size:arquivo_acima_do_limite_${maxB}`);
-        continue;
-      }
       if (!isMimeAllowedForMediaType(settings, effMediaType, mime)) {
         await finalizeMediaFailed(args.pool, rowId, `mime:mime_nao_permitido_${mime}`);
         continue;
@@ -949,8 +973,14 @@ export async function ingestEvolutionInboundMedia(args: {
         fname = tr.fileName;
       }
 
+      const maxB = maxUploadBytesForMediaType(settings, effMediaType);
+      if (buffer.length > maxB) {
+        await finalizeMediaFailed(args.pool, rowId, `size:arquivo_acima_do_limite_${maxB}`);
+        continue;
+      }
+
       const now = new Date();
-      const fileRow = await uploadFileToSharePoint({
+      const fileRow = await uploadFileToSharePointWithRetry({
         pool: args.pool,
         module: "crm",
         entity: "whatsapp_media",

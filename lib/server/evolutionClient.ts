@@ -6,6 +6,7 @@
 import {
   evolutionExternalFetch,
   evolutionIntegrationLog,
+  isEvolutionNetworkError,
   normalizeEvolutionServerUrl,
 } from "./evolutionUrl";
 import { crmEvolutionMediaDebugEnabled } from "./crmEvolutionDebug";
@@ -360,9 +361,27 @@ export async function evolutionGetBase64FromMediaMessage(args: {
   }
 
   let lastErr = "evolution_get_base64_failed";
+  const timeoutMs = Math.min(
+    180_000,
+    Math.max(20_000, Number.parseInt(String(process.env.CRM_EVOLUTION_GET_BASE64_TIMEOUT_MS || "70000"), 10) || 70_000)
+  );
+
+  const shouldRetry = (err: string): boolean => {
+    const e = String(err || "").toLowerCase();
+    return (
+      !e ||
+      e === "resposta_sem_base64" ||
+      e === "base64_invalido" ||
+      isEvolutionNetworkError(e) ||
+      e.includes("timeout") ||
+      e.includes("terminated") ||
+      e.includes("aborted") ||
+      e.includes("message is not of the media type")
+    );
+  };
 
   for (const strat of strategies) {
-    for (let attempt = 1; attempt <= 2; attempt++) {
+    for (let attempt = 1; attempt <= 4; attempt++) {
       try {
         const resp = await evolutionExternalFetch(url, {
           method: "POST",
@@ -372,7 +391,7 @@ export async function evolutionGetBase64FromMediaMessage(args: {
             accept: "application/json",
           },
           body: JSON.stringify(strat.payload),
-        });
+        }, { networkRetries: 1, timeoutMs });
         const json = (await resp.json().catch(() => ({}))) as any;
         if (!resp.ok) {
           const msg = json?.response?.message || json?.message || json?.error || `HTTP ${resp.status}`;
@@ -384,7 +403,7 @@ export async function evolutionGetBase64FromMediaMessage(args: {
             httpStatus: resp.status,
             error: flat.slice(0, 400),
           });
-          if (attempt < 2) await new Promise((r) => setTimeout(r, 350 * attempt));
+          if (attempt < 4 && shouldRetry(flat)) await new Promise((r) => setTimeout(r, 500 * attempt));
           continue;
         }
         const raw =
@@ -401,7 +420,7 @@ export async function evolutionGetBase64FromMediaMessage(args: {
           null;
         if (typeof raw !== "string" || raw.length < 8) {
           lastErr = "resposta_sem_base64";
-          if (attempt < 2) await new Promise((r) => setTimeout(r, 350 * attempt));
+          if (attempt < 4) await new Promise((r) => setTimeout(r, 500 * attempt));
           continue;
         }
         let b64 = raw.trim();
@@ -416,7 +435,7 @@ export async function evolutionGetBase64FromMediaMessage(args: {
         const buffer = Buffer.from(b64, "base64");
         if (!buffer.length) {
           lastErr = "base64_invalido";
-          if (attempt < 2) await new Promise((r) => setTimeout(r, 350 * attempt));
+          if (attempt < 4) await new Promise((r) => setTimeout(r, 500 * attempt));
           continue;
         }
         evolutionIntegrationLog("getBase64_ok", {
@@ -433,7 +452,7 @@ export async function evolutionGetBase64FromMediaMessage(args: {
           httpStatus: 0,
           error: lastErr.slice(0, 400),
         });
-        if (attempt < 2) await new Promise((r) => setTimeout(r, 350 * attempt));
+        if (attempt < 4 && shouldRetry(lastErr)) await new Promise((r) => setTimeout(r, 500 * attempt));
       }
     }
   }

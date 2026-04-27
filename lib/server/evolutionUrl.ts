@@ -2,11 +2,20 @@
  * URL e timeouts para chamadas HTTP à Evolution API a partir do servidor (ex.: Vercel).
  * Sem protocolo explícito, assume https:// (evita cair na porta 80 por engano).
  */
-export const EVOLUTION_HTTP_TIMEOUT_MS = 25_000;
+function envPositiveInt(name: string, fallback: number): number {
+  const raw = String(process.env[name] || "").trim();
+  const n = Number.parseInt(raw, 10);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return n;
+}
+
+export const EVOLUTION_HTTP_TIMEOUT_MS = envPositiveInt("EVOLUTION_HTTP_TIMEOUT_MS", 25_000);
 
 export type EvolutionFetchOptions = {
   /** Retentativas apenas para GET/HEAD em falhas de rede (não aplica a POST). */
   networkRetries?: number;
+  /** Timeout desta chamada específica (ms), com fallback global. */
+  timeoutMs?: number;
 };
 
 /** Log JSON numa linha (Vercel / aggregators). Não inclua segredos em `fields`. */
@@ -48,15 +57,19 @@ export async function evolutionExternalFetch(
   options?: EvolutionFetchOptions
 ): Promise<Response> {
   const method = (init.method || "GET").toUpperCase();
+  const retriesOpt = options?.networkRetries;
   const maxNetworkRetries =
-    method === "GET" || method === "HEAD"
-      ? Math.min(3, Math.max(0, options?.networkRetries ?? 2))
-      : 0;
+    retriesOpt != null
+      ? Math.min(4, Math.max(0, retriesOpt))
+      : method === "GET" || method === "HEAD"
+        ? 2
+        : 0;
+  const timeoutMs = Math.min(180_000, Math.max(5_000, Number(options?.timeoutMs || EVOLUTION_HTTP_TIMEOUT_MS)));
 
   let lastErr: unknown;
   for (let attempt = 0; attempt <= maxNetworkRetries; attempt++) {
     try {
-      const signal = init.signal ?? AbortSignal.timeout(EVOLUTION_HTTP_TIMEOUT_MS);
+      const signal = init.signal ?? AbortSignal.timeout(timeoutMs);
       return await fetch(url, { ...init, signal });
     } catch (e) {
       lastErr = e;
