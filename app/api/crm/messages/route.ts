@@ -416,25 +416,47 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "conversationId obrigatório" }, { status: 400 });
     }
 
-    const result = await pool.query(
-      `
-        SELECT
-          m.id,
-          m.sender_type,
-          m.provider,
-          m.body,
-          m.metadata,
-          m.created_at,
-          c.channel
-        FROM pendencias.crm_messages m
-        JOIN pendencias.crm_conversations c ON c.id = m.conversation_id
-        WHERE m.conversation_id = $1
-          AND (m.metadata->>'update_fallback' IS DISTINCT FROM 'true')
-        ORDER BY m.created_at ASC
-        LIMIT 500
-      `,
-      [conversationId]
-    );
+    const loadConversationMessages = async (includeUpdateFallback: boolean) => {
+      const whereFallback = includeUpdateFallback
+        ? ""
+        : "AND (m.metadata->>'update_fallback' IS DISTINCT FROM 'true')";
+      return pool.query(
+        `
+          SELECT
+            m.id,
+            m.sender_type,
+            m.provider,
+            m.body,
+            m.metadata,
+            m.created_at,
+            c.channel
+          FROM pendencias.crm_messages m
+          JOIN pendencias.crm_conversations c ON c.id = m.conversation_id
+          WHERE m.conversation_id = $1
+            ${whereFallback}
+          ORDER BY m.created_at ASC
+          LIMIT 500
+        `,
+        [conversationId]
+      );
+    };
+
+    let result = await loadConversationMessages(false);
+    // Fallback para conversas legadas: algumas podem ter tudo marcado com `update_fallback=true`.
+    if ((result.rows || []).length === 0) {
+      const anyMessage = await pool.query(
+        `
+          SELECT 1
+          FROM pendencias.crm_messages
+          WHERE conversation_id = $1
+          LIMIT 1
+        `,
+        [conversationId]
+      );
+      if ((anyMessage.rows || []).length > 0) {
+        result = await loadConversationMessages(true);
+      }
+    }
 
     const convInfo = await pool.query(
       `
