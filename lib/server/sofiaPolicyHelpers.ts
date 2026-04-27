@@ -16,6 +16,8 @@ export type SofiaAiActionsAllowed = {
   suggestFunnelMove: boolean;
   autoUpdateTopic: boolean;
   runInboundClassification: boolean;
+  /** Vincular CTE ao lead após resposta/classificação da Sofia (não usa mais regex só no webhook). */
+  autoLinkCteFromConversation: boolean;
 };
 
 export const DEFAULT_AI_ACTIONS_ALLOWED: SofiaAiActionsAllowed = {
@@ -28,6 +30,7 @@ export const DEFAULT_AI_ACTIONS_ALLOWED: SofiaAiActionsAllowed = {
   suggestFunnelMove: true,
   autoUpdateTopic: false,
   runInboundClassification: false,
+  autoLinkCteFromConversation: true,
 };
 
 export function parseAiActionsAllowed(raw: unknown): SofiaAiActionsAllowed {
@@ -45,6 +48,7 @@ export function parseAiActionsAllowed(raw: unknown): SofiaAiActionsAllowed {
       "suggestFunnelMove",
       "autoUpdateTopic",
       "runInboundClassification",
+      "autoLinkCteFromConversation",
     ] as const
   ).forEach((k) => {
     if (typeof o[k] === "boolean") base[k] = o[k];

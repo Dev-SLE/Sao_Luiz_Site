@@ -32,6 +32,7 @@ import { useAuth } from '../context/AuthContext';
 import { authClient } from '../lib/auth';
 import { AppConfirmModal, AppMessageModal, type AppMessageVariant } from './AppOverlays';
 import { CrmMessageAttachments, type CrmChatAttachment } from './crm/CrmMessageAttachments';
+import { WaDeliveryTicks } from './crm/WaDeliveryTicks';
 
 type Channel = 'WHATSAPP' | 'IA' | 'INTERNO';
 
@@ -60,6 +61,8 @@ interface ConversationSummary {
   cte?: string | null;
   leadId?: string;
   lastMessage: string;
+  /** Última mensagem outbound: estado de entrega (lista de conversas). */
+  lastOutboundDelivery?: 'pending' | 'sent' | 'delivered' | 'read' | 'failed' | 'received' | null;
   lastAt: string;
   unread: number;
   channel: Channel;
@@ -1773,7 +1776,10 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                     <span className={clsx('truncate text-xs text-slate-900', hasUnread ? 'font-extrabold' : 'font-semibold')}>
                       {conv.leadName}
                     </span>
-                    <span className="text-[10px] text-slate-600 whitespace-nowrap">
+                    <span className="flex items-center gap-1 text-[10px] text-slate-600 whitespace-nowrap">
+                      {conv.lastOutboundDelivery ? (
+                        <WaDeliveryTicks status={conv.lastOutboundDelivery} className="scale-90 origin-right" />
+                      ) : null}
                       {conv.lastAt}
                     </span>
                   </div>
@@ -2087,21 +2093,15 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
                           excluir
                         </button>
                       )}
-                      <span className="text-[9px]">
-                        {m.status === 'read'
-                          ? 'Lida'
-                          : m.status === 'delivered'
-                          ? 'Entregue'
-                          : m.status === 'sent'
-                          ? 'Enviada'
-                          : m.status === 'received'
-                          ? 'Recebida'
-                          : m.status === 'failed'
-                          ? 'Falhou'
-                          : m.status === 'pending'
-                          ? 'Enviando'
-                          : ''}
-                      </span>
+                      {m.from !== 'CLIENTE' ? (
+                        <WaDeliveryTicks
+                          status={m.status || ''}
+                          variant={isMe ? 'onDark' : 'default'}
+                          className="opacity-95"
+                        />
+                      ) : (
+                        <WaDeliveryTicks status="received" variant={isMe ? 'onDark' : 'default'} className="opacity-80" />
+                      )}
                       <span
                         className={clsx(
                           'px-1 py-0.5 rounded-full border text-[9px]',

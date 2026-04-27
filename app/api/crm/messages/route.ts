@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { NextResponse } from "next/server";
+import { computeCrmOutboundDeliveryStatus } from "../../../../lib/server/crmMessageDeliveryStatus";
 import { getPool } from "../../../../lib/server/db";
 import { ensureCrmSchemaTables } from "../../../../lib/server/ensureSchema";
 import {
@@ -537,42 +538,12 @@ export async function GET(req: Request) {
 
     const messages = (result.rows || []).map((r: any) => {
       const meta = safeJsonParse(r.metadata);
-      const outbound = meta?.outbound_whatsapp;
       const senderUpper = String(r.sender_type || "").toUpperCase();
-      const raw = String(outbound?.status || "").trim().toLowerCase();
-      const delivered =
-        outbound?.delivered === true ||
-        outbound?.delivered === "true" ||
-        raw === "delivered" ||
-        raw === "read" ||
-        raw === "played";
-      const isFailedLike = raw === "failed" || raw === "error";
-      const attemptedOutbound =
-        outbound?.attempted === true || outbound?.attempted === "true";
-      const providerUpper = String(r.provider || "").toUpperCase();
-      const fromMeMirror =
-        meta?.from_me === true || String(meta?.from_me || "").toLowerCase() === "true";
-      /** Saída espelhada do WhatsApp Web (Evolution) não passa por POST /crm/messages — não tem `outbound_whatsapp.attempted`. */
-      const mirroredEvolutionOutbound =
-        (senderUpper === "AGENT" || senderUpper === "IA") &&
-        providerUpper === "EVOLUTION" &&
-        !attemptedOutbound &&
-        fromMeMirror;
-      /** Não priorizar `status: "failed"` legado se `delivered` já for true (merge/json antigo). */
-      const statusForUi =
-        senderUpper === "CLIENT"
-          ? "received"
-          : delivered
-            ? raw === "read" || raw === "played"
-              ? "read"
-              : "delivered"
-            : isFailedLike
-              ? "failed"
-              : raw === "sent"
-                ? "sent"
-                : mirroredEvolutionOutbound
-                  ? "sent"
-                  : "pending";
+      const statusForUi = computeCrmOutboundDeliveryStatus({
+        sender_type: senderUpper,
+        provider: r.provider,
+        metadata: meta,
+      });
       return {
       metadata: meta,
       id: r.id as string,

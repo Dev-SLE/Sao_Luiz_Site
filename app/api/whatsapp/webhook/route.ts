@@ -23,6 +23,8 @@ import {
   parseAiActionsAllowed,
   parseFunnelSlaRules,
 } from "../../../../lib/server/sofiaPolicyHelpers";
+import { extractCteFromText } from "../../../../lib/server/crmCteExtract";
+import { persistSofiaLinkedCteAndInboundRoute } from "../../../../lib/server/sofiaLeadCteLink";
 
 export const runtime = "nodejs";
 /** Download Meta + upload SharePoint precisa completar antes do fim da invocação (evita mídia presa em DOWNLOADING na Vercel). */
@@ -86,16 +88,6 @@ function buildAttachmentMeta(message: any) {
 function extractContextMessageId(message: any): string | null {
   const id = String(message?.context?.id || "").trim();
   return id || null;
-}
-
-function extractCteFromText(text: string): string | null {
-  const raw = String(text || "");
-  if (/^\s*\d{3,12}\s*$/.test(raw)) return raw.trim();
-  const longDigits = raw.match(/\b\d{5,}\b/);
-  if (longDigits) return longDigits[0];
-  const cteHint = raw.match(/\bcte\b[^0-9]{0,10}(\d{3,12})\b/i);
-  if (cteHint?.[1]) return cteHint[1];
-  return null;
 }
 
 function parseWhatsappProfileName(value: any, from: string) {
@@ -498,12 +490,13 @@ async function runInboundClassification(
     topic: string | null | undefined;
     provider?: string | null;
     modelName?: string | null;
+    acts: ReturnType<typeof parseAiActionsAllowed>;
   }
 ) {
   const classifyPrompt = [
     "Classifique a mensagem para operação de CRM logístico.",
     "Responda APENAS JSON válido com chaves:",
-    '{ "topic": "RASTREIO|COTACAO|FINANCEIRO|OCORRENCIA|GERAL", "priority": "ALTA|MEDIA|BAIXA", "summary": "texto curto", "confidence": 0-100 }',
+    '{ "topic": "RASTREIO|COTACAO|FINANCEIRO|OCORRENCIA|GERAL", "priority": "ALTA|MEDIA|BAIXA", "summary": "texto curto", "confidence": 0-100, "identifiedCte": "somente dígitos do CTE se o cliente informou claramente; senão string vazia" }',
     "Não inclua markdown, comentários ou texto fora do JSON.",
     `Mensagem: ${args.text}`,
     `Tema atual: ${String(args.topic || "GERAL")}`,
@@ -521,14 +514,55 @@ async function runInboundClassification(
     summary: String(parsed?.summary || "").trim(),
     confidence: Number(parsed?.confidence ?? 0),
   };
-  await pool.query(
-    `
+
+  const leadRow = await pool.query(
+    `SELECT title, cte_number FROM pendencias.crm_leads WHERE id = $1::uuid`,
+    [args.leadId]
+  );
+  const leadTitle = String(leadRow.rows?.[0]?.title || "");
+  const prevCte = String(leadRow.rows?.[0]?.cte_number || "").trim();
+
+  if (args.acts.definePriority && ["ALTA", "MEDIA", "BAIXA"].includes(classification.priority)) {
+    await pool.query(
+      `UPDATE pendencias.crm_leads SET priority = $2::text, updated_at = NOW() WHERE id = $1::uuid`,
+      [args.leadId, classification.priority]
+    );
+  }
+
+  if (args.acts.autoUpdateTopic && classification.topic) {
+    await pool.query(
+      `
       UPDATE pendencias.crm_conversations
       SET topic = $2::text, updated_at = NOW()
       WHERE id = $1::uuid
     `,
-    [args.conversationId, classification.topic]
-  );
+      [args.conversationId, classification.topic]
+    );
+  }
+
+  const topicForRoute = args.acts.autoUpdateTopic ? classification.topic : null;
+  const identifiedCte =
+    extractCteFromText(String(parsed?.identifiedCte ?? "")) || extractCteFromText(args.text);
+
+  if (args.acts.autoLinkCteFromConversation && identifiedCte) {
+    await persistSofiaLinkedCteAndInboundRoute(pool, {
+      leadId: args.leadId,
+      conversationId: args.conversationId,
+      combinedText: `${args.text}\n${String(parsed?.identifiedCte ?? "")}`,
+      leadTitle,
+      topicOverride: topicForRoute,
+    });
+  } else if (topicForRoute) {
+    await applyInboundRouting({
+      leadId: args.leadId,
+      conversationId: args.conversationId,
+      text: args.text,
+      title: leadTitle,
+      cte: prevCte || null,
+      topicOverride: topicForRoute,
+    });
+  }
+
   await pool.query(
     `
       INSERT INTO pendencias.crm_activities (lead_id, user_username, type, description, data, created_at)
@@ -616,7 +650,7 @@ export async function runWebhookSofiaAutoReply(
 
     const convInfoRes = await pool.query(
       `
-        SELECT c.status, c.topic, c.sla_breached_at, l.title, l.cte_number,
+        SELECT c.status, c.topic, c.sla_breached_at, l.title AS lead_title, l.cte_number,
                l.customer_status, l.agency_requested_at, l.agency_sla_minutes,
                c.status_entered_at
         FROM pendencias.crm_conversations c
@@ -651,6 +685,7 @@ export async function runWebhookSofiaAutoReply(
         topic: convInfo.topic,
         provider: s.ai_provider,
         modelName: s.model_name,
+        acts,
       });
       return;
     }
@@ -730,7 +765,7 @@ export async function runWebhookSofiaAutoReply(
     if (confidence < minConf) return;
 
     const prompt = buildSofiaOperationalPrompt({
-      customerName: convInfo.title,
+      customerName: convInfo.lead_title,
       cte: convInfo.cte_number,
       topic: convInfo.topic,
       responseTone: s.response_tone,
@@ -808,6 +843,21 @@ export async function runWebhookSofiaAutoReply(
       ]
     );
     await pool.query(`UPDATE pendencias.crm_conversations SET last_message_at = NOW() WHERE id = $1`, [conversationId]);
+
+    const aiWorked = normalizedReply.length > 0;
+    if (acts.autoLinkCteFromConversation && aiWorked) {
+      try {
+        await persistSofiaLinkedCteAndInboundRoute(pool, {
+          leadId,
+          conversationId,
+          combinedText: `${text}\n${outboundReply}`,
+          leadTitle: String(convInfo.lead_title || ""),
+        });
+      } catch (e) {
+        console.error("[whatsapp-webhook] persistSofiaLinkedCteAndInboundRoute", e);
+      }
+    }
+
     await pool.query(
       `
         INSERT INTO pendencias.crm_activities (lead_id, user_username, type, description, data, created_at)
@@ -1242,55 +1292,7 @@ export async function POST(req: Request) {
             [leadId, JSON.stringify({ from, message_type: message.type })]
           );
 
-          // 5) CTE no lead + reabertura de fluxo (novo envio / cliente que voltou após conclusão)
-          if (cteDetected) {
-            const prevLead = await pool.query(
-              `SELECT cte_number, customer_status FROM pendencias.crm_leads WHERE id = $1::uuid`,
-              [leadId]
-            );
-            const prevCte = String(prevLead.rows?.[0]?.cte_number || "").trim();
-            const newCte = String(cteDetected).trim();
-            const cs = String(prevLead.rows?.[0]?.customer_status || "").trim().toUpperCase();
-            const wasClosed =
-              cs === "CONCLUIDO" ||
-              cs === "PERDIDO" ||
-              cs.includes("CONCLU") ||
-              cs.includes("FINALIZ");
-            const newShipment = Boolean(prevCte && newCte && prevCte !== newCte);
-            const reopen = newShipment || (wasClosed && Boolean(newCte));
-
-            await pool.query(
-              `
-                UPDATE pendencias.crm_leads
-                SET
-                  cte_number = $1,
-                  customer_status = CASE WHEN $3::boolean THEN 'PENDENTE' ELSE customer_status END,
-                  updated_at = NOW()
-                WHERE id = $2::uuid
-              `,
-              [newCte, leadId, reopen]
-            );
-
-            if (reopen) {
-              try {
-                await pool.query(
-                  `
-                    INSERT INTO pendencias.crm_activities (lead_id, user_username, type, description, data, created_at)
-                    VALUES ($1::uuid, NULL, 'EVENT', $2, $3::jsonb, NOW())
-                  `,
-                  [
-                    leadId,
-                    newShipment
-                      ? "Novo CTE informado — fluxo reaberto para acompanhamento do envio."
-                      : "Cliente retornou após atendimento concluído — fluxo reaberto.",
-                    JSON.stringify({ previousCte: prevCte || null, newCte, customer_status_reset: true }),
-                  ]
-                );
-              } catch {
-                // noop
-              }
-            }
-          }
+          // 5) CTE no lead: apenas via Sofia (classificação / auto-resposta), não por regex no webhook.
 
           // 6) Roteamento: tópico + regras (estágio/atribuição) logo após lead + conversa + mensagem
           try {
@@ -1299,7 +1301,7 @@ export async function POST(req: Request) {
               conversationId,
               text,
               title: leadTitle,
-              cte: cteDetected,
+              cte: null,
             });
           } catch (e) {
             console.error("[whatsapp-webhook] applyInboundRouting:", e);

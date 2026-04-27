@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getPool } from "../../../../../lib/server/db";
 import { ensureCrmSchemaTables } from "../../../../../lib/server/ensureSchema";
 import { applyInboundRouting, resolveInboxDefaultAssignment } from "../../../../../lib/server/crmRouting";
+import { extractCteFromText } from "../../../../../lib/server/crmCteExtract";
 import { ensureDefaultPipelineAndFirstStage } from "../../../../../lib/server/crmDefaultPipeline";
 import {
   bodyTextFromEvolutionMessageTypeHint,
@@ -62,16 +63,6 @@ function preferEvolutionInboundBody(...parts: string[]): string {
 
 /** connection.update: log detalhado no máximo a cada 8s por instância. */
 const lastConnectionDetailLogAt = new Map<string, number>();
-
-function extractCteFromText(text: string): string | null {
-  const raw = String(text || "");
-  if (/^\s*\d{3,12}\s*$/.test(raw)) return raw.trim();
-  const longDigits = raw.match(/\b\d{5,}\b/);
-  if (longDigits) return longDigits[0];
-  const cteHint = raw.match(/\bcte\b[^0-9]{0,10}(\d{3,12})\b/i);
-  if (cteHint?.[1]) return cteHint[1];
-  return null;
-}
 
 function lastN(input: string, n: number) {
   const d = String(input || "").replace(/\D/g, "");
@@ -2312,17 +2303,6 @@ export async function POST(req: Request) {
         ]
       );
 
-      if (cteDetected) {
-        await pool.query(
-          `
-            UPDATE pendencias.crm_leads
-            SET cte_number = $1, updated_at = NOW()
-            WHERE id = $2::uuid
-          `,
-          [String(cteDetected).trim(), leadId]
-        );
-      }
-
       if (!isFromMe && isNewConversation) {
         try {
           await applyInboundRouting({
@@ -2330,7 +2310,7 @@ export async function POST(req: Request) {
             conversationId,
             text,
             title: leadTitle,
-            cte: cteDetected,
+            cte: null,
           });
         } catch (e) {
           console.error("[evolution-webhook] applyInboundRouting:", e);

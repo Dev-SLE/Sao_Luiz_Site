@@ -80,9 +80,12 @@ export async function resolveRoutingByRules(input: {
   title?: string | null;
   cte?: string | null;
   leadId?: string | null;
+  /** Tópico já definido por IA (classificação); senão usa heurística. */
+  topicOverride?: string | null;
 }) {
   const pool = getPool();
-  const topic = classifyLeadTopic(input);
+  const override = String(input.topicOverride || "").trim().toUpperCase();
+  const topic = override || classifyLeadTopic(input);
   const haystack = `${input.text || ""} ${input.title || ""} ${input.cte || ""}`.toLowerCase();
 
   const rulesRes = await pool.query(
@@ -321,7 +324,9 @@ async function resolveTopicStageId(leadId: string, topic: string): Promise<strin
   const stageNameByTopic: Record<string, string> = {
     RASTREIO: "Em busca de mercadorias",
     SUPORTE: "Ocorrências",
+    OCORRENCIA: "Ocorrências",
     COMERCIAL: "Aguardando atendimento",
+    COTACAO: "Aguardando atendimento",
     FINANCEIRO: "Aguardando atendimento",
     GERAL: "Aguardando atendimento",
   };
@@ -341,8 +346,9 @@ async function resolveTopicStageId(leadId: string, topic: string): Promise<strin
 
   let likePattern: string | null = null;
   if (topic === "RASTREIO") likePattern = "%busca%mercador%";
-  else if (topic === "SUPORTE") likePattern = "%ocorr%";
-  else if (topic === "COMERCIAL" || topic === "FINANCEIRO" || topic === "GERAL") likePattern = "%aguardando%atendimento%";
+  else if (topic === "SUPORTE" || topic === "OCORRENCIA") likePattern = "%ocorr%";
+  else if (topic === "COMERCIAL" || topic === "COTACAO" || topic === "FINANCEIRO" || topic === "GERAL")
+    likePattern = "%aguardando%atendimento%";
 
   if (likePattern) {
     const fuzzy = await pool.query(
@@ -371,6 +377,8 @@ export async function applyInboundRouting(input: {
   text?: string | null;
   title?: string | null;
   cte?: string | null;
+  /** Quando definido (ex.: classificação IA), evita sobrescrever o tópico com heurística simples. */
+  topicOverride?: string | null;
 }) {
   const pool = getPool();
   const convRes = await pool.query(
@@ -385,12 +393,14 @@ export async function applyInboundRouting(input: {
   const convCurrent = convRes.rows?.[0] || {};
   const hasPreAssignment =
     !!String(convCurrent.assigned_username || "").trim() || !!String(convCurrent.assigned_team_id || "").trim();
-  const topic = classifyLeadTopic(input);
+  const override = String(input.topicOverride || "").trim().toUpperCase();
+  const topic = override || classifyLeadTopic(input);
   const routing = await resolveRoutingByRules({
     text: input.text,
     title: input.title,
     cte: input.cte,
     leadId: input.leadId,
+    topicOverride: override || null,
   });
 
   await pool.query(
@@ -405,7 +415,7 @@ export async function applyInboundRouting(input: {
   const topicStageId = await resolveTopicStageId(input.leadId, topic);
   /** RASTREIO/SUPORTE: coluna operacional tem prioridade sobre regra que mande tudo para "Aguardando". */
   let stageToApply: string | null =
-    topic === "RASTREIO" || topic === "SUPORTE"
+    topic === "RASTREIO" || topic === "SUPORTE" || topic === "OCORRENCIA"
       ? topicStageId || routing.targetStageId || null
       : routing.targetStageId || topicStageId || null;
 

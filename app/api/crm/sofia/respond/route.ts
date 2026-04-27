@@ -20,6 +20,9 @@ import {
   parseAiActionsAllowed,
   parseFunnelSlaRules,
 } from "../../../../../lib/server/sofiaPolicyHelpers";
+import { extractCteFromText } from "../../../../../lib/server/crmCteExtract";
+import { persistSofiaLinkedCteAndInboundRoute } from "../../../../../lib/server/sofiaLeadCteLink";
+import { applyInboundRouting } from "../../../../../lib/server/crmRouting";
 
 export const runtime = "nodejs";
 
@@ -47,16 +50,6 @@ function suggestNextBestAction(ctx: {
   if (!ctx.hasCte) return "Solicitar CTE (ou NF + destino) para avançar a triagem.";
   if (String(ctx.topic || "").toUpperCase().includes("RASTRE")) return "Confirmar status do CTE e prazo estimado no próximo retorno.";
   return "Responder com contexto operacional e confirmar próximo passo com o cliente.";
-}
-
-function extractCteFromText(text: string): string | null {
-  const raw = String(text || "");
-  if (/^\s*\d{3,12}\s*$/.test(raw)) return raw.trim();
-  const longDigits = raw.match(/\b\d{5,}\b/);
-  if (longDigits) return longDigits[0];
-  const cteHint = raw.match(/\bcte\b[^0-9]{0,10}(\d{3,12})\b/i);
-  if (cteHint?.[1]) return cteHint[1];
-  return null;
 }
 
 async function lookupCteSummary(pool: any, cteInput: string | null | undefined) {
@@ -584,7 +577,7 @@ export async function POST(req: Request) {
       const classifyPrompt = [
         "Classifique a mensagem para operação de CRM logístico.",
         "Responda APENAS JSON válido com chaves:",
-        '{ "topic": "RASTREIO|COTACAO|FINANCEIRO|OCORRENCIA|GERAL", "priority": "ALTA|MEDIA|BAIXA", "summary": "texto curto", "confidence": 0-100, "suggestedStage": "opcional" }',
+        '{ "topic": "RASTREIO|COTACAO|FINANCEIRO|OCORRENCIA|GERAL", "priority": "ALTA|MEDIA|BAIXA", "summary": "texto curto", "confidence": 0-100, "suggestedStage": "opcional", "identifiedCte": "somente dígitos do CTE se o cliente informou claramente; senão string vazia" }',
         "Não inclua markdown, comentários ou texto fora do JSON.",
         `Mensagem: ${text}`,
         `Histórico resumido: ${buildCopilotSummary(transcript, 600)}`,
@@ -622,22 +615,37 @@ export async function POST(req: Request) {
             ? String(parsed.suggestedStage).trim()
             : null,
       };
-      if (!dryRun && actionsAllowed.autoUpdateTopic && classification.topic) {
-        await pool.query(
-          `
-            UPDATE pendencias.crm_conversations
-            SET topic = $2::text, updated_at = NOW()
-            WHERE id = $1::uuid
-          `,
-          [conversationId, classification.topic]
-        );
-        await pool.query(
-          `
-            INSERT INTO pendencias.crm_activities (lead_id, user_username, type, description, data, created_at)
-            VALUES ($1::uuid, NULL, 'EVENT', 'Sofia atualizou tema automaticamente (classificação).', $2::jsonb, NOW())
-          `,
-          [String(conv.lead_id), JSON.stringify({ conversationId, classification })]
-        );
+      if (!dryRun) {
+        const topicForRoute = actionsAllowed.autoUpdateTopic ? classification.topic : null;
+        const identifiedCte =
+          extractCteFromText(String(parsed?.identifiedCte ?? "")) || extractCteFromText(text);
+        const leadTitleForRoute = String(conv.title || "");
+
+        if (actionsAllowed.definePriority && ["ALTA", "MEDIA", "BAIXA"].includes(classification.priority)) {
+          await pool.query(
+            `UPDATE pendencias.crm_leads SET priority = $2::text, updated_at = NOW() WHERE id = $1::uuid`,
+            [String(conv.lead_id), classification.priority]
+          );
+        }
+
+        if (actionsAllowed.autoLinkCteFromConversation && identifiedCte) {
+          await persistSofiaLinkedCteAndInboundRoute(pool, {
+            leadId: String(conv.lead_id),
+            conversationId,
+            combinedText: `${text}\n${String(parsed?.identifiedCte ?? "")}`,
+            leadTitle: leadTitleForRoute,
+            topicOverride: topicForRoute,
+          });
+        } else if (topicForRoute) {
+          await applyInboundRouting({
+            leadId: String(conv.lead_id),
+            conversationId,
+            text,
+            title: leadTitleForRoute,
+            cte: String(conv.cte_number || "").trim() || null,
+            topicOverride: topicForRoute,
+          });
+        }
       }
       return NextResponse.json({
         suggestion: "",
@@ -826,6 +834,26 @@ export async function POST(req: Request) {
           : String(settings.handoff_message || "").trim();
       if (hoMsg) {
         suggestion = normalizeAiText(hoMsg, maxResponseChars);
+      }
+    }
+
+    if (
+      mode === "REPLY" &&
+      !dryRun &&
+      actionsAllowed.autoLinkCteFromConversation &&
+      aiGenerated &&
+      conv.lead_id
+    ) {
+      try {
+        await persistSofiaLinkedCteAndInboundRoute(pool, {
+          leadId: String(conv.lead_id),
+          conversationId,
+          combinedText: `${text}\n${suggestion}`,
+          leadTitle: String(conv.title || ""),
+          topicOverride: null,
+        });
+      } catch (e) {
+        console.error("[sofia/respond] persistSofiaLinkedCteAndInboundRoute", e);
       }
     }
 

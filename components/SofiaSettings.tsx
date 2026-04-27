@@ -12,6 +12,7 @@ type SofiaAiActionsState = {
   suggestFunnelMove: boolean;
   autoUpdateTopic: boolean;
   runInboundClassification: boolean;
+  autoLinkCteFromConversation: boolean;
 };
 
 type FunnelSlaRow = { stageKey: string; blockAiAutoReply: boolean; maxMinutes: string };
@@ -101,6 +102,7 @@ const defaultState: SofiaSettingsState = {
     suggestFunnelMove: true,
     autoUpdateTopic: false,
     runInboundClassification: false,
+    autoLinkCteFromConversation: true,
   },
   funnelSlaRules: [],
   minConfidence: 70,
@@ -881,6 +883,11 @@ const SofiaSettings: React.FC = () => {
                 ['suggestFunnelMove', 'Sugerir movimentação no funil', 'Permite incluir `suggestedStage` na classificação.'],
                 ['autoUpdateTopic', 'Atualizar tema automaticamente', 'Quando ativo, a classificação pode persistir tópico na conversa.'],
                 ['runInboundClassification', 'Classificar mensagens recebidas (WhatsApp)', 'Habilita classificação inbound em modo CLASSIFICACAO sem resposta ao cliente.'],
+                [
+                  'autoLinkCteFromConversation',
+                  'Vincular CTE ao lead (Sofia)',
+                  'Quando a IA identifica um CTE na conversa, grava no lead e reaplica roteamento/estágio. O webhook não grava mais CTE só por regex.',
+                ],
               ] as const
             ).map(([key, label, hint]) => (
               <label key={key} className="flex items-start gap-2 rounded-lg border border-slate-200 bg-white px-2 py-2">

@@ -5,6 +5,7 @@ import { classifyLeadTopic, pickAgentFromTeam, pickFallbackAgent, resolveRouting
 import { isAdminSuperRole } from "@/lib/adminSuperRoles";
 import { can, getSessionContext } from "../../../../lib/server/authorization";
 import { crmPhoneSuffixForTitle } from "../../../../lib/server/crmPhoneDisplay";
+import { computeCrmOutboundDeliveryStatus } from "../../../../lib/server/crmMessageDeliveryStatus";
 
 export const runtime = "nodejs";
 
@@ -186,7 +187,12 @@ export async function GET(req: Request) {
         JOIN pendencias.crm_leads l ON l.id = c.lead_id
         LEFT JOIN pendencias.crm_whatsapp_inboxes wi ON wi.id = c.whatsapp_inbox_id
         LEFT JOIN LATERAL (
-          SELECT m.body, m.created_at
+          SELECT
+            m.body,
+            m.created_at,
+            m.sender_type AS last_msg_sender_type,
+            m.provider AS last_msg_provider,
+            m.metadata AS last_msg_metadata
           FROM pendencias.crm_messages m
           WHERE m.conversation_id = c.id
           ORDER BY m.created_at DESC
@@ -263,6 +269,28 @@ export async function GET(req: Request) {
       const fallbackName = isGenericName
         ? `${inboxProvider === "EVOLUTION" ? "Contato Web" : "WhatsApp"}${displayPhone ? ` (${displayPhone})` : ` ${suffix}`}`
         : rawName;
+
+      let lastOutboundDelivery: "pending" | "sent" | "delivered" | "read" | "failed" | "received" | null = null;
+      const st = String(r.last_msg_sender_type || "").toUpperCase();
+      if (st && st !== "CLIENT") {
+        try {
+          const rawMeta = r.last_msg_metadata;
+          const metaParsed =
+            rawMeta && typeof rawMeta === "object"
+              ? rawMeta
+              : typeof rawMeta === "string"
+                ? JSON.parse(rawMeta)
+                : {};
+          lastOutboundDelivery = computeCrmOutboundDeliveryStatus({
+            sender_type: st,
+            provider: r.last_msg_provider,
+            metadata: metaParsed,
+          });
+        } catch {
+          lastOutboundDelivery = null;
+        }
+      }
+
       return {
         id: r.id as string,
         channel: channel as any,
@@ -301,6 +329,7 @@ export async function GET(req: Request) {
         aiSummary: r.ai_summary ? String(r.ai_summary) : "",
         aiSummaryUpdatedAt: r.ai_summary_updated_at as string | null,
         lastMessage: r.last_message_body ? String(r.last_message_body) : "Sem mensagens ainda.",
+        lastOutboundDelivery,
         lastAt,
         unread: Number(r.unread_count || 0),
         whatsappInboxId: r.whatsapp_inbox_id as string | null,
