@@ -12,11 +12,17 @@ function formatLastAt(d: Date | null | undefined) {
   if (!d) return "--";
   const now = new Date();
   const sameDay = d.toDateString() === now.toDateString();
-  if (sameDay) return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  if (sameDay) {
+    return d.toLocaleTimeString("pt-BR", {
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: "America/Sao_Paulo",
+    });
+  }
   const y = new Date(now);
   y.setDate(now.getDate() - 1);
   if (d.toDateString() === y.toDateString()) return "Ontem";
-  return d.toLocaleDateString("pt-BR");
+  return d.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
 }
 
 function parsePermissions(value: any): string[] {
@@ -140,7 +146,7 @@ export async function GET(req: Request) {
           c.routing_source,
           c.sla_due_at,
           c.sla_breached_at,
-          c.last_message_at,
+          c.last_message_at AS conversation_last_message_at,
           l.id AS lead_id,
           l.title AS lead_name,
           l.contact_phone,
@@ -173,7 +179,8 @@ export async function GET(req: Request) {
               COALESCE(l.contact_phone, l.contact_email, 'Sem contato')
             )
           ) AS last_message_body,
-          lm.created_at AS last_message_at,
+          lm.created_at AS latest_message_at,
+          COALESCE(lm.created_at, c.last_message_at) AS effective_last_message_at,
           COALESCE(unread.unread_count, 0) AS unread_count
         FROM pendencias.crm_conversations c
         JOIN pendencias.crm_leads l ON l.id = c.lead_id
@@ -241,7 +248,7 @@ export async function GET(req: Request) {
 
     const conversations = (result.rows || []).map((r: any) => {
       const channel = String(r.channel || "WHATSAPP");
-      const lastAt = formatLastAt(r.last_message_at ? new Date(r.last_message_at) : null);
+      const lastAt = formatLastAt(r.effective_last_message_at ? new Date(r.effective_last_message_at) : null);
       const rawName = String(r.lead_name || "").trim();
       const inboxProvider = String(r.inbox_provider || "").toUpperCase();
       const isGenericName =

@@ -1446,7 +1446,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
     let messagesPollId: number | null = null;
     const armMessagesPoll = () => {
       if (messagesPollId != null) window.clearInterval(messagesPollId);
-      const ms = document.hidden ? 22_000 : 7500;
+      const ms = document.hidden ? 22_000 : 4500;
       messagesPollId = window.setInterval(() => {
         void tick();
       }, ms);
@@ -1465,7 +1465,7 @@ const CrmChat: React.FC<Props> = ({ leadId, onOpenTracking }) => {
 
   useEffect(() => {
     const pollConversations = async () => {
-      if (document.hidden || conversationsFetchLock.current || conversationsPollInFlight.current) return;
+      if (conversationsFetchLock.current || conversationsPollInFlight.current) return;
       conversationsPollInFlight.current = true;
       try {
         const convResp = await authClient.getCrmConversations({
