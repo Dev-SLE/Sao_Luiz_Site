@@ -654,6 +654,10 @@ async function finalizeMediaStored(
 }
 
 async function finalizeMediaFailed(pool: Pool, rowId: string, err: string) {
+  console.warn("[crm-media] media_failed", {
+    rowId,
+    err: String(err || "").slice(0, 260),
+  });
   await pool.query(
     `
       UPDATE pendencias.crm_message_media
@@ -882,6 +886,13 @@ export async function ingestEvolutionInboundMedia(args: {
     }
 
     try {
+      console.info("[crm-media] evolution_media_attempt", {
+        messageId: args.messageId,
+        rowId,
+        effProto,
+        effMediaType,
+        ordinal: ordinal - 1,
+      });
       if (!remoteJid) {
         await finalizeMediaFailed(args.pool, rowId, "reachability:evolution_sem_remote_jid");
         continue;
@@ -933,6 +944,13 @@ export async function ingestEvolutionInboundMedia(args: {
         await finalizeMediaFailed(args.pool, rowId, `reachability:${b64?.error || "evolution_sem_base64"}`);
         continue;
       }
+      console.info("[crm-media] evolution_download_ok", {
+        messageId: args.messageId,
+        rowId,
+        mediaType: effMediaType,
+        bytes: b64.buffer.length,
+        mimeFromProvider: b64.mimeType ? String(b64.mimeType) : null,
+      });
       let buffer = b64.buffer;
       const mimeResolved = resolveEvolutionMime({
         mimeFromBase64: b64.mimeType,
@@ -1034,8 +1052,11 @@ export async function ingestEvolutionInboundMedia(args: {
       });
       console.info("[crm-media] evolution_stored", {
         messageId: args.messageId,
+        rowId,
         fileId: fileRow.id,
         mediaType: effMediaType,
+        bytes: buffer.length,
+        mime,
       });
     } catch (e: any) {
       console.warn("[crm-media] evolution_failed", { messageId: args.messageId, err: String(e?.message || e) });
