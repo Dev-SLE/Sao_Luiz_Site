@@ -342,18 +342,20 @@ export async function evolutionGetBase64FromMediaMessage(args: {
     return { buffer: null, mimeType: null, error: "evolution_url_ou_credenciais_ausentes" };
   }
   const url = `${base}/chat/getBase64FromMediaMessage/${encodeURIComponent(args.instanceName)}`;
-  const convertToMp4 = args.convertToMp4 === true;
   const key = args.message?.key;
   const inner = args.message?.message;
   const hasInner =
     inner && typeof inner === "object" && Object.keys(inner as object).filter((k) => k !== "messageContextInfo").length > 0;
 
-  const strategies: Array<{ name: string; payload: Record<string, unknown> }> = [];
+  /** Para vídeo, `convertToMp4: true` em todas as tentativas pode estourar tempo/CPU na Evolution; tentar sem MP4 primeiro. */
+  const convertVariants: boolean[] = args.convertToMp4 === true ? [false, true] : [false];
+
+  const strategies: Array<{ name: string; basePayload: Record<string, unknown> }> = [];
   if (key && typeof key === "object" && String((key as any).id || "").trim()) {
-    strategies.push({ name: "key_only_db", payload: { message: { key }, convertToMp4 } });
+    strategies.push({ name: "key_only_db", basePayload: { message: { key } } });
   }
   if (hasInner && key) {
-    strategies.push({ name: "webhook_envelope", payload: { message: { key, message: inner }, convertToMp4 } });
+    strategies.push({ name: "webhook_envelope", basePayload: { message: { key, message: inner } } });
   }
 
   if (!strategies.length) {
@@ -361,7 +363,7 @@ export async function evolutionGetBase64FromMediaMessage(args: {
   }
 
   let lastErr = "evolution_get_base64_failed";
-  const timeoutMs = Math.min(
+  const baseTimeoutMs = Math.min(
     180_000,
     Math.max(20_000, Number.parseInt(String(process.env.CRM_EVOLUTION_GET_BASE64_TIMEOUT_MS || "70000"), 10) || 70_000)
   );
@@ -381,7 +383,10 @@ export async function evolutionGetBase64FromMediaMessage(args: {
   };
 
   for (const strat of strategies) {
-    for (let attempt = 1; attempt <= 4; attempt++) {
+    for (const convertToMp4 of convertVariants) {
+      const timeoutMs = convertToMp4 ? Math.min(180_000, Math.floor(baseTimeoutMs * 1.35)) : baseTimeoutMs;
+      const payload = { ...strat.basePayload, convertToMp4 };
+      for (let attempt = 1; attempt <= 4; attempt++) {
       try {
         const resp = await evolutionExternalFetch(url, {
           method: "POST",
@@ -390,7 +395,7 @@ export async function evolutionGetBase64FromMediaMessage(args: {
             apikey: args.apiKey,
             accept: "application/json",
           },
-          body: JSON.stringify(strat.payload),
+          body: JSON.stringify(payload),
         }, { networkRetries: 1, timeoutMs });
         const json = (await resp.json().catch(() => ({}))) as any;
         if (!resp.ok) {
@@ -400,6 +405,7 @@ export async function evolutionGetBase64FromMediaMessage(args: {
           evolutionIntegrationLog("getBase64_failed", {
             instanceName: args.instanceName,
             strategy: strat.name,
+            convertToMp4,
             httpStatus: resp.status,
             error: flat.slice(0, 400),
           });
@@ -441,6 +447,7 @@ export async function evolutionGetBase64FromMediaMessage(args: {
         evolutionIntegrationLog("getBase64_ok", {
           instanceName: args.instanceName,
           strategy: strat.name,
+          convertToMp4,
           bytes: buffer.length,
         });
         return { buffer, mimeType: mime ? String(mime) : null };
@@ -449,10 +456,12 @@ export async function evolutionGetBase64FromMediaMessage(args: {
         evolutionIntegrationLog("getBase64_failed", {
           instanceName: args.instanceName,
           strategy: strat.name,
+          convertToMp4,
           httpStatus: 0,
           error: lastErr.slice(0, 400),
         });
         if (attempt < 4 && shouldRetry(lastErr)) await new Promise((r) => setTimeout(r, 500 * attempt));
+      }
       }
     }
   }
