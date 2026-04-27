@@ -2113,7 +2113,8 @@ export async function POST(req: Request) {
         const dup = await pool.query(
           `
             SELECT m.id, m.body, m.has_attachments,
-              (SELECT COUNT(*)::int FROM pendencias.crm_message_media mm WHERE mm.message_id = m.id) AS media_n
+              (SELECT COUNT(*)::int FROM pendencias.crm_message_media mm WHERE mm.message_id = m.id) AS media_n,
+              (SELECT COUNT(*)::int FROM pendencias.crm_message_media mm WHERE mm.message_id = m.id AND mm.processing_status = 'STORED') AS media_stored_n
             FROM pendencias.crm_messages m
             WHERE (m.provider = 'EVOLUTION' AND m.provider_message_id = $1)
                OR m.metadata->>'message_id' = $1
@@ -2127,6 +2128,7 @@ export async function POST(req: Request) {
           const existingId = String(dupRow.id);
           const existingBody = String(dupRow.body || "").trim();
           const existingMediaN = Number(dupRow.media_n || 0);
+          const existingStoredMediaN = Number(dupRow.media_stored_n || 0);
           const existingRank = rankEvolutionBodyLabel(existingBody);
           const newRank = rankEvolutionBodyLabel(text);
           const bodyIsGeneric =
@@ -2134,8 +2136,8 @@ export async function POST(req: Request) {
             existingBody.toLowerCase() === "[mensagem recebida]" ||
             existingBody.toLowerCase() === "[mensagem sem texto]";
           const shouldEnrich =
-            (inboundMediaSlotCount > 0 && existingMediaN === 0) ||
-            (hasMedia && existingMediaN === 0 && !dupRow.has_attachments) ||
+            (inboundMediaSlotCount > 0 && existingStoredMediaN === 0) ||
+            (hasMedia && existingStoredMediaN === 0 && !dupRow.has_attachments) ||
             (bodyIsGeneric && newRank > existingRank);
           if (shouldEnrich) {
             const nextBody = preferEvolutionInboundBody(existingBody, text).slice(0, 8000);
@@ -2184,13 +2186,14 @@ export async function POST(req: Request) {
               msgId: msgId.slice(0, 32),
               slots: inboundMediaSlotCount,
               hadMediaRows: existingMediaN,
+              hadStoredMediaRows: existingStoredMediaN,
             });
           } else {
             if (
               (protoHintsIngest.length > 0 || inboundMediaSlotCount > 0) &&
               hasMedia &&
               evCreds &&
-              !(inboundMediaSlotCount > 0 && existingMediaN === 0)
+              !(inboundMediaSlotCount > 0 && existingStoredMediaN === 0)
             ) {
               console.info("[evolution-webhook] upsert_ingest_gate", {
                 instance,
@@ -2203,6 +2206,7 @@ export async function POST(req: Request) {
                 shouldIngestMedia: false,
                 skipIngestReason: "duplicate_row_exists_enrich_not_needed",
                 existingMediaN,
+                existingStoredMediaN,
               });
             }
             logUpsertSkip("duplicate_evolution_message_id", {
