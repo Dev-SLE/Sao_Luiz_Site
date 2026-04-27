@@ -10,6 +10,7 @@ import {
   evolutionFetchProfilePictureUrl,
   evolutionWebhookRootMessageType,
   extractEvolutionMessageText,
+  textLooksLikeEvolutionMediaPlaceholderBody,
 } from "../../../../../lib/server/evolutionClient";
 import { evolutionQrCaptureFromWebhook } from "../../../../../lib/server/evolutionLastQr";
 import {
@@ -40,8 +41,8 @@ export const maxDuration = 300;
 function rankEvolutionBodyLabel(s: string): number {
   const t = String(s || "").trim().toLowerCase();
   if (!t) return 0;
-  if (t === "[mensagem recebida]" || t === "[mensagem sem texto]") return 1;
-  if (/^\[[^\]]+(recebida|recebido)\]$/i.test(t)) return 3;
+  if (t === "[mensagem recebida]" || t === "[mensagem enviada]" || t === "[mensagem sem texto]") return 1;
+  if (/^\[[^\]]+(recebida|recebido|enviada|enviado)\]$/i.test(t)) return 3;
   return 2;
 }
 
@@ -911,17 +912,18 @@ function logUpsertGateProbeAlways(args: {
           "lottieStickerMessage",
         ].includes(k)
     );
-  const tMsg = extractEvolutionMessageText(msgObj) || "";
-  const tUnwrap = extractEvolutionMessageText(unwrappedMsg) || "";
-  const tItem = extractEvolutionMessageText(item) || "";
+  const probeKey = (item as { key?: { fromMe?: unknown } })?.key;
+  const probeFromMe = probeKey && typeof probeKey === "object" && probeKey.fromMe === true;
+  const textOpts = { fromMe: probeFromMe };
+  const tMsg = extractEvolutionMessageText(msgObj, textOpts) || "";
+  const tUnwrap = extractEvolutionMessageText(unwrappedMsg, textOpts) || "";
+  const tItem = extractEvolutionMessageText(item, textOpts) || "";
   let text = preferEvolutionInboundBody(tMsg, tUnwrap, tItem);
-  const mtHint = bodyTextFromEvolutionMessageTypeHint(evolutionWebhookRootMessageType(itemMerged));
+  const mtHint = bodyTextFromEvolutionMessageTypeHint(evolutionWebhookRootMessageType(itemMerged), textOpts);
   if (mtHint && rankEvolutionBodyLabel(mtHint) > rankEvolutionBodyLabel(text)) {
     text = mtHint;
   }
-  const textLooksLikeInboundMedia = /^\[(Imagem recebida|Figurinha recebida|Vídeo recebido|Documento recebido|Áudio recebido)\]$/i.test(
-    String(text || "").trim()
-  );
+  const textLooksLikeInboundMedia = textLooksLikeEvolutionMediaPlaceholderBody(String(text || "").trim());
   const hasMedia =
     inboundMediaSlotCount > 0 ||
     Boolean(legacyNonTextKeys) ||
@@ -1159,7 +1161,9 @@ function hasRenderableEditInPayload(body: Record<string, unknown>): boolean {
   const items = collectMessageEditItems(body?.data);
   for (const item of items) {
     const inner = extractEditedInnerMessage(item);
-    const t = extractEvolutionMessageText(inner);
+    const k = item?.key || item;
+    const fromMe = k && typeof k === "object" && (k as { fromMe?: unknown }).fromMe === true;
+    const t = extractEvolutionMessageText(inner, { fromMe });
     if (t && String(t).trim().length > 0) return true;
   }
   return false;
@@ -1227,7 +1231,9 @@ async function processWebhookMessageEdits(pool: any, body: Record<string, unknow
     const waMessageId = String(key?.id || "").trim();
     if (!waMessageId) continue;
     const inner = extractEditedInnerMessage(item);
-    const newText = extractEvolutionMessageText(inner);
+    const k = item?.key || item;
+    const fromMe = k && typeof k === "object" && (k as { fromMe?: unknown }).fromMe === true;
+    const newText = extractEvolutionMessageText(inner, { fromMe });
     if (!newText || !String(newText).trim()) continue;
     applied += await applyCrmMessageEditByWaMessageId(pool, waMessageId, newText);
   }
@@ -1718,17 +1724,16 @@ export async function POST(req: Request) {
       const inboundMediaSlotCount = countEvolutionInboundMediaSlots(itemMerged, msgId || "x", true);
       const unwrappedMsg = unwrapEvolutionInner(msgObj) || msgObj;
       // Alguns provedores enviam tipo/mídia fora de message; usa fallback com o item inteiro.
-      const tMsg = extractEvolutionMessageText(msgObj) || "";
-      const tUnwrap = extractEvolutionMessageText(unwrappedMsg) || "";
-      const tItem = extractEvolutionMessageText(item) || "";
+      const textOpts = { fromMe: isFromMe };
+      const tMsg = extractEvolutionMessageText(msgObj, textOpts) || "";
+      const tUnwrap = extractEvolutionMessageText(unwrappedMsg, textOpts) || "";
+      const tItem = extractEvolutionMessageText(item, textOpts) || "";
       let text = preferEvolutionInboundBody(tMsg, tUnwrap, tItem);
-      const mtHint = bodyTextFromEvolutionMessageTypeHint(evolutionWebhookRootMessageType(itemMerged));
+      const mtHint = bodyTextFromEvolutionMessageTypeHint(evolutionWebhookRootMessageType(itemMerged), textOpts);
       if (mtHint && rankEvolutionBodyLabel(mtHint) > rankEvolutionBodyLabel(text)) {
         text = mtHint;
       }
-      const textLooksLikeInboundMedia = /^\[(Imagem recebida|Figurinha recebida|Vídeo recebido|Documento recebido|Áudio recebido)\]$/i.test(
-        String(text || "").trim()
-      );
+      const textLooksLikeInboundMedia = textLooksLikeEvolutionMediaPlaceholderBody(String(text || "").trim());
       const hasInboundMediaForIntake =
         inboundMediaSlotCount > 0 ||
         textLooksLikeInboundMedia ||
@@ -2136,6 +2141,7 @@ export async function POST(req: Request) {
           const bodyIsGeneric =
             !existingBody ||
             existingBody.toLowerCase() === "[mensagem recebida]" ||
+            existingBody.toLowerCase() === "[mensagem enviada]" ||
             existingBody.toLowerCase() === "[mensagem sem texto]";
           const shouldEnrich =
             (inboundMediaSlotCount > 0 && existingStoredMediaN === 0) ||

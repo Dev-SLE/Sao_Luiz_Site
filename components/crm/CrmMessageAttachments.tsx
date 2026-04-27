@@ -42,7 +42,7 @@ type Props = {
 
 /**
  * Esconde só falhas "fantasma" (tipo WA errado no getBase64): outro anexo já OK na mesma mensagem,
- * ou figurinha com linha image falhando enquanto o corpo já diz [Figurinha recebida].
+ * ou figurinha com linha image falhando enquanto o corpo já diz [Figurinha recebida]/[Figurinha enviada].
  * Não esconder para áudio/imagem/etc. isolados — senão some o único feedback e parece que "não chegou".
  */
 function filenameLooksCorruptClient(name: string | null | undefined): boolean {
@@ -86,7 +86,7 @@ function shouldHidePhantomTypeMismatchFailure(
 
   const t = String(messageText || "").trim();
   const mt = String(att.mediaType || "").toLowerCase();
-  if (/^\[figurinha recebida\]$/i.test(t) && mt.includes("image")) return true;
+  if (/^\[figurinha (recebida|enviada)\]$/i.test(t) && mt.includes("image")) return true;
 
   return false;
 }
@@ -121,7 +121,7 @@ export const CrmMessageAttachments: React.FC<Props> = ({ attachments, isMe, mess
             >
               <AlertCircle size={14} className="shrink-0 mt-0.5" />
               <span>
-                Mídia recebida; falha ao carregar o ficheiro
+                {isMe ? 'Mídia enviada; falha ao carregar o ficheiro' : 'Mídia recebida; falha ao carregar o ficheiro'}
                 {a.processingError ? ` (${String(a.processingError).slice(0, 120)})` : ''}
               </span>
             </div>

@@ -35,16 +35,29 @@ export function evolutionWebhookRootMessageType(item: unknown): string {
   return "";
 }
 
-export function bodyTextFromEvolutionMessageTypeHint(mt: string): string | null {
+export type EvolutionExtractTextOpts = { fromMe?: boolean };
+
+function evolutionTextFromMe(opts?: EvolutionExtractTextOpts): boolean {
+  return opts?.fromMe === true;
+}
+
+/** Corpo só com placeholder típico de mídia WhatsApp (cliente ou empresa) — heurística do webhook. */
+export function textLooksLikeEvolutionMediaPlaceholderBody(text: string): boolean {
+  const t = String(text || "").trim();
+  return /^\[(Imagem|Figurinha|Vídeo|Documento|Áudio) (recebida|recebido|enviada|enviado)\]$/i.test(t);
+}
+
+export function bodyTextFromEvolutionMessageTypeHint(mt: string, opts?: EvolutionExtractTextOpts): string | null {
   const t = String(mt || "").toLowerCase();
   if (!t) return null;
-  if (t.includes("sticker") || t.includes("lottie")) return "[Figurinha recebida]";
-  if (t.includes("image")) return "[Imagem recebida]";
-  if (t.includes("video") || t.includes("ptv")) return "[Vídeo recebido]";
-  if (t.includes("audio") || t.includes("ptt")) return "[Áudio recebido]";
-  if (t.includes("document")) return "[Documento recebido]";
-  if (t.includes("contact")) return "[Contato recebido]";
-  if (t.includes("location")) return "[Localização recebida]";
+  const me = evolutionTextFromMe(opts);
+  if (t.includes("sticker") || t.includes("lottie")) return me ? "[Figurinha enviada]" : "[Figurinha recebida]";
+  if (t.includes("image")) return me ? "[Imagem enviada]" : "[Imagem recebida]";
+  if (t.includes("video") || t.includes("ptv")) return me ? "[Vídeo enviado]" : "[Vídeo recebido]";
+  if (t.includes("audio") || t.includes("ptt")) return me ? "[Áudio enviado]" : "[Áudio recebido]";
+  if (t.includes("document")) return me ? "[Documento enviado]" : "[Documento recebido]";
+  if (t.includes("contact")) return me ? "[Contato enviado]" : "[Contato recebido]";
+  if (t.includes("location")) return me ? "[Localização enviada]" : "[Localização recebida]";
   return null;
 }
 
@@ -55,69 +68,70 @@ function evolutionMessagePayloadIsEmptyStub(msg: unknown): boolean {
   return keys.length === 0;
 }
 
-export function extractEvolutionMessageText(message: any): string {
+export function extractEvolutionMessageText(message: any, opts?: EvolutionExtractTextOpts): string {
   if (!message || typeof message !== "object") return "";
   const m = message;
+  const me = evolutionTextFromMe(opts);
   const rootMt = String(m.messageType || m.type || "").toLowerCase();
   if (rootMt && evolutionMessagePayloadIsEmptyStub(m.message) && evolutionMessagePayloadIsEmptyStub(m.msg)) {
-    const hint = bodyTextFromEvolutionMessageTypeHint(rootMt);
+    const hint = bodyTextFromEvolutionMessageTypeHint(rootMt, opts);
     if (hint) return hint;
   }
-  if (m.viewOnceMessageV2?.message) return extractEvolutionMessageText(m.viewOnceMessageV2.message);
-  if (m.viewOnceMessageV2Extension?.message) return extractEvolutionMessageText(m.viewOnceMessageV2Extension.message);
-  if (m.ephemeralMessage?.message) return extractEvolutionMessageText(m.ephemeralMessage.message);
-  if (m.editedMessage?.message) return extractEvolutionMessageText(m.editedMessage.message);
+  if (m.viewOnceMessageV2?.message) return extractEvolutionMessageText(m.viewOnceMessageV2.message, opts);
+  if (m.viewOnceMessageV2Extension?.message) return extractEvolutionMessageText(m.viewOnceMessageV2Extension.message, opts);
+  if (m.ephemeralMessage?.message) return extractEvolutionMessageText(m.ephemeralMessage.message, opts);
+  if (m.editedMessage?.message) return extractEvolutionMessageText(m.editedMessage.message, opts);
   if (m.protocolMessage?.editedMessage?.message) {
-    return extractEvolutionMessageText(m.protocolMessage.editedMessage.message);
+    return extractEvolutionMessageText(m.protocolMessage.editedMessage.message, opts);
   }
-  if (m.deviceSentMessage?.message) return extractEvolutionMessageText(m.deviceSentMessage.message);
+  if (m.deviceSentMessage?.message) return extractEvolutionMessageText(m.deviceSentMessage.message, opts);
   // Alguns payloads vêm embrulhados nesses nós
-  if (m.message && typeof m.message === "object") return extractEvolutionMessageText(m.message);
-  if (m.msg && typeof m.msg === "object") return extractEvolutionMessageText(m.msg);
-  if (m.data && typeof m.data === "object") return extractEvolutionMessageText(m.data);
+  if (m.message && typeof m.message === "object") return extractEvolutionMessageText(m.message, opts);
+  if (m.msg && typeof m.msg === "object") return extractEvolutionMessageText(m.msg, opts);
+  if (m.data && typeof m.data === "object") return extractEvolutionMessageText(m.data, opts);
   if (m.conversation) return String(m.conversation);
   if (m.extendedTextMessage?.text) return String(m.extendedTextMessage.text);
   if (m.imageMessage?.caption) return String(m.imageMessage.caption);
-  if (m.imageMessage) return "[Imagem recebida]";
+  if (m.imageMessage) return me ? "[Imagem enviada]" : "[Imagem recebida]";
   // Notas de voz costumam vir como pttMessage no Baileys
-  if (m.pttMessage) return "[Áudio recebido]";
-  if (m.audioMessage) return "[Áudio recebido]";
-  if (m.ptvMessage) return "[Vídeo recebido]";
-  if (m.videoMessage) return "[Vídeo recebido]";
+  if (m.pttMessage) return me ? "[Áudio enviado]" : "[Áudio recebido]";
+  if (m.audioMessage) return me ? "[Áudio enviado]" : "[Áudio recebido]";
+  if (m.ptvMessage) return me ? "[Vídeo enviado]" : "[Vídeo recebido]";
+  if (m.videoMessage) return me ? "[Vídeo enviado]" : "[Vídeo recebido]";
   if (m.documentMessage?.caption) return String(m.documentMessage.caption);
-  if (m.documentMessage) return "[Documento recebido]";
+  if (m.documentMessage) return me ? "[Documento enviado]" : "[Documento recebido]";
   if (m.documentWithCaptionMessage?.message?.documentMessage?.caption)
     return String(m.documentWithCaptionMessage.message.documentMessage.caption);
-  if (m.documentWithCaptionMessage) return "[Documento recebido]";
-  if (m.lottieStickerMessage) return "[Figurinha recebida]";
-  if (m.stickerMessage) return "[Figurinha recebida]";
+  if (m.documentWithCaptionMessage) return me ? "[Documento enviado]" : "[Documento recebido]";
+  if (m.lottieStickerMessage) return me ? "[Figurinha enviada]" : "[Figurinha recebida]";
+  if (m.stickerMessage) return me ? "[Figurinha enviada]" : "[Figurinha recebida]";
   if (m.protocolMessage) return "[Mensagem do sistema recebida]";
-  if (m.contactVcard) return "[Contato recebido]";
-  if (m.locationMessage) return "[Localização recebida]";
-  if (m.contactMessage) return "[Contato recebido]";
-  if (m.contactsArrayMessage) return "[Contatos recebidos]";
-  if (m.liveLocationMessage) return "[Localização ao vivo]";
+  if (m.contactVcard) return me ? "[Contato enviado]" : "[Contato recebido]";
+  if (m.locationMessage) return me ? "[Localização enviada]" : "[Localização recebida]";
+  if (m.contactMessage) return me ? "[Contato enviado]" : "[Contato recebido]";
+  if (m.contactsArrayMessage) return me ? "[Contatos enviados]" : "[Contatos recebidos]";
+  if (m.liveLocationMessage) return me ? "[Localização ao vivo enviada]" : "[Localização ao vivo]";
   if (m.buttonsResponseMessage?.selectedDisplayText)
     return String(m.buttonsResponseMessage.selectedDisplayText);
   if (m.listResponseMessage?.title || m.listResponseMessage?.description) {
     const t = [m.listResponseMessage?.title, m.listResponseMessage?.description].filter(Boolean).join(" — ");
-    return t || "[Resposta de lista recebida]";
+    return t || (me ? "[Resposta de lista enviada]" : "[Resposta de lista recebida]");
   }
-  if (m.reactionMessage) return "[Reação recebida]";
-  if (m.pollCreationMessage) return "[Enquete recebida]";
-  if (m.pollUpdateMessage) return "[Atualização de enquete recebida]";
-  if (m.buttonsMessage) return "[Botões recebidos]";
-  if (m.listMessage) return "[Lista recebida]";
-  if (m.viewOnceMessage?.message) return extractEvolutionMessageText(m.viewOnceMessage.message);
+  if (m.reactionMessage) return me ? "[Reação enviada]" : "[Reação recebida]";
+  if (m.pollCreationMessage) return me ? "[Enquete enviada]" : "[Enquete recebida]";
+  if (m.pollUpdateMessage) return me ? "[Atualização de enquete enviada]" : "[Atualização de enquete recebida]";
+  if (m.buttonsMessage) return me ? "[Botões enviados]" : "[Botões recebidos]";
+  if (m.listMessage) return me ? "[Lista enviada]" : "[Lista recebida]";
+  if (m.viewOnceMessage?.message) return extractEvolutionMessageText(m.viewOnceMessage.message, opts);
   const messageType = String(m.messageType || m.type || m.mimetype || "").toLowerCase();
-  if (messageType.includes("sticker")) return "[Figurinha recebida]";
-  if (messageType.includes("image")) return "[Imagem recebida]";
-  if (messageType.includes("video")) return "[Vídeo recebido]";
-  if (messageType.includes("audio") || messageType.includes("ptt")) return "[Áudio recebido]";
-  if (messageType.includes("contact")) return "[Contato recebido]";
-  if (messageType.includes("document") || messageType.includes("file")) return "[Documento recebido]";
-  if (messageType.includes("location")) return "[Localização recebida]";
-  return "[Mensagem recebida]";
+  if (messageType.includes("sticker")) return me ? "[Figurinha enviada]" : "[Figurinha recebida]";
+  if (messageType.includes("image")) return me ? "[Imagem enviada]" : "[Imagem recebida]";
+  if (messageType.includes("video")) return me ? "[Vídeo enviado]" : "[Vídeo recebido]";
+  if (messageType.includes("audio") || messageType.includes("ptt")) return me ? "[Áudio enviado]" : "[Áudio recebido]";
+  if (messageType.includes("contact")) return me ? "[Contato enviado]" : "[Contato recebido]";
+  if (messageType.includes("document") || messageType.includes("file")) return me ? "[Documento enviado]" : "[Documento recebido]";
+  if (messageType.includes("location")) return me ? "[Localização enviada]" : "[Localização recebida]";
+  return me ? "[Mensagem enviada]" : "[Mensagem recebida]";
 }
 
 function parseEvolutionProfilePictureResponse(json: any): string | null {
