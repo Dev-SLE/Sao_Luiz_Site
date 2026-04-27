@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { UserData, ProfileData } from '../types';
@@ -17,6 +17,8 @@ import {
   Pencil,
   KeyRound,
   Loader2,
+  Download,
+  Upload,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { authClient } from '../lib/auth';
@@ -226,6 +228,8 @@ const Settings: React.FC = () => {
   const [resetPwdForceChange, setResetPwdForceChange] = useState(true);
   const [resetPwdLoading, setResetPwdLoading] = useState(false);
   const [resetPwdError, setResetPwdError] = useState('');
+  const bulkFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [bulkImportBusy, setBulkImportBusy] = useState(false);
   const [confirmDeleteProfile, setConfirmDeleteProfile] = useState<string | null>(null);
   const formatLastLogin = (value?: string) => {
     if (!value) return '-';
@@ -307,6 +311,88 @@ const Settings: React.FC = () => {
           variant: 'error',
         });
       }
+  };
+
+  const handleDownloadBulkTemplate = async () => {
+    try {
+      const { blob, filename } = await authClient.downloadUsersBulkTemplate();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      setSettingsNotice({
+        title: 'Modelo descarregado',
+        message:
+          'A folha inclui listas suspensas para perfil, unidades e vendedora BI, e senhas aleatórias por linha. Preencha a coluna utilizador e envie o ficheiro de volta.',
+        variant: 'success',
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Não foi possível obter o modelo.';
+      setSettingsNotice({
+        title: 'Erro ao obter modelo',
+        message: msg.replace(/^Erro na API: \d+ - /, ''),
+        variant: 'error',
+      });
+    }
+  };
+
+  const handleBulkImport = async () => {
+    const input = bulkFileInputRef.current;
+    const file = input?.files?.[0];
+    if (!file) {
+      setSettingsNotice({
+        title: 'Ficheiro em falta',
+        message: 'Escolha um ficheiro .xlsx gerado pelo modelo antes de importar.',
+        variant: 'warning',
+      });
+      return;
+    }
+    setBulkImportBusy(true);
+    try {
+      const data = await authClient.importUsersBulk(file);
+      if (input) input.value = '';
+      await refreshData();
+      const errs = (data.results || []).filter((r: { status?: string }) => r.status === 'error') as Array<{
+        sheetRow: number;
+        username: string;
+        message?: string;
+      }>;
+      const errPreview = errs
+        .slice(0, 12)
+        .map((e) => `Linha ${e.sheetRow} (${e.username}): ${e.message || 'Erro'}`)
+        .join('\n');
+      const more = errs.length > 12 ? `\n… e mais ${errs.length - 12} erro(s).` : '';
+      setSettingsNotice({
+        title: `Importação concluída — ${data.imported} gravado(s), ${data.failed} falha(s)`,
+        message:
+          data.failed > 0
+            ? `${errPreview || 'Verifique o ficheiro.'}${more}`
+            : 'Todos os utilizadores da planilha foram processados com sucesso.',
+        variant: data.failed > 0 ? 'warning' : 'success',
+      });
+      try {
+        await authClient.logEvent({
+          event: 'USER_BULK_IMPORT',
+          username: user?.username || 'Sistema',
+          payload: { imported: data.imported, failed: data.failed },
+        });
+      } catch {
+        /* não bloqueia */
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Falha na importação.';
+      setSettingsNotice({
+        title: 'Erro na importação',
+        message: msg.replace(/^Erro na API: \d+ - /, ''),
+        variant: 'error',
+      });
+    } finally {
+      setBulkImportBusy(false);
+    }
   };
 
   const startEditUser = (u: UserData) => {
@@ -619,6 +705,47 @@ const Settings: React.FC = () => {
                       </form>
                     </div>
                   </div>
+              ) : null}
+
+              {hasPermission('MANAGE_USERS') && !isAddingUser ? (
+                <div className="surface-card p-5 space-y-3">
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900">Importação em massa</h3>
+                    <p className="mt-1 text-sm text-slate-600 leading-relaxed">
+                      Descarregue o modelo Excel: cada linha já traz uma senha inicial aleatória conforme a política do
+                      sistema. Utilize as listas suspensas para perfil, unidades e vendedora BI e preencha apenas a
+                      coluna de utilizador (e ajuste o restante se precisar). Linhas sem utilizador são ignoradas.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleDownloadBulkTemplate}
+                      className="pressable-3d inline-flex items-center gap-2 rounded-lg border border-slate-300/80 bg-white px-3 py-2 text-sm font-bold text-slate-800 transition hover:border-sl-navy/35"
+                    >
+                      <Download size={16} /> Descarregar modelo
+                    </button>
+                    <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100">
+                      <Upload size={16} />
+                      <span>Ficheiro .xlsx</span>
+                      <input
+                        ref={bulkFileInputRef}
+                        type="file"
+                        accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        className="hidden"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      disabled={bulkImportBusy}
+                      onClick={handleBulkImport}
+                      className="pressable-3d inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-emerald-600 to-emerald-700 px-3 py-2 text-sm font-bold text-white transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {bulkImportBusy ? <Loader2 size={16} className="animate-spin" /> : null}
+                      Importar planilha
+                    </button>
+                  </div>
+                </div>
               ) : null}
 
               {/* Users Table */}

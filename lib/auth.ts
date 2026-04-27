@@ -373,6 +373,42 @@ export class NeonDataClient {
     return this.postJson('/users', user);
   }
 
+  /** Modelo Excel para importação em massa (MANAGE_USERS). */
+  async downloadUsersBulkTemplate(): Promise<{ blob: Blob; filename: string }> {
+    const response = await fetch(this.makeApiUrl("/users/bulk-template"), { credentials: "include" });
+    if (!response.ok) {
+      throw await this.buildHttpError("Erro ao obter modelo de utilizadores", response);
+    }
+    const blob = await response.blob();
+    const cd = response.headers.get("content-disposition") || "";
+    let filename = "modelo_importacao_usuarios.xlsx";
+    const m = cd.match(/filename\*?=(?:UTF-8'')?["']?([^;"']+)/i);
+    if (m?.[1]) filename = decodeURIComponent(m[1].replace(/["']/g, ""));
+    return { blob, filename };
+  }
+
+  /** Importa utilizadores a partir do modelo (MANAGE_USERS). */
+  async importUsersBulk(file: File): Promise<{
+    imported: number;
+    failed: number;
+    results: Array<
+      | { sheetRow: number; username: string; status: "ok" }
+      | { sheetRow: number; username: string; status: "error"; message: string }
+    >;
+  }> {
+    const fd = new FormData();
+    fd.append("file", file);
+    const response = await fetch(this.makeApiUrl("/users/bulk-import"), {
+      method: "POST",
+      credentials: "include",
+      body: fd,
+    });
+    if (!response.ok) {
+      throw await this.buildHttpError("Erro na importação em massa", response);
+    }
+    return response.json();
+  }
+
   async deleteUser(username: string): Promise<any> {
     const url = `${this.makeApiUrl('/users')}?username=${encodeURIComponent(username)}`;
     const response = await fetch(url, { method: 'DELETE' });
