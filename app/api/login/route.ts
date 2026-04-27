@@ -10,6 +10,7 @@ import {
 import { recordAuditEvent } from "../../../lib/server/ensureFase1Infrastructure";
 import { isAdminSuperRole } from "../../../lib/adminSuperRoles";
 import { normalizeOperacionalPermissionsForSession } from "../../../lib/workspacePermissionNormalize";
+import { maybeBackfillFinanceiroModulePermission } from "../../../lib/server/profileFinanceiroPermissionBackfill";
 
 export const runtime = "nodejs";
 
@@ -47,6 +48,7 @@ export async function POST(req: Request) {
     await pool.query(`ALTER TABLE pendencias.users ADD COLUMN IF NOT EXISTS session_version integer DEFAULT 1`);
     await pool.query(`ALTER TABLE pendencias.users ADD COLUMN IF NOT EXISTS password_changed_at timestamptz`);
     await pool.query(`UPDATE pendencias.users SET must_change_password = true WHERE must_change_password IS NULL`);
+    await maybeBackfillFinanceiroModulePermission(pool);
     const result = await pool.query(
       `
         SELECT u.*, p.permissions AS profile_permissions

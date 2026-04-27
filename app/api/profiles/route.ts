@@ -3,6 +3,7 @@ import { getPool } from "../../../lib/server/db";
 import { serverLog } from "../../../lib/server/appLog";
 import { requireApiPermissions } from "../../../lib/server/apiAuth";
 import { stripOperacionalPermissionsWithoutModule } from "../../../lib/workspacePermissionNormalize";
+import { maybeBackfillFinanceiroModulePermission } from "../../../lib/server/profileFinanceiroPermissionBackfill";
 
 export const runtime = "nodejs";
 
@@ -12,6 +13,7 @@ export async function GET(req: Request) {
     const guard = await requireApiPermissions(req, []);
     if (guard.denied) return guard.denied;
     const pool = getPool();
+    await maybeBackfillFinanceiroModulePermission(pool);
     const result = await pool.query("SELECT * FROM pendencias.profiles ORDER BY name ASC");
     return NextResponse.json(result.rows || []);
   } catch (error) {

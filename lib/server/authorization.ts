@@ -1,5 +1,6 @@
 import { decodeSession, parseCookieValue, SESSION_COOKIE_NAME } from "./session";
 import { getPool } from "./db";
+import { maybeBackfillFinanceiroModulePermission } from "./profileFinanceiroPermissionBackfill";
 import { hasPermissionWithAliases } from "../permissions";
 import { isAdminSuperRole } from "../adminSuperRoles";
 import { normalizeOperacionalPermissionsForSession } from "../workspacePermissionNormalize";
@@ -47,6 +48,7 @@ export async function getSessionContext(req: Request): Promise<SessionContext | 
   const session = decodeSession(sessionCookie);
   if (!session) return null;
   const pool = getPool();
+  await maybeBackfillFinanceiroModulePermission(pool);
   await pool.query(`ALTER TABLE pendencias.users ADD COLUMN IF NOT EXISTS linked_bi_vendedora text`);
   await pool.query(`ALTER TABLE pendencias.users ADD COLUMN IF NOT EXISTS must_change_password boolean DEFAULT true`);
   await pool.query(`ALTER TABLE pendencias.users ADD COLUMN IF NOT EXISTS session_version integer DEFAULT 1`);
