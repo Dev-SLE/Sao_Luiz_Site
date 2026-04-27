@@ -281,6 +281,28 @@ function parseCrmMessageMediaMetadataJson(row: any): Record<string, unknown> {
   return {};
 }
 
+function resolveMediaProcessingState(row: any): { status: string; error: string | null } {
+  const rawStatus = String(row.processing_status || "").toUpperCase();
+  const rawError = row.processing_error ? String(row.processing_error) : null;
+  if (rawStatus !== "DOWNLOADING") {
+    return { status: rawStatus, error: rawError };
+  }
+  const hasStoredFile = row.stored_file_id != null;
+  if (hasStoredFile) {
+    return { status: "STORED", error: null };
+  }
+  const ts = row.updated_at || row.created_at;
+  const ageMs = ts ? Date.now() - new Date(ts).getTime() : 0;
+  // Evita spinner infinito quando o ingest assíncrono falha/silencia.
+  if (ageMs > 8 * 60 * 1000) {
+    return {
+      status: "FAILED",
+      error: rawError || "timeout_download",
+    };
+  }
+  return { status: rawStatus, error: rawError };
+}
+
 function mapCrmMessageMediaRow(row: any, settings: Awaited<ReturnType<typeof getCrmMediaSettings>>) {
   const fid = row.stored_file_id ? String(row.stored_file_id) : null;
   const meta = parseCrmMessageMediaMetadataJson(row);
@@ -301,6 +323,7 @@ function mapCrmMessageMediaRow(row: any, settings: Awaited<ReturnType<typeof get
     typeof normalized.mime_type === "string"
       ? normalized
       : undefined;
+  const resolvedProcessing = resolveMediaProcessingState(row);
   return {
     id: String(row.id),
     mediaType: String(row.media_type || ""),
@@ -309,8 +332,8 @@ function mapCrmMessageMediaRow(row: any, settings: Awaited<ReturnType<typeof get
     fileId: fid,
     viewUrl: fid ? `/api/files/${fid}/view` : null,
     downloadUrl: fid ? `/api/files/${fid}/download` : null,
-    processingStatus: String(row.processing_status || ""),
-    processingError: row.processing_error ? String(row.processing_error) : null,
+    processingStatus: resolvedProcessing.status,
+    processingError: resolvedProcessing.error,
     sizeBytes: row.display_size_bytes != null ? Number(row.display_size_bytes) : null,
     durationSeconds: row.display_duration_seconds != null ? Number(row.display_duration_seconds) : null,
     width: row.width != null ? Number(row.width) : null,
@@ -485,7 +508,9 @@ export async function GET(req: Request) {
             stored_file_id,
             processing_status,
             processing_error,
-            metadata_json
+            metadata_json,
+            created_at,
+            updated_at
           FROM pendencias.crm_message_media
           WHERE message_id = ANY($1::uuid[])
           ORDER BY message_id, ordinal ASC
