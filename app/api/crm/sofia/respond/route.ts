@@ -816,7 +816,10 @@ export async function POST(req: Request) {
       allowAutoSend = false;
       if (governanceReason === "ok") governanceReason = "actions_disabled_auto_reply";
     }
-    if (!allowAutoSend) {
+    // Só substitui a sugestão por handoff/fora do horário em fluxos automáticos em segundo plano.
+    // Ações manuais (ex.: "Sugerir" no chat com manualSofiaAction=true) precisam do rascunho da IA,
+    // não da mensagem de handoff — caso contrário parece "fallback" mesmo com a API OK.
+    if (!allowAutoSend && !manualSofiaAction) {
       const hoMsg =
         governanceReason === "outside_business_hours" && outsideHoursMessage.length > 0
           ? outsideHoursMessage
