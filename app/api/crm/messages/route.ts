@@ -281,7 +281,10 @@ function parseCrmMessageMediaMetadataJson(row: any): Record<string, unknown> {
   return {};
 }
 
-function resolveMediaProcessingState(row: any): { status: string; error: string | null } {
+function resolveMediaProcessingState(
+  row: any,
+  fallbackCreatedAt?: string | null
+): { status: string; error: string | null } {
   const rawStatus = String(row.processing_status || "").toUpperCase();
   const rawError = row.processing_error ? String(row.processing_error) : null;
   if (rawStatus !== "DOWNLOADING") {
@@ -291,7 +294,7 @@ function resolveMediaProcessingState(row: any): { status: string; error: string 
   if (hasStoredFile) {
     return { status: "STORED", error: null };
   }
-  const ts = row.updated_at || row.created_at;
+  const ts = row.updated_at || row.created_at || fallbackCreatedAt || null;
   const ageMs = ts ? Date.now() - new Date(ts).getTime() : 0;
   // Evita spinner infinito quando o ingest assíncrono falha/silencia.
   if (ageMs > 8 * 60 * 1000) {
@@ -303,7 +306,11 @@ function resolveMediaProcessingState(row: any): { status: string; error: string 
   return { status: rawStatus, error: rawError };
 }
 
-function mapCrmMessageMediaRow(row: any, settings: Awaited<ReturnType<typeof getCrmMediaSettings>>) {
+function mapCrmMessageMediaRow(
+  row: any,
+  settings: Awaited<ReturnType<typeof getCrmMediaSettings>>,
+  fallbackCreatedAt?: string | null
+) {
   const fid = row.stored_file_id ? String(row.stored_file_id) : null;
   const meta = parseCrmMessageMediaMetadataJson(row);
   const normalized = meta.normalized as CrmInboundMediaNormalized | undefined;
@@ -323,7 +330,7 @@ function mapCrmMessageMediaRow(row: any, settings: Awaited<ReturnType<typeof get
     typeof normalized.mime_type === "string"
       ? normalized
       : undefined;
-  const resolvedProcessing = resolveMediaProcessingState(row);
+  const resolvedProcessing = resolveMediaProcessingState(row, fallbackCreatedAt);
   return {
     id: String(row.id),
     mediaType: String(row.media_type || ""),
@@ -508,9 +515,7 @@ export async function GET(req: Request) {
             stored_file_id,
             processing_status,
             processing_error,
-            metadata_json,
-            created_at,
-            updated_at
+            metadata_json
           FROM pendencias.crm_message_media
           WHERE message_id = ANY($1::uuid[])
           ORDER BY message_id, ordinal ASC
@@ -577,7 +582,8 @@ export async function GET(req: Request) {
       deleted: Boolean(meta?.deleted_at),
       attachments: (() => {
         const rows = mediaByMessage.get(String(r.id)) || [];
-        const fromDb = rows.map((row: any) => mapCrmMessageMediaRow(row, mediaSettings));
+        const fallbackCreatedAt = r.created_at ? new Date(r.created_at).toISOString() : null;
+        const fromDb = rows.map((row: any) => mapCrmMessageMediaRow(row, mediaSettings, fallbackCreatedAt));
         if (fromDb.length) return fromDb;
         const legacy = Array.isArray(meta?.attachments) ? meta.attachments : [];
         return legacy.map((a: any, idx: number) => ({
