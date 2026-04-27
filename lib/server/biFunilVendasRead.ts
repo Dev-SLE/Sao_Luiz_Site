@@ -21,6 +21,7 @@ const RESERVED = new Set([
   "search",
   BI_FUNIL_VENDAS_CONFIG.filters.cotIdPesquisaSistema,
   BI_FUNIL_VENDAS_CONFIG.filters.cteSerie,
+  BI_FUNIL_VENDAS_CONFIG.filters.cteNumero,
 ]);
 
 /** Parâmetros de URL → coluna física em `vw_funil_vendas_base` (igualdade / ANY). */
@@ -108,6 +109,7 @@ function appendFunilIlikeColumnFilters(
   const specs: { param: string; logical: string }[] = [
     { param: BI_FUNIL_VENDAS_CONFIG.filters.cotIdPesquisaSistema, logical: "cot_id_pesquisa_sistema" },
     { param: BI_FUNIL_VENDAS_CONFIG.filters.cteSerie, logical: "cte_serie" },
+    { param: BI_FUNIL_VENDAS_CONFIG.filters.cteNumero, logical: "cte_numero" },
   ];
   for (const { param, logical } of specs) {
     const rawVals = url.searchParams.getAll(param).map((s) => s.trim()).filter(Boolean);
@@ -464,6 +466,7 @@ export async function selectFunilFacetOptions(pool: Pool, url: URL, opts?: { for
       vendedor: F.vendedor,
       cot_id_pesquisa_sistema: F.cotIdPesquisaSistema,
       cte_serie: F.cteSerie,
+      cte_numero: F.cteNumero,
     },
   };
 }

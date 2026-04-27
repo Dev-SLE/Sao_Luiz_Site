@@ -452,7 +452,6 @@ const LEGACY_ALIAS: Record<string, string[]> = {
   "VIEW_COMERCIAL_AUDITORIA": ["VIEW_RELATORIOS"],
   /** Entrada no módulo operacional: abas canónicas (e atalho workspace). Chaves VIEW_* antigas ligam-se às abas em runtime. */
   "module.operacional.view": [
-    "workspace.app.view",
     "tab.operacional.visao_geral.view",
     "tab.operacional.pendencias.view",
     "tab.operacional.criticos.view",

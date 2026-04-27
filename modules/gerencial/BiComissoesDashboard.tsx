@@ -177,7 +177,7 @@ function formatTableCell(col: string, v: unknown): string {
   }
   if (/perc|pct|percent|razao|ratio|%/i.test(cl)) return formatPct(v, col);
   if (
-    /(^|_)vl_|valor|vlr|fatur|fat_|comiss|comis|base_calc|vl_base|premio|incent|bonus|credito|debito|receita|pago|liquido|l[ií]quido|bruto|montante|tarifa|total_a_pagar|tot_liquido|vl_total|valor_total/i.test(
+    /(^|_)vl_|valor|vlr|fatur|fat_|comiss|comis|base_calc|vl_base|premio|incent|bonus|credito|debito|receita|pago|liquido|l[ií]quido|bruto|montante|tarifa|total_a_pagar|tot_liquido|vl_total|valor_total|negociador|redespacho|supervisao|tabela_integral|tabela_rateio|^total$/i.test(
       cl,
     )
   ) {

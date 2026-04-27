@@ -30,7 +30,7 @@ function hasSequentialChars(s: string): boolean {
 export function validateStrongPassword(password: string, usernameHint?: string): PasswordPolicyResult {
   const p = String(password || "");
   const errors: string[] = [];
-  if (p.length < 12) errors.push("A senha precisa ter no mínimo 12 caracteres.");
+  if (p.length < 8) errors.push("A senha precisa ter no mínimo 8 caracteres.");
   if (!/[a-z]/.test(p)) errors.push("Inclua ao menos 1 letra minúscula.");
   if (!/[A-Z]/.test(p)) errors.push("Inclua ao menos 1 letra maiúscula.");
   if (!/\d/.test(p)) errors.push("Inclua ao menos 1 número.");

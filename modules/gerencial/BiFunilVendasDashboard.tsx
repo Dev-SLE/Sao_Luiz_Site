@@ -91,14 +91,17 @@ export function BiFunilVendasDashboard() {
   const [selVendedores, setSelVendedores] = useState<string[]>([]);
   const [filterPesquisaSistema, setFilterPesquisaSistema] = useState('');
   const [filterCteSerie, setFilterCteSerie] = useState('');
+  const [filterCteNumero, setFilterCteNumero] = useState('');
   const [debouncedPesquisa, setDebouncedPesquisa] = useState('');
   const [debouncedCteSerie, setDebouncedCteSerie] = useState('');
+  const [debouncedCteNumero, setDebouncedCteNumero] = useState('');
   const [facetKeys, setFacetKeys] = useState<{
     status_funil: string | null;
     vendedor: string | null;
     cot_id_pesquisa_sistema: string | null;
     cte_serie: string | null;
-  }>({ status_funil: null, vendedor: null, cot_id_pesquisa_sistema: null, cte_serie: null });
+    cte_numero: string | null;
+  }>({ status_funil: null, vendedor: null, cot_id_pesquisa_sistema: null, cte_serie: null, cte_numero: null });
   const [statusOpts, setStatusOpts] = useState<string[]>([]);
   const [vendOpts, setVendOpts] = useState<string[]>([]);
 
@@ -129,14 +132,17 @@ export function BiFunilVendasDashboard() {
     const vk = K.vendedor || F.vendedor;
     const pk = K.cot_id_pesquisa_sistema || F.cotIdPesquisaSistema;
     const ck = K.cte_serie || F.cteSerie;
+    const nk = K.cte_numero || F.cteNumero;
     for (const v of selStatus) if (v) q.append(sk, v);
     for (const v of selVendedores) if (v) q.append(vk, v);
     const p = debouncedPesquisa.trim();
     if (p) q.append(pk, p);
     const c = debouncedCteSerie.trim();
     if (c) q.append(ck, c);
+    const n = debouncedCteNumero.trim();
+    if (n) q.append(nk, n);
     return q.toString();
-  }, [from, to, selStatus, selVendedores, debouncedPesquisa, debouncedCteSerie, facetKeys]);
+  }, [from, to, selStatus, selVendedores, debouncedPesquisa, debouncedCteSerie, debouncedCteNumero, facetKeys]);
 
   const loadFacets = useCallback(async () => {
     const q = queryBase || `from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
@@ -154,6 +160,7 @@ export function BiFunilVendasDashboard() {
         vendedor: typeof k.vendedor === 'string' ? k.vendedor : null,
         cot_id_pesquisa_sistema: typeof k.cot_id_pesquisa_sistema === 'string' ? k.cot_id_pesquisa_sistema : null,
         cte_serie: typeof k.cte_serie === 'string' ? k.cte_serie : null,
+        cte_numero: typeof k.cte_numero === 'string' ? k.cte_numero : null,
       });
     } catch {
       /* facet-options não-ok: mantém estado anterior */
@@ -178,6 +185,11 @@ export function BiFunilVendasDashboard() {
     const id = window.setTimeout(() => setDebouncedCteSerie(filterCteSerie), 320);
     return () => window.clearTimeout(id);
   }, [filterCteSerie]);
+
+  useEffect(() => {
+    const id = window.setTimeout(() => setDebouncedCteNumero(filterCteNumero), 320);
+    return () => window.clearTimeout(id);
+  }, [filterCteNumero]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -371,6 +383,16 @@ export function BiFunilVendasDashboard() {
                 type="search"
                 value={filterCteSerie}
                 onChange={(e) => setFilterCteSerie(e.target.value)}
+                placeholder="Contém…"
+                className="rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 text-sm text-slate-900 outline-none focus:border-sl-navy/40 focus:ring-2 focus:ring-sl-navy/15"
+              />
+            </label>
+            <label className="flex min-w-[140px] flex-1 flex-col gap-1">
+              <span className="text-xs font-semibold text-slate-700">Número CT-e</span>
+              <input
+                type="search"
+                value={filterCteNumero}
+                onChange={(e) => setFilterCteNumero(e.target.value)}
                 placeholder="Contém…"
                 className="rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 text-sm text-slate-900 outline-none focus:border-sl-navy/40 focus:ring-2 focus:ring-sl-navy/15"
               />

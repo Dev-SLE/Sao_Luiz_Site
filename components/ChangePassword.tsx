@@ -147,7 +147,7 @@ const ChangePassword: React.FC = () => {
               placeholder="Digite a nova senha"
             />
             <p className="mt-1 text-xs text-slate-500">
-              Mínimo 12 caracteres, com maiúscula, minúscula, número e símbolo.
+              Mínimo 8 caracteres, com maiúscula, minúscula, número e símbolo.
             </p>
           </div>
           <div>

@@ -12,6 +12,8 @@ export const BI_FUNIL_VENDAS_CONFIG = {
     cotIdPesquisaSistema: "cot_id_pesquisa_sistema",
     /** Filtro textual (ILIKE) — coluna `cte_serie`. */
     cteSerie: "cte_serie",
+    /** Filtro textual (ILIKE) — coluna `cte_numero`. */
+    cteNumero: "cte_numero",
   },
   /** Coluna física na base analítica para `status_funil` na query string. */
   baseStatusColumn: "status_funil_padronizado",

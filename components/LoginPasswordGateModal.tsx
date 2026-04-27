@@ -112,7 +112,7 @@ export function LoginPasswordGateModal({ username, onCancel, onSuccess }: Props)
               className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-sl-navy focus:ring-2 focus:ring-sl-navy/20"
             />
             <p className="mt-1 text-[11px] text-slate-500">
-              Mínimo 12 caracteres, maiúscula, minúscula, número e símbolo.
+              Mínimo 8 caracteres, maiúscula, minúscula, número e símbolo.
             </p>
           </div>
           <div>

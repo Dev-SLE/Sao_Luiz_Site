@@ -30,6 +30,7 @@ import {
   PERMISSION_GROUP_ORDER,
   PERMISSION_SECTION_LABELS,
   PERMISSION_SECTION_ORDER,
+  getProfileCheckboxEquivalence,
   type PermissionGroup,
   type PermissionSectionId,
 } from '../lib/permissions';
@@ -411,7 +412,8 @@ const Settings: React.FC = () => {
     if (!editingProfile) return;
     const current = editingProfile.permissions || [];
     const has = current.includes(perm);
-    let newPerms = has ? current.filter((p) => p !== perm) : [...current, perm];
+    const eq = getProfileCheckboxEquivalence(perm);
+    let newPerms = has ? current.filter((p) => !eq.has(p)) : [...current, perm];
     if (has && perm === OPERACIONAL_MODULE_KEY) {
       newPerms = stripOperacionalPermissionsWithoutModule(newPerms);
     }
@@ -553,7 +555,7 @@ const Settings: React.FC = () => {
                               />
                               {!editingUsername ? (
                                 <p className="text-[11px] leading-snug text-slate-600">
-                                  Mínimo 12 caracteres, maiúscula, minúscula, número e símbolo. Evite sequências óbvias ou o nome de utilizador dentro da senha.
+                                  Mínimo 8 caracteres, maiúscula, minúscula, número e símbolo. Evite sequências óbvias ou o nome de utilizador dentro da senha.
                                 </p>
                               ) : null}
                           </div>
@@ -1140,7 +1142,7 @@ const Settings: React.FC = () => {
                   required
                 />
                 <p className="mt-1 text-xs text-slate-500">
-                  Mínimo 12 caracteres, maiúscula, minúscula, número e símbolo (sem sequências óbvias).
+                  Mínimo 8 caracteres, maiúscula, minúscula, número e símbolo (sem sequências óbvias).
                 </p>
               </div>
               <div>
