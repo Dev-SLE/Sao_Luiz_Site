@@ -422,20 +422,24 @@ export async function GET(req: Request) {
         : "AND (m.metadata->>'update_fallback' IS DISTINCT FROM 'true')";
       return pool.query(
         `
-          SELECT
-            m.id,
-            m.sender_type,
-            m.provider,
-            m.body,
-            m.metadata,
-            m.created_at,
-            c.channel
-          FROM pendencias.crm_messages m
-          JOIN pendencias.crm_conversations c ON c.id = m.conversation_id
-          WHERE m.conversation_id = $1
-            ${whereFallback}
-          ORDER BY m.created_at ASC
-          LIMIT 500
+          SELECT *
+          FROM (
+            SELECT
+              m.id,
+              m.sender_type,
+              m.provider,
+              m.body,
+              m.metadata,
+              m.created_at,
+              c.channel
+            FROM pendencias.crm_messages m
+            JOIN pendencias.crm_conversations c ON c.id = m.conversation_id
+            WHERE m.conversation_id = $1
+              ${whereFallback}
+            ORDER BY m.created_at DESC
+            LIMIT 500
+          ) recent
+          ORDER BY recent.created_at ASC
         `,
         [conversationId]
       );
