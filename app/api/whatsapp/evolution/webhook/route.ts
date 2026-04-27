@@ -33,6 +33,8 @@ import { geminiGenerateContent, openAiChatCompletion } from "../../../../../lib/
 import { insertSofiaAiAuditLog } from "../../../../../lib/server/sofiaAiAuditLog";
 
 export const runtime = "nodejs";
+/** Permite download/upload de vídeos grandes antes do runtime encerrar (ingest não pode ser só fire-and-forget na Vercel). */
+export const maxDuration = 300;
 
 /** Prioriza rótulos de mídia sobre "[Mensagem recebida]" quando o payload Evolution vem em duas fases. */
 function rankEvolutionBodyLabel(s: string): number {
@@ -2161,7 +2163,7 @@ export async function POST(req: Request) {
                 shouldIngestMedia: true,
                 skipIngestReason: null,
               });
-              void ingestEvolutionInboundMedia({
+              await ingestEvolutionInboundMedia({
                 pool,
                 messageId: existingId,
                 conversationId,
@@ -2269,7 +2271,7 @@ export async function POST(req: Request) {
         });
       }
       if (shouldIngestMedia) {
-        void ingestEvolutionInboundMedia({
+        await ingestEvolutionInboundMedia({
           pool,
           messageId: newEvMessageId,
           conversationId,
