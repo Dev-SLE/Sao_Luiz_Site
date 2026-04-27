@@ -606,7 +606,14 @@ export async function GET(req: Request) {
     };
     });
 
-    return NextResponse.json({ messages, relatedLeadHistory });
+    return NextResponse.json(
+      { messages, relatedLeadHistory },
+      {
+        headers: {
+          "Cache-Control": "no-store, max-age=0",
+        },
+      }
+    );
   } catch (error) {
     console.error("CRM messages GET error:", error);
     return NextResponse.json({ error: "Erro interno" }, { status: 500 });

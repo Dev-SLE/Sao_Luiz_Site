@@ -309,7 +309,14 @@ export async function GET(req: Request) {
       };
     });
 
-    return NextResponse.json({ conversations, scope });
+    return NextResponse.json(
+      { conversations, scope },
+      {
+        headers: {
+          "Cache-Control": "no-store, max-age=0",
+        },
+      }
+    );
   } catch (error) {
     console.error("CRM conversations GET error:", error);
     return NextResponse.json({ error: "Erro interno" }, { status: 500 });

@@ -531,7 +531,7 @@ export class NeonDataClient {
     const url = `${this.makeApiUrl('/crm/conversations')}${qs ? `?${qs}` : ""}`;
     const cached = this.getCached(url);
     if (cached) return cached;
-    const resp = await fetch(url);
+    const resp = await fetch(url, { cache: "no-store" });
     if (!resp.ok) throw await this.buildHttpError('Erro ao buscar conversas', resp);
     const data = await resp.json();
     this.setCached(url, data, 5_000);
@@ -565,9 +565,11 @@ export class NeonDataClient {
   }
 
   async getCrmMessages(conversationId: string): Promise<any> {
-    const url = `${this.makeApiUrl('/crm/messages')}?conversationId=${encodeURIComponent(conversationId)}`;
+    const url =
+      `${this.makeApiUrl('/crm/messages')}` +
+      `?conversationId=${encodeURIComponent(conversationId)}&_ts=${Date.now()}`;
     // Sem cache: mensagens precisam refletir o banco na hora (WhatsApp + Sofia).
-    const resp = await fetch(url);
+    const resp = await fetch(url, { cache: "no-store" });
     if (!resp.ok) throw await this.buildHttpError('Erro ao buscar mensagens', resp);
     return resp.json();
   }
