@@ -416,10 +416,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "conversationId obrigatório" }, { status: 400 });
     }
 
-    const loadConversationMessages = async (includeUpdateFallback: boolean) => {
-      const whereFallback = includeUpdateFallback
-        ? ""
-        : "AND (m.metadata->>'update_fallback' IS DISTINCT FROM 'true')";
+    const loadConversationMessages = async () => {
       return pool.query(
         `
           SELECT *
@@ -435,7 +432,6 @@ export async function GET(req: Request) {
             FROM pendencias.crm_messages m
             JOIN pendencias.crm_conversations c ON c.id = m.conversation_id
             WHERE m.conversation_id = $1
-              ${whereFallback}
             ORDER BY m.created_at DESC
             LIMIT 500
           ) recent
@@ -445,22 +441,7 @@ export async function GET(req: Request) {
       );
     };
 
-    let result = await loadConversationMessages(false);
-    // Fallback para conversas legadas: algumas podem ter tudo marcado com `update_fallback=true`.
-    if ((result.rows || []).length === 0) {
-      const anyMessage = await pool.query(
-        `
-          SELECT 1
-          FROM pendencias.crm_messages
-          WHERE conversation_id = $1
-          LIMIT 1
-        `,
-        [conversationId]
-      );
-      if ((anyMessage.rows || []).length > 0) {
-        result = await loadConversationMessages(true);
-      }
-    }
+    const result = await loadConversationMessages();
 
     const convInfo = await pool.query(
       `
@@ -503,7 +484,6 @@ export async function GET(req: Request) {
           LEFT JOIN pendencias.crm_whatsapp_inboxes wi ON wi.id = c.whatsapp_inbox_id
           WHERE c.lead_id = $1::uuid
             AND c.id <> $2::uuid
-            AND (m.metadata->>'update_fallback' IS DISTINCT FROM 'true')
           ORDER BY m.created_at DESC
           LIMIT 12
         `,
